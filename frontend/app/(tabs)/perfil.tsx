@@ -100,6 +100,22 @@ export default function PerfilScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </TouchableOpacity>
 
+            {user.is_admin && (
+              <TouchableOpacity
+                testID="btn-admin-panel"
+                style={[styles.advertiseBtn, { backgroundColor: colors.text }]}
+                onPress={() => router.push("/admin")}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="shield-checkmark" size={20} color={colors.textInverse} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.advertiseTitle, { color: colors.textInverse }]}>PAINEL ADMIN</Text>
+                  <Text style={[styles.advertiseSub, { color: colors.textInverse }]}>Gestão completa da app</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textInverse} />
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.sectionLabel}>MEUS POSTS</Text>
           </View>
         }

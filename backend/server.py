@@ -26,6 +26,7 @@ db = client[os.environ['DB_NAME']]
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "sk_test_emergent")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -46,6 +47,7 @@ class UserOut(BaseModel):
     name: str
     picture: Optional[str] = None
     has_business: bool = False
+    is_admin: bool = False
 
 class AuthResponse(BaseModel):
     token: str
@@ -157,12 +159,14 @@ async def get_optional_user(authorization: Optional[str] = Header(None)) -> Opti
 
 
 def user_out(user: dict) -> UserOut:
+    is_admin = ADMIN_EMAIL and user["email"].lower() == ADMIN_EMAIL
     return UserOut(
         user_id=user["user_id"],
         email=user["email"],
         name=user["name"],
         picture=user.get("picture"),
         has_business=bool(user.get("business_profile")),
+        is_admin=bool(is_admin),
     )
 
 
@@ -902,6 +906,167 @@ async def my_geo(request: Request):
 @api_router.get("/")
 async def root():
     return {"message": "Besord API", "status": "ok", "version": "2.0"}
+
+
+# ---------- Admin (owner only) ----------
+async def require_admin(authorization: Optional[str] = Header(None)) -> dict:
+    user = await get_current_user(authorization)
+    if not ADMIN_EMAIL or user["email"].lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    return user
+
+
+@api_router.get("/admin/overview")
+async def admin_overview(authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    users_total = await db.users.count_documents({})
+    businesses_total = await db.users.count_documents({"business_profile": {"$exists": True}})
+    posts_total = await db.posts.count_documents({"hidden": {"$ne": True}})
+    votes_total = await db.votes.count_documents({})
+    campaigns_total = await db.campaigns.count_documents({})
+    active_campaigns = await db.campaigns.count_documents({"status": "active"})
+    paid_campaigns = await db.campaigns.count_documents({"status": {"$in": ["active", "completed"]}})
+
+    # Revenue
+    rev_agg = await db.campaigns.aggregate([
+        {"$match": {"status": {"$in": ["active", "completed"]}}},
+        {"$group": {"_id": None, "total_cents": {"$sum": "$amount_cents"}}},
+    ]).to_list(length=1)
+    total_revenue_cents = int(rev_agg[0]["total_cents"]) if rev_agg else 0
+
+    # Top words
+    top_words = await db.posts.aggregate([
+        {"$match": {"hidden": {"$ne": True}}},
+        {"$group": {"_id": "$word", "count": {"$sum": 1}, "engagement": {"$sum": {"$add": ["$aprovo_count", "$desaprovo_count"]}}}},
+        {"$sort": {"engagement": -1}}, {"$limit": 10},
+    ]).to_list(length=10)
+
+    return {
+        "users_total": users_total,
+        "businesses_total": businesses_total,
+        "posts_total": posts_total,
+        "votes_total": votes_total,
+        "comments_total": await db.comments.count_documents({}),
+        "campaigns_total": campaigns_total,
+        "active_campaigns": active_campaigns,
+        "paid_campaigns": paid_campaigns,
+        "total_revenue_cents": total_revenue_cents,
+        "total_revenue_usd": total_revenue_cents / 100,
+        "stripe_mode": "LIVE" if stripe.api_key.startswith("sk_live_") else ("TEST" if stripe.api_key.startswith("sk_test_") and stripe.api_key != "sk_test_emergent" else "MOCK"),
+        "top_words": [{"word": w["_id"], "posts": w["count"], "engagement": w["engagement"]} for w in top_words],
+    }
+
+
+@api_router.get("/admin/advertisers")
+async def admin_advertisers(authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    cursor = db.users.find({"business_profile": {"$exists": True}}, {"_id": 0, "user_id": 1, "email": 1, "name": 1, "business_profile": 1, "created_at": 1})
+    advertisers = await cursor.to_list(length=500)
+    out = []
+    for a in advertisers:
+        camp_count = await db.campaigns.count_documents({"user_id": a["user_id"]})
+        paid = await db.campaigns.aggregate([
+            {"$match": {"user_id": a["user_id"], "status": {"$in": ["active", "completed"]}}},
+            {"$group": {"_id": None, "spent": {"$sum": "$amount_cents"}}},
+        ]).to_list(length=1)
+        out.append({
+            "user_id": a["user_id"], "email": a["email"], "name": a["name"],
+            "company_name": a["business_profile"].get("company_name"),
+            "country": a["business_profile"].get("country"),
+            "tax_id": a["business_profile"].get("tax_id"),
+            "campaigns": camp_count,
+            "spent_cents": int(paid[0]["spent"]) if paid else 0,
+        })
+    return out
+
+
+@api_router.get("/admin/campaigns")
+async def admin_campaigns(authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    cursor = db.campaigns.find({}, {"_id": 0, "image_base64": 0}).sort("created_at", -1).limit(200)
+    docs = await cursor.to_list(length=200)
+    for c in docs:
+        if isinstance(c.get("created_at"), datetime):
+            c["created_at"] = c["created_at"].isoformat()
+        if isinstance(c.get("starts_at"), datetime):
+            c["starts_at"] = c["starts_at"].isoformat()
+        if isinstance(c.get("ends_at"), datetime):
+            c["ends_at"] = c["ends_at"].isoformat()
+    return docs
+
+
+class TierUpdate(BaseModel):
+    tier_key: str
+    amount_cents: int
+    included_votes: int
+
+@api_router.post("/admin/tiers")
+async def admin_update_tier(payload: TierUpdate, authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    if payload.tier_key not in TIERS:
+        raise HTTPException(status_code=400, detail="Tier desconhecido")
+    # Persist override in DB; pricing module reads from DB if present
+    await db.tier_overrides.update_one(
+        {"tier_key": payload.tier_key},
+        {"$set": {"amount_cents": payload.amount_cents, "included_votes": payload.included_votes, "updated_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+class PromoCreate(BaseModel):
+    code: str
+    discount_pct: int  # 1-100
+    max_uses: Optional[int] = None
+    expires_at: Optional[str] = None  # ISO
+
+@api_router.get("/admin/promos")
+async def admin_list_promos(authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    docs = await db.promo_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=200)
+    for d in docs:
+        if isinstance(d.get("created_at"), datetime):
+            d["created_at"] = d["created_at"].isoformat()
+        if isinstance(d.get("expires_at"), datetime):
+            d["expires_at"] = d["expires_at"].isoformat()
+    return docs
+
+@api_router.post("/admin/promos")
+async def admin_create_promo(payload: PromoCreate, authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    code = payload.code.strip().upper()
+    if not code or payload.discount_pct < 1 or payload.discount_pct > 100:
+        raise HTTPException(status_code=400, detail="Dados inválidos")
+    expires = None
+    if payload.expires_at:
+        try:
+            expires = datetime.fromisoformat(payload.expires_at.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    doc = {
+        "code": code,
+        "discount_pct": payload.discount_pct,
+        "max_uses": payload.max_uses,
+        "uses": 0,
+        "expires_at": expires,
+        "created_at": datetime.now(timezone.utc),
+        "active": True,
+    }
+    await db.promo_codes.update_one({"code": code}, {"$set": doc}, upsert=True)
+    return {"ok": True, "code": code}
+
+@api_router.delete("/admin/promos/{code}")
+async def admin_delete_promo(code: str, authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    await db.promo_codes.delete_one({"code": code.upper()})
+    return {"ok": True}
+
+
+@api_router.post("/admin/campaigns/{campaign_id}/cancel")
+async def admin_cancel_campaign(campaign_id: str, authorization: Optional[str] = Header(None)):
+    await require_admin(authorization)
+    await db.campaigns.update_one({"campaign_id": campaign_id}, {"$set": {"status": "canceled"}})
+    return {"ok": True}
 
 
 app.include_router(api_router)
