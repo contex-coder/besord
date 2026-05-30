@@ -37,7 +37,7 @@ export default function OnboardingScreen() {
   const listRef = useRef<FlatList>(null);
 
   const finish = async () => {
-    await storage.set("besord_onboarded", "1");
+    await storage.setItem("besord_onboarded", "1");
     router.replace("/(tabs)/feed");
   };
 

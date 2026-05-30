@@ -19,7 +19,7 @@ function RootNavigator() {
 
   useEffect(() => {
     (async () => {
-      const v = await storage.get<string>("besord_onboarded", "");
+      const v = await storage.getItem<string>("besord_onboarded", "");
       setOnboarded(v === "1");
       setOnboardedChecked(true);
     })();
