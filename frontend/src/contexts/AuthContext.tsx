@@ -119,11 +119,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [handleSessionId, restoreSession]);
 
   const signIn = useCallback(async () => {
+    // CRITICAL: Clear any stale session/token before opening OAuth.
+    // This prevents the Emergent OAuth provider from auto-reusing a cached
+    // login from a previously-authenticated Google account.
+    try {
+      await storage.secureRemove(TOKEN_KEY);
+      setToken(null);
+      setUser(null);
+    } catch {}
+
     const redirectUrl =
       Platform.OS === "web"
         ? (typeof window !== "undefined" ? window.location.origin + "/" : "")
         : Linking.createURL("auth");
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    // Add a cache-buster + prompt hint so the provider does NOT auto-reuse a stale session
+    const nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}&prompt=select_account&nonce=${nonce}`;
 
     if (Platform.OS === "web") {
       if (typeof window !== "undefined") window.location.href = authUrl;

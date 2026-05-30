@@ -74,6 +74,11 @@ export default function PerfilScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.identityBanner}>
+        <Ionicons name="shield-checkmark" size={16} color={colors.text} />
+        <Text style={styles.identityText} numberOfLines={1}>SESSÃO ACTIVA: {user.email}</Text>
+      </View>
+
       <FlatList
         data={myPosts}
         keyExtractor={(item) => item.post_id}
@@ -188,6 +193,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...brutalShadow,
   },
+  identityBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.neutral, borderBottomWidth: 3, borderBottomColor: colors.border },
+  identityText: { flex: 1, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, color: colors.text },
   listContent: { padding: 20, paddingBottom: 40, gap: 12 },
   profileBlock: { gap: 16, marginBottom: 8 },
   avatarRow: { flexDirection: "row", alignItems: "center", gap: 12 },

@@ -160,14 +160,16 @@ async def get_optional_user(authorization: Optional[str] = Header(None)) -> Opti
 
 
 def user_out(user: dict) -> UserOut:
-    is_admin = ADMIN_EMAIL and user["email"].lower() == ADMIN_EMAIL
+    # Normalize for safe comparison (Google may return mixed case)
+    user_email = (user.get("email") or "").strip().lower()
+    is_admin = bool(ADMIN_EMAIL and user_email == ADMIN_EMAIL)
     return UserOut(
         user_id=user["user_id"],
         email=user["email"],
         name=user["name"],
         picture=user.get("picture"),
         has_business=bool(user.get("business_profile")),
-        is_admin=bool(is_admin),
+        is_admin=is_admin,
     )
 
 
@@ -264,12 +266,14 @@ async def auth_session(payload: SessionRequest):
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="session_id inválido")
     data = resp.json()
-    email = data.get("email")
+    email = (data.get("email") or "").strip().lower()
     name = data.get("name", email)
     picture = data.get("picture")
     session_token = data.get("session_token")
     if not email or not session_token:
         raise HTTPException(status_code=400, detail="Resposta de auth inválida")
+
+    logger.info(f"Auth session: email={email} session_token_suffix=...{session_token[-8:]}")
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user:
@@ -282,13 +286,16 @@ async def auth_session(payload: SessionRequest):
         user["name"] = name
         user["picture"] = picture
 
-    await db.user_sessions.update_one(
-        {"session_token": session_token},
-        {"$set": {"session_token": session_token, "user_id": user["user_id"],
-                  "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-                  "created_at": datetime.now(timezone.utc)}},
-        upsert=True,
-    )
+    # SECURITY: delete any prior session with the SAME token (regardless of user)
+    # to prevent stale-token cross-user contamination.
+    await db.user_sessions.delete_many({"session_token": session_token})
+    await db.user_sessions.insert_one({
+        "session_token": session_token,
+        "user_id": user["user_id"],
+        "email_snapshot": email,
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+        "created_at": datetime.now(timezone.utc),
+    })
     return AuthResponse(token=session_token, user=user_out(user))
 
 
@@ -343,6 +350,25 @@ async def auth_logout(authorization: Optional[str] = Header(None)):
         token = authorization.split(" ", 1)[1].strip()
         await db.user_sessions.delete_one({"session_token": token})
     return {"ok": True}
+
+
+# ---------- Debug / Audit ----------
+@api_router.get("/auth/whoami")
+async def whoami(authorization: Optional[str] = Header(None)):
+    """Audit endpoint — returns who the server thinks you are, helpful for debugging account mix-ups."""
+    user = await get_optional_user(authorization)
+    if not user:
+        return {"authenticated": False, "admin_email_configured": bool(ADMIN_EMAIL)}
+    user_email = (user.get("email") or "").strip().lower()
+    return {
+        "authenticated": True,
+        "email": user["email"],
+        "name": user["name"],
+        "user_id": user["user_id"],
+        "is_admin": bool(ADMIN_EMAIL and user_email == ADMIN_EMAIL),
+        "admin_email_configured": ADMIN_EMAIL or None,
+        "matches_admin": bool(ADMIN_EMAIL and user_email == ADMIN_EMAIL),
+    }
 
 
 # ---------- Posts ----------
