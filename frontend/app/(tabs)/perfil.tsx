@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ActivityIndicator, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -38,9 +38,25 @@ export default function PerfilScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const handleSignOut = () => {
+    const doLogout = async () => {
+      await signOut();
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        // Force clean reload on web so all state resets
+        window.location.assign("/");
+      } else {
+        router.replace("/");
+      }
+    };
+    if (Platform.OS === "web") {
+      // Alert.alert callbacks on RN-Web are unreliable — use native confirm
+      if (typeof window !== "undefined" && window.confirm("Tem certeza que deseja sair?")) {
+        doLogout();
+      }
+      return;
+    }
     Alert.alert("Sair", "Tem certeza que deseja sair?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Sair", style: "destructive", onPress: signOut },
+      { text: "Sair", style: "destructive", onPress: doLogout },
     ]);
   };
 
