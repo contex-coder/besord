@@ -1,11 +1,12 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/contexts/AuthContext";
+import { storage } from "@/src/utils/storage";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -13,12 +14,12 @@ function RootNavigator() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
-  const [onboardedChecked, setOnboardedChecked] = React.useState(false);
-  const [onboarded, setOnboarded] = React.useState<boolean>(true);
+  const [onboardedChecked, setOnboardedChecked] = useState(false);
+  const [onboarded, setOnboarded] = useState<boolean>(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     (async () => {
-      const v = await (await import("@/src/utils/storage")).storage.get<string>("besord_onboarded", "");
+      const v = await storage.get<string>("besord_onboarded", "");
       setOnboarded(v === "1");
       setOnboardedChecked(true);
     })();
