@@ -703,34 +703,42 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
         "checkout_url": None,
     }
 
-    # Create Stripe Checkout Session
+    # Create Stripe Checkout Session (or mock if placeholder key)
     success_url = f"{APP_BASE_URL}/business/campaign/{campaign_id}?paid=1"
     cancel_url = f"{APP_BASE_URL}/business/campaign/{campaign_id}?canceled=1"
-    try:
-        session = stripe.checkout.Session.create(
-            mode="payment",
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "unit_amount": tier.amount_cents,
-                    "product_data": {
-                        "name": f"Besord {tier.name} — #{normalize_word(word)}",
-                        "description": f"{tier.scope.upper()} • {tier.duration_days}d • {tier.included_votes} votos incl.",
+    is_mock_key = stripe.api_key in ("sk_test_emergent", "", None)
+    if is_mock_key:
+        # Mock mode: skip Stripe and return a fake checkout URL that auto-activates on visit
+        mock_session_id = f"cs_test_mock_{uuid.uuid4().hex[:16]}"
+        campaign["stripe_session_id"] = mock_session_id
+        campaign["checkout_url"] = f"{APP_BASE_URL}/business/campaign/{campaign_id}?paid=1&mock=1"
+        campaign["_mock"] = True
+    else:
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=[{
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": tier.amount_cents,
+                        "product_data": {
+                            "name": f"Besord {tier.name} — #{normalize_word(word)}",
+                            "description": f"{tier.scope.upper()} • {tier.duration_days}d • {tier.included_votes} votos incl.",
+                        },
                     },
-                },
-                "quantity": 1,
-            }],
-            success_url=success_url,
-            cancel_url=cancel_url,
-            metadata={"campaign_id": campaign_id, "user_id": user["user_id"], "tier_key": tier.key},
-            payment_intent_data={"metadata": {"campaign_id": campaign_id}},
-            customer_email=user["business_profile"].get("contact_email") or user["email"],
-        )
-        campaign["stripe_session_id"] = session.id
-        campaign["checkout_url"] = session.url
-    except Exception as e:
-        logger.error(f"Stripe checkout creation failed: {e}")
-        raise HTTPException(status_code=502, detail=f"Falha ao criar pagamento: {str(e)[:120]}")
+                    "quantity": 1,
+                }],
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={"campaign_id": campaign_id, "user_id": user["user_id"], "tier_key": tier.key},
+                payment_intent_data={"metadata": {"campaign_id": campaign_id}},
+                customer_email=user["business_profile"].get("contact_email") or user["email"],
+            )
+            campaign["stripe_session_id"] = session.id
+            campaign["checkout_url"] = session.url
+        except Exception as e:
+            logger.error(f"Stripe checkout creation failed: {e}")
+            raise HTTPException(status_code=502, detail=f"Falha ao criar pagamento: {str(e)[:120]}")
 
     await db.campaigns.insert_one(campaign.copy())
     return serialize_campaign(campaign)
@@ -751,12 +759,20 @@ async def check_campaign_payment(campaign_id: str, authorization: Optional[str] 
     if not session_id:
         return serialize_campaign(campaign)
 
-    try:
-        session = stripe.checkout.Session.retrieve(session_id)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Erro ao consultar Stripe: {e}")
+    # Mock mode: any check counts as paid
+    is_mock = session_id.startswith("cs_test_mock_") or stripe.api_key in ("sk_test_emergent", "", None)
 
-    if session.payment_status == "paid":
+    paid = False
+    if is_mock:
+        paid = True
+    else:
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            paid = session.payment_status == "paid"
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Erro ao consultar Stripe: {e}")
+
+    if paid:
         # Activate campaign
         now = datetime.now(timezone.utc)
         ends = now + timedelta(days=campaign["duration_days"])
