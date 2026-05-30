@@ -1,0 +1,137 @@
+{
+  "project_name": "Besord",
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast / Neo-Brutalist)",
+  "language": "PT-BR",
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Bebas Neue, sans-serif",
+        "instruction": "Use for the '1 Word' on posts and massive impact titles. This gives a raw, poster-like Swiss aesthetic."
+      },
+      "ui": {
+        "family": "Manrope, sans-serif",
+        "instruction": "Use for all standard UI elements, buttons, input fields, and navigation."
+      }
+    },
+    "scales": {
+      "the_word": "text-7xl sm:text-8xl font-normal uppercase tracking-tight leading-none text-black drop-shadow-[2px_2px_0px_rgba(0,0,0,1)]",
+      "h1": "text-4xl font-extrabold tracking-tight text-black uppercase",
+      "h2": "text-2xl font-bold tracking-tight text-black",
+      "body": "text-base font-semibold text-black",
+      "small_label": "text-sm font-bold uppercase tracking-widest text-black"
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#FFFFFF",
+      "subtle": "#F4F4F5"
+    },
+    "text": {
+      "primary": "#000000",
+      "secondary": "#3F3F46",
+      "inverse": "#FFFFFF"
+    },
+    "borders": {
+      "primary": "#000000"
+    },
+    "actions": {
+      "aprovo": {
+        "bg": "#10B981",
+        "hover": "#059669",
+        "text": "#000000"
+      },
+      "desaprovo": {
+        "bg": "#F43F5E",
+        "hover": "#E11D48",
+        "text": "#000000"
+      },
+      "neutral": {
+        "bg": "#FACC15",
+        "hover": "#EAB308",
+        "text": "#000000"
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "global": {
+      "container": "max-w-md mx-auto w-full min-h-screen relative bg-white border-x-4 border-black shadow-[8px_0px_0px_0px_rgba(0,0,0,0.1)]",
+      "padding": "p-4 sm:p-6",
+      "bottom_padding": "pb-24"
+    },
+    "brutalist_effects": {
+      "border": "border-2 sm:border-4 border-black",
+      "shadow": "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+      "shadow_active": "active:shadow-none active:translate-x-[4px] active:translate-y-[4px]",
+      "radius": "rounded-none"
+    }
+  },
+  "components": {
+    "navigation_bottom": {
+      "container": "fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md h-20 bg-white border-t-4 border-black flex justify-around items-center px-4 z-50",
+      "tab": "flex flex-col items-center gap-1 text-black font-bold text-xs uppercase",
+      "active_tab": "text-black underline decoration-4 underline-offset-4 decoration-emerald-500"
+    },
+    "buttons": {
+      "primary_action": "w-full h-16 bg-white text-black font-black text-xl uppercase tracking-widest border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-100 active:shadow-none active:translate-y-1 active:translate-x-1 transition-all flex items-center justify-center gap-3 rounded-none",
+      "aprovo_btn": "flex-1 h-16 bg-[#10B981] text-black font-black text-lg uppercase tracking-wider border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-1 active:translate-x-1 transition-all flex items-center justify-center gap-2 rounded-none",
+      "desaprovo_btn": "flex-1 h-16 bg-[#F43F5E] text-black font-black text-lg uppercase tracking-wider border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-1 active:translate-x-1 transition-all flex items-center justify-center gap-2 rounded-none"
+    },
+    "feed_card": {
+      "wrapper": "flex flex-col gap-3 border-b-4 border-black pb-8 mb-8 last:border-b-0",
+      "image": "w-full aspect-[4/5] object-cover border-4 border-black rounded-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+      "word_overlay": "relative -mt-12 ml-4 bg-white border-4 border-black px-4 py-1 inline-block shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+      "vote_bar": {
+        "container": "w-full h-4 bg-[#F43F5E] border-2 border-black rounded-none overflow-hidden flex mt-2",
+        "fill_aprovo": "h-full bg-[#10B981] border-r-2 border-black"
+      }
+    },
+    "inputs": {
+      "text": "w-full h-16 px-4 text-3xl font-black uppercase text-center border-4 border-black rounded-none focus:outline-none focus:bg-yellow-100 placeholder:text-gray-300 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+      "image_picker": "w-full aspect-square border-4 border-dashed border-black rounded-none flex flex-col items-center justify-center gap-4 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+    }
+  },
+  "media": {
+    "feed_samples": [
+      {
+        "url": "https://images.unsplash.com/photo-1721697989507-fed0b42bb453?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwxfHxzdHJlZXR3ZWFyJTIwb3V0Zml0JTIwbWlycm9yJTIwc2VsZmllfGVufDB8fHx8MTc4MDE1MzkzOHww&ixlib=rb-4.1.0&q=85",
+        "description": "Streetwear mirror selfie",
+        "word": "DRIP"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1724582586529-62622e50c0b3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBtaW5pbWFsaXN0JTIwbGl2aW5nJTIwcm9vbXxlbnwwfHx8fDE3ODAxNTM5Mzh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Modern minimalist living room",
+        "word": "VIBE"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1670404161009-29548c027d06?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxhZXN0aGV0aWMlMjBsYXR0ZSUyMGFydCUyMGNvZmZlZXxlbnwwfHx8fDE3ODAxNTM5Mzh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Aesthetic latte art",
+        "word": "MUD"
+      }
+    ]
+  },
+  "icons": {
+    "library": "lucide-react",
+    "mapping": {
+      "feed": "LayoutGrid",
+      "create": "PlusSquare",
+      "profile": "User",
+      "approve": "ThumbsUp",
+      "disapprove": "ThumbsDown",
+      "upload": "Upload",
+      "google": "Chrome (Substitute for Google logo)"
+    }
+  },
+  "testing": {
+    "data_testid_rules": "Every interactive element MUST include a data-testid attribute in kebab-case. Examples: 'btn-login-google', 'nav-tab-feed', 'nav-tab-criar', 'nav-tab-perfil', 'btn-aprovo', 'btn-desaprovo', 'input-word', 'input-image', 'btn-submit-post'."
+  },
+  "instructions_to_main_agent": [
+    "1. FRAMEWORK: This is functionally a mobile app built with React/Tailwind. Wrap the entire Router/App in a div with 'max-w-md mx-auto min-h-screen relative shadow-2xl' to enforce a mobile form factor on desktop.",
+    "2. STYLING (Neo-Brutalism): The design relies on thick borders (border-2 to border-4 border-black) and solid unblurred drop shadows (shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]). Do NOT use soft shadows or rounded corners. Everything must feel tactile, raw, and high-contrast.",
+    "3. TYPOGRAPHY: Import 'Bebas Neue' (for the massive 1-word overlay and big titles) and 'Manrope' (for UI text) from Google Fonts in the index.html or global css. If overriding Shadcn, strip away all their subtle styling and enforce our brutalist Tailwind classes.",
+    "4. LANGUAGE (PT-BR): Hardcode UI strings in Portuguese: 'Entrar com Google', 'Aprovo', 'Desaprovo', 'Criar', 'Perfil', 'Publicar'.",
+    "5. POST CREATION: The 'Criar' screen requires a massive square area for image upload and a massive text input underneath it restricted to a single word (no spaces allowed during typing/validation).",
+    "6. FEED SCROLL: Ensure the feed area uses vertical scrolling but hides the default browser scrollbar for a native app feel ('scrollbar-width: none' or '::-webkit-scrollbar { display: none; }').",
+    "7. VOTING MECHANIC UI: The post card must have side-by-side 'Aprovo' and 'Desaprovo' buttons. Below them, show a horizontal bar representing the vote percentage (e.g., 70% Green, 30% Red)."
+  ]
+}
