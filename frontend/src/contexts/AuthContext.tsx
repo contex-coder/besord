@@ -1,0 +1,176 @@
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { Platform } from "react-native";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+import { storage } from "@/src/utils/storage";
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL as string;
+const TOKEN_KEY = "besord_token";
+
+export type User = {
+  user_id: string;
+  email: string;
+  name: string;
+  picture?: string | null;
+};
+
+type AuthContextType = {
+  user: User | null;
+  token: string | null;
+  loading: boolean;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
+  apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
+};
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}
+
+async function exchangeSessionId(sessionId: string): Promise<{ token: string; user: User } | null> {
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/auth/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    console.warn("exchangeSessionId failed", e);
+    return null;
+  }
+}
+
+function parseSessionIdFromUrl(url: string | null): string | null {
+  if (!url) return null;
+  // Support both hash and query
+  const hashMatch = url.match(/[#&?]session_id=([^&]+)/);
+  if (hashMatch) return decodeURIComponent(hashMatch[1]);
+  return null;
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const restoreSession = useCallback(async () => {
+    const stored = await storage.secureGet<string>(TOKEN_KEY, "");
+    if (!stored) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${stored}` },
+      });
+      if (r.ok) {
+        const u = await r.json();
+        setUser(u);
+        setToken(stored);
+      } else {
+        await storage.secureRemove(TOKEN_KEY);
+      }
+    } catch {
+      await storage.secureRemove(TOKEN_KEY);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleSessionId = useCallback(async (sessionId: string) => {
+    setLoading(true);
+    const result = await exchangeSessionId(sessionId);
+    if (result) {
+      await storage.secureSet(TOKEN_KEY, result.token);
+      setToken(result.token);
+      setUser(result.user);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // Cold start deep link
+      const initialUrl = await Linking.getInitialURL();
+      const sessionId = parseSessionIdFromUrl(initialUrl);
+      if (sessionId) {
+        await handleSessionId(sessionId);
+        return;
+      }
+      await restoreSession();
+    })();
+
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      const sid = parseSessionIdFromUrl(url);
+      if (sid) handleSessionId(sid);
+    });
+    return () => sub.remove();
+  }, [handleSessionId, restoreSession]);
+
+  const signIn = useCallback(async () => {
+    const redirectUrl =
+      Platform.OS === "web"
+        ? (typeof window !== "undefined" ? window.location.origin + "/" : "")
+        : Linking.createURL("auth");
+    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined") window.location.href = authUrl;
+      return;
+    }
+
+    try {
+      const res = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
+      if (res.type === "success" && res.url) {
+        const sid = parseSessionIdFromUrl(res.url);
+        if (sid) await handleSessionId(sid);
+      }
+    } catch (e) {
+      console.warn("signIn failed", e);
+    }
+  }, [handleSessionId]);
+
+  const signOut = useCallback(async () => {
+    if (token) {
+      try {
+        await fetch(`${BACKEND_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {}
+    }
+    await storage.secureRemove(TOKEN_KEY);
+    setToken(null);
+    setUser(null);
+  }, [token]);
+
+  const apiFetch = useCallback(
+    async (path: string, init: RequestInit = {}) => {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...((init.headers as Record<string, string>) || {}),
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${BACKEND_URL}${path}`, { ...init, headers });
+      if (r.status === 401) {
+        await storage.secureRemove(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+      }
+      return r;
+    },
+    [token]
+  );
+
+  return (
+    <AuthContext.Provider value={{ user, token, loading, signIn, signOut, apiFetch }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}

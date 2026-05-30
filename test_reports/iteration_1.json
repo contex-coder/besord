@@ -1,0 +1,35 @@
+{
+  "summary": "Backend-only testing for Besord (FastAPI + MongoDB). Created pytest suite at /app/backend/tests/ covering health, auth (negative cases + Mongo-injected positive flow), posts CRUD, vote increment/toggle/switch, word & image validation, and logout invalidation. 24/24 tests PASSED.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_besord_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py uses deprecated FastAPI @app.on_event('startup'/'shutdown') — consider switching to lifespan handlers (non-blocking, just a deprecation).",
+    "CORS allow_origins=['*'] combined with allow_credentials=True is technically rejected by browsers spec-wise; works for API testing but consider restricting origins for production.",
+    "WORD_RE allows accented Latin chars (À-ÿ) which is good for Portuguese; consider documenting this in the 400 error message which currently says 'apenas letras/números'.",
+    "Image validation only checks length>=50; no MIME / size cap — large base64 uploads could hit MongoDB 16MB doc limit. Consider adding an explicit max size check."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (new)",
+    "/app/backend/tests/test_besord_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "skipped per request"},
+  "seed_data_creation": "Tests insert TEST_ users + sessions directly into MongoDB (test_database) via pymongo and tear them down after the session. Test posts/votes created during runs are also cleaned up.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend public URL is EXPO_PUBLIC_BACKEND_URL (not EXPO_BACKEND_URL) = https://image-feedback-app.preview.emergentagent.com. Auth is Emergent Google OAuth — cannot be programmatically obtained; use direct MongoDB injection of users + user_sessions (collection names exactly: 'users', 'user_sessions', 'posts', 'votes'). Bearer token = session_token field. Run: cd /app && python -m pytest backend/tests/ -v",
+  "rca_of_issue": "N/A — no bugs found. All requested endpoints behave as specified: health, auth negative cases return 401, public GET /api/posts works without auth (user_vote=null), authenticated CRUD + vote toggle/switch logic correct, word regex enforces letters/digits up to 20 chars, image_base64 must be >=50 chars, logout deletes session and subsequent /auth/me returns 401."
+}
