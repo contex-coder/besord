@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
@@ -18,6 +18,7 @@ type Post = {
 
 export default function PerfilScreen() {
   const { user, signOut, apiFetch } = useAuth();
+  const router = useRouter();
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -84,6 +85,20 @@ export default function PerfilScreen() {
               <StatBox label="APROVO" value={totalAprovo} bg={colors.aprovo} />
               <StatBox label="DESAPROVO" value={totalDesaprovo} bg={colors.desaprovo} />
             </View>
+
+            <TouchableOpacity
+              testID="btn-advertise"
+              style={styles.advertiseBtn}
+              onPress={() => router.push(user.has_business ? "/business/campaigns" : "/business/onboard")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="rocket" size={20} color={colors.text} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.advertiseTitle}>{user.has_business ? "MINHAS CAMPANHAS" : "ANUNCIAR — BESORD INSIGHTS"}</Text>
+                <Text style={styles.advertiseSub}>{user.has_business ? "Gerenciar campanhas patrocinadas" : "Veredito do mercado por região"}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.text} />
+            </TouchableOpacity>
 
             <Text style={styles.sectionLabel}>MEUS POSTS</Text>
           </View>
@@ -156,6 +171,10 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text, marginTop: 2 },
 
   sectionLabel: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.text, marginTop: 8 },
+
+  advertiseBtn: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.neutral, padding: 14, ...brutalShadow },
+  advertiseTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 1, color: colors.text },
+  advertiseSub: { fontSize: 11, fontWeight: "700", color: colors.text, marginTop: 2 },
 
   gridItem: { flex: 1, marginBottom: 12, borderWidth: 3, borderColor: colors.border, ...brutalShadow },
   gridImage: { width: "100%", aspectRatio: 1 },

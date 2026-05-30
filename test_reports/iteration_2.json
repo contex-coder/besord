@@ -1,0 +1,44 @@
+{
+  "summary": "Backend-only testing for Besord iteration 2 (business profiles, sponsored campaigns, Stripe, Apple Sign-In, geo-IP votes, regional aggregation + word cloud). Added /app/backend/tests/test_besord_v2.py (21 tests). Full suite: 41 PASSED, 4 SKIPPED. Skips are by design — Stripe sk_test_emergent is an invalid key so /business/campaigns + downstream endpoints return graceful 502 (no crash). All other contracts validated: version 2.0, 4 tiers ($19/$49/$99/$499), business profile lifecycle, campaign validation (invalid tier, missing target_country/region/city), campaign list/get/404, Apple Sign-In idempotency, sponsored post injection in feed (every 3 organic), vote geo persistence, and campaign report aggregation by_country/by_region/by_city with correct percentages + word_cloud.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/business/campaigns", "issue": "Stripe sk_test_emergent is rejected by Stripe API ('Invalid API Key provided: sk_test_****gent') — endpoint correctly returns 502 without crashing, but the entire campaign creation flow is unusable end-to-end until a real Stripe test key is provided. This blocks the 'paid → activate → sponsored post' happy path from being tested against the live API."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_besord_v2.py",
+    "/app/backend/tests/test_besord_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/pytest_v2_results.xml"
+  ],
+  "action_items": [
+    "Provide a real Stripe test key (sk_test_xxx) via STRIPE_API_KEY env var to enable end-to-end campaign payment + activation testing. With current 'sk_test_emergent' placeholder, Stripe API rejects all calls so paid-flow + check-payment + report-with-post cannot be exercised live.",
+    "Consider gracefully degrading or stubbing Stripe in dev when key starts with 'sk_test_emergent' (e.g., create a mock checkout_url) to unblock UI flow during development.",
+    "Optional: add explicit business_profile-required guard test (currently the 502 on Stripe masks the case where profile is missing — server does check this first and returns 400, which we verified manually)."
+  ],
+  "critical_code_review_comments": [
+    "server.py logger is referenced inside create_campaign exception handler (line 732) before being initialised at module level (logging.basicConfig + logger = ... happens at lines 901-902, after app.include_router). It works because the except block only executes at request time after startup, but the ordering is fragile — recommend defining logger right after the imports.",
+    "matches_target compares geo['country_code'] case-sensitively (line 378) against target_country_code which is uppercased on insert. ip-api.com returns ISO codes uppercase too, so this works in practice, but a defensive .upper() comparison would prevent regressions.",
+    "pick_sponsored_for_user scans up to 50 sponsored posts then filters by active campaign + geo in Python — won't scale to many sponsored posts. Consider matching active campaigns first via Mongo query.",
+    "Campaign creation uses post_id=None initially; if Stripe succeeds but DB insert fails the orphaned Stripe session lingers. Not a blocker for MVP.",
+    "Apple Sign-In skips JWT signature verification (acknowledged in code comments + mocked_apis_list) — fine for MVP, must be hardened for prod.",
+    "Auth me / business profile share user lookup logic — small enough, but consider centralizing has_business derivation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_besord_v2.py (new — 21 tests covering iteration 2 features)"
+  ],
+  "success_rate": {"backend": "100% executable (41/41 passed; 4 skipped solely due to Stripe placeholder key, not server bugs)", "frontend": "skipped per request"},
+  "seed_data_creation": "Tests inject TEST_ users + sessions + organic posts + active campaign + sponsored post + votes with geo metadata + comments directly into MongoDB (test_database). All seeded data is cleaned up in fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL: EXPO_PUBLIC_BACKEND_URL=https://image-feedback-app.preview.emergentagent.com (frontend/.env). Mongo: localhost:27017 / test_database. Session injection: collections users + user_sessions, with session_token used as Bearer. Stripe key 'sk_test_emergent' is INVALID — Stripe API returns 'Invalid API Key' so any test touching live Stripe Checkout creation/retrieval returns 502. Tests handle this by accepting 200 OR 502 and skipping downstream paid-flow assertions. For full paid-flow testing, set STRIPE_API_KEY to a real sk_test_xxx OR manually flip db.campaigns.status='active' + insert a sponsored post (TestSponsoredFeedAndGeo fixture demonstrates this pattern). Apple Sign-In trusts user_identifier without JWT validation (intentional MVP).",
+  "rca_of_issue": "Skipped tests RCA: Stripe Checkout Session creation fails with HTTP 502 because the configured STRIPE_API_KEY ('sk_test_emergent') is not a valid Stripe key — Stripe API rejects it with 'Invalid API Key provided'. The backend handles this correctly (try/except around stripe.checkout.Session.create raises HTTPException 502 with no crash), so this is NOT a backend bug; it's an environment/credentials limitation. To unblock: replace with a real Stripe test key. The campaign report aggregation, geo storage on votes, sponsored feed injection, business profile, Apple Sign-In, and tier listing were all validated end-to-end and pass."
+}

@@ -1,0 +1,253 @@
+import React, { useCallback, useEffect, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+
+import { useAuth } from "@/src/contexts/AuthContext";
+import { colors, brutalShadow } from "@/src/theme";
+
+type Campaign = {
+  campaign_id: string; post_id: string | null; word: string; image_base64: string;
+  tier_key: string; tier_name: string; scope: string; duration_days: number;
+  target_country_code: string | null; target_region: string | null; target_city: string | null;
+  status: string; amount_cents: number; included_votes: number; votes_collected: number;
+  aprovo_count: number; desaprovo_count: number;
+  starts_at: string | null; ends_at: string | null;
+  checkout_url: string | null;
+};
+
+type RegionRow = { label: string; aprovo: number; desaprovo: number; total: number; aprovo_pct: number };
+type Report = {
+  total_votes: number; aprovo_count: number; desaprovo_count: number; aprovo_pct: number;
+  by_country: RegionRow[]; by_region: RegionRow[]; by_city: RegionRow[];
+  word_cloud: { word: string; count: number }[];
+};
+
+export default function CampaignDetailScreen() {
+  const { id, paid } = useLocalSearchParams<{ id: string; paid?: string }>();
+  const { apiFetch } = useAuth();
+  const router = useRouter();
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiFetch(`/api/business/campaigns/${id}`);
+      if (r.ok) {
+        const c = await r.json();
+        setCampaign(c);
+        if (c.status === "active" || c.status === "completed") {
+          const rep = await apiFetch(`/api/business/campaigns/${id}/report`);
+          if (rep.ok) setReport(await rep.json());
+        }
+      }
+    } finally { setLoading(false); }
+  }, [apiFetch, id]);
+
+  const checkPayment = useCallback(async () => {
+    setChecking(true);
+    try {
+      const r = await apiFetch(`/api/business/campaigns/${id}/check-payment`, { method: "POST" });
+      if (r.ok) { setCampaign(await r.json()); load(); }
+    } finally { setChecking(false); }
+  }, [apiFetch, id, load]);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  useEffect(() => {
+    if (paid === "1") checkPayment();
+  }, [paid]);  // eslint-disable-line
+
+  if (loading || !campaign) {
+    return <SafeAreaView style={[styles.container, styles.center]}><ActivityIndicator size="large" color={colors.text} /></SafeAreaView>;
+  }
+
+  const statusColor = campaign.status === "active" ? colors.aprovo : campaign.status === "completed" ? colors.neutral : colors.desaprovo;
+  const statusLabel = campaign.status === "active" ? "ATIVA" : campaign.status === "completed" ? "CONCLUÍDA" : campaign.status === "pending_payment" ? "AGUARDA PAGAMENTO" : campaign.status.toUpperCase();
+  const progress = campaign.included_votes > 0 ? Math.min(100, Math.round(campaign.votes_collected / campaign.included_votes * 100)) : 0;
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={20} color={colors.text} /></TouchableOpacity>
+        <Text style={styles.title} numberOfLines={1}>#{campaign.word}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+          <Text style={styles.statusText}>{statusLabel}</Text>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.heroCard}>
+          <Image source={{ uri: campaign.image_base64 }} style={styles.heroImage} />
+          <View style={styles.heroFooter}>
+            <Text style={styles.heroWord}>#{campaign.word}</Text>
+            <Text style={styles.heroMeta}>{campaign.tier_name} • {campaign.scope.toUpperCase()} • {campaign.duration_days}D</Text>
+          </View>
+        </View>
+
+        {campaign.status === "pending_payment" && campaign.checkout_url && (
+          <TouchableOpacity testID="btn-pay-now" style={styles.payBtn} onPress={async () => {
+            if (Platform.OS === "web" && typeof window !== "undefined") window.location.href = campaign.checkout_url!;
+            else { await WebBrowser.openBrowserAsync(campaign.checkout_url!); checkPayment(); }
+          }}>
+            <Ionicons name="card" size={22} color={colors.text} />
+            <Text style={styles.payText}>PAGAR ${(campaign.amount_cents / 100).toFixed(2)}</Text>
+          </TouchableOpacity>
+        )}
+
+        {campaign.status === "pending_payment" && (
+          <TouchableOpacity testID="btn-check-payment" style={styles.checkBtn} onPress={checkPayment} disabled={checking}>
+            {checking ? <ActivityIndicator color={colors.text} /> : (
+              <><Ionicons name="refresh" size={18} color={colors.text} /><Text style={styles.checkText}>VERIFICAR PAGAMENTO</Text></>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {(campaign.status === "active" || campaign.status === "completed") && (
+          <>
+            <Text style={styles.section}>VOTOS COLETADOS</Text>
+            <View style={styles.statsRow}>
+              <StatBox value={campaign.votes_collected} label="TOTAL" bg={colors.bg} />
+              <StatBox value={campaign.aprovo_count} label="APROVO" bg={colors.aprovo} />
+              <StatBox value={campaign.desaprovo_count} label="DESAPROVO" bg={colors.desaprovo} />
+            </View>
+
+            <View style={styles.progressWrap}>
+              <Text style={styles.progressLabel}>META: {campaign.votes_collected} / {campaign.included_votes} ({progress}%)</Text>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${progress}%` }]} />
+              </View>
+            </View>
+
+            {report && report.total_votes > 0 && (
+              <>
+                <View style={styles.verdictWrap}>
+                  <Text style={styles.verdictLabel}>VEREDITO COLETIVO</Text>
+                  <Text style={styles.verdictBig}>{report.aprovo_pct}% APROVO</Text>
+                  <View style={styles.voteBar}>
+                    <View style={[styles.voteBarFill, { width: `${report.aprovo_pct}%` }]} />
+                  </View>
+                </View>
+
+                <RegionList title="POR PAÍS" rows={report.by_country} />
+                <RegionList title="POR REGIÃO" rows={report.by_region} />
+                <RegionList title="POR CIDADE" rows={report.by_city} />
+
+                {report.word_cloud.length > 0 && (
+                  <View style={styles.cloudWrap}>
+                    <Text style={styles.section}>NUVEM DE PALAVRAS</Text>
+                    <View style={styles.cloud}>
+                      {report.word_cloud.map((w, i) => {
+                        const max = report.word_cloud[0].count;
+                        const size = 12 + Math.round((w.count / max) * 22);
+                        return (
+                          <View key={w.word + i} style={styles.cloudPill}>
+                            <Text style={[styles.cloudText, { fontSize: size }]}>{w.word}</Text>
+                            <Text style={styles.cloudCount}>{w.count}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </>
+            )}
+
+            {report && report.total_votes === 0 && (
+              <Text style={styles.empty}>Aguardando votos... compartilhe a campanha!</Text>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function StatBox({ value, label, bg }: { value: number; label: string; bg: string }) {
+  return (
+    <View style={[styles.statBox, { backgroundColor: bg }]}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function RegionList({ title, rows }: { title: string; rows: RegionRow[] }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <View style={{ marginTop: 18 }}>
+      <Text style={styles.section}>{title}</Text>
+      <View style={styles.regionList}>
+        {rows.slice(0, 10).map((r, i) => (
+          <View key={r.label + i} style={styles.regionRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.regionLabel} numberOfLines={1}>{r.label}</Text>
+              <View style={styles.regionBar}>
+                <View style={[styles.regionBarFill, { width: `${r.aprovo_pct}%` }]} />
+              </View>
+            </View>
+            <Text style={styles.regionStats}>{r.aprovo_pct}% • {r.total}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  center: { alignItems: "center", justifyContent: "center" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 4, borderBottomColor: colors.border, gap: 8 },
+  backBtn: { width: 36, height: 36, borderWidth: 3, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  title: { flex: 1, fontSize: 20, fontWeight: "900", letterSpacing: -0.5, color: colors.text, textAlign: "center" },
+  statusBadge: { borderWidth: 2, borderColor: colors.border, paddingHorizontal: 6, paddingVertical: 4 },
+  statusText: { fontSize: 9, fontWeight: "900", letterSpacing: 0.8, color: colors.text },
+  content: { padding: 20, paddingBottom: 60 },
+
+  heroCard: { borderWidth: 4, borderColor: colors.border, backgroundColor: colors.bg, ...brutalShadow },
+  heroImage: { width: "100%", aspectRatio: 4 / 5 },
+  heroFooter: { padding: 12, borderTopWidth: 3, borderTopColor: colors.border, gap: 4 },
+  heroWord: { fontSize: 28, fontWeight: "900", letterSpacing: -1, color: colors.text },
+  heroMeta: { fontSize: 11, fontWeight: "800", color: colors.textSecondary, letterSpacing: 1 },
+
+  payBtn: { marginTop: 18, height: 64, backgroundColor: colors.aprovo, borderWidth: 4, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, ...brutalShadow },
+  payText: { fontSize: 18, fontWeight: "900", letterSpacing: 2, color: colors.text },
+  checkBtn: { marginTop: 10, height: 48, borderWidth: 3, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.bg },
+  checkText: { fontSize: 12, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
+
+  section: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.text, marginBottom: 10, marginTop: 18 },
+  statsRow: { flexDirection: "row", gap: 8 },
+  statBox: { flex: 1, borderWidth: 3, borderColor: colors.border, paddingVertical: 14, alignItems: "center", ...brutalShadow },
+  statValue: { fontSize: 22, fontWeight: "900", color: colors.text },
+  statLabel: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text, marginTop: 2 },
+
+  progressWrap: { marginTop: 14, gap: 6 },
+  progressLabel: { fontSize: 11, fontWeight: "900", letterSpacing: 1, color: colors.text },
+  progressBar: { height: 14, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.bgSubtle },
+  progressFill: { height: "100%", backgroundColor: colors.aprovo },
+
+  verdictWrap: { marginTop: 18, gap: 6 },
+  verdictLabel: { fontSize: 11, fontWeight: "900", letterSpacing: 2, color: colors.text },
+  verdictBig: { fontSize: 36, fontWeight: "900", letterSpacing: -1, color: colors.text },
+  voteBar: { height: 18, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.desaprovo, overflow: "hidden" },
+  voteBarFill: { height: "100%", backgroundColor: colors.aprovo },
+
+  regionList: { gap: 10 },
+  regionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  regionLabel: { fontSize: 13, fontWeight: "900", color: colors.text, letterSpacing: 0.5 },
+  regionBar: { height: 8, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.desaprovo, marginTop: 4, overflow: "hidden" },
+  regionBarFill: { height: "100%", backgroundColor: colors.aprovo },
+  regionStats: { fontSize: 11, fontWeight: "900", color: colors.text, minWidth: 80, textAlign: "right" },
+
+  cloudWrap: { marginTop: 8 },
+  cloud: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  cloudPill: { borderWidth: 2, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.bg, flexDirection: "row", alignItems: "baseline", gap: 6 },
+  cloudText: { fontWeight: "900", color: colors.text, letterSpacing: -0.3 },
+  cloudCount: { fontSize: 10, fontWeight: "700", color: colors.textSecondary },
+
+  empty: { textAlign: "center", marginTop: 30, fontSize: 14, fontWeight: "700", color: colors.textSecondary },
+});

@@ -42,6 +42,8 @@ type Post = {
   user_vote?: "aprovo" | "desaprovo" | null;
   user_comment?: string | null;
   top_comments: Comment[];
+  is_sponsored?: boolean;
+  campaign_id?: string | null;
 };
 
 type SortMode = "recent" | "trending";
@@ -201,6 +203,12 @@ function PostCard({ post, currentUserId, onVote, onComment, onReport, onWordPres
 
   return (
     <View style={styles.card} testID={`post-card-${post.post_id}`}>
+      {post.is_sponsored && (
+        <View style={styles.sponsoredBadge} testID="sponsored-badge">
+          <Ionicons name="megaphone" size={12} color={colors.text} />
+          <Text style={styles.sponsoredText}>PATROCINADO</Text>
+        </View>
+      )}
       <View style={styles.authorRow}>
         {post.author_picture ? (
           <Image source={{ uri: post.author_picture }} style={styles.avatar} />
@@ -335,6 +343,8 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 14, fontWeight: "600", color: colors.textSecondary, textAlign: "center", paddingHorizontal: 40 },
 
   card: { gap: 10 },
+  sponsoredBadge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.neutral, borderWidth: 3, borderColor: colors.border, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 2 },
+  sponsoredText: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
   authorRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: { width: 36, height: 36, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.bgSubtle },
   avatarFallback: { alignItems: "center", justifyContent: "center" },

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { storage } from "@/src/utils/storage";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL as string;
@@ -12,6 +13,7 @@ export type User = {
   email: string;
   name: string;
   picture?: string | null;
+  has_business?: boolean;
 };
 
 type AuthContextType = {
@@ -19,7 +21,9 @@ type AuthContextType = {
   token: string | null;
   loading: boolean;
   signIn: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
 };
 
@@ -148,6 +152,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await storage.secureRemove(TOKEN_KEY);
     setToken(null);
     setUser(null);
+  }, [token]);
+
+  const signInWithApple = useCallback(async () => {
+    if (Platform.OS !== "ios") return;
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const fullName = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(" ");
+      const r = await fetch(`${BACKEND_URL}/api/auth/apple`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identity_token: credential.identityToken,
+          user_identifier: credential.user,
+          email: credential.email,
+          full_name: fullName || null,
+        }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        await storage.secureSet(TOKEN_KEY, data.token);
+        setToken(data.token);
+        setUser(data.user);
+      }
+    } catch (e: any) {
+      if (e?.code !== "ERR_REQUEST_CANCELED") {
+        console.warn("Apple sign-in failed", e);
+      }
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (!token) return;
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const u = await r.json();
+        setUser(u);
+      }
+    } catch {}
   }, [token]);
 
   const apiFetch = useCallback(
