@@ -11,7 +11,7 @@ import { colors, brutalShadow } from "@/src/theme";
 import { t } from "@/src/i18n";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const BEETLE_URL = "https://customer-assets.emergentagent.com/job_image-feedback-app/artifacts/yd69mhep_image_237103d3-8587-4f9b-a053-3b5bd1a1b496.png";
+const BEETLE_URL = "https://customer-assets.emergentagent.com/job_image-feedback-app/artifacts/k8o964dp_image_e8c30e18-dee9-4061-a6d7-7a53ae2d2b32.png";
 
 function FlyingBesord() {
   const x = useSharedValue(-120);
@@ -91,6 +91,11 @@ export default function Landing() {
             </TouchableOpacity>
           )}
           <Text style={styles.legal}>{t("legal")}</Text>
+          <View style={styles.legalLinks}>
+            <TouchableOpacity onPress={() => router.push("/legal?doc=terms")}><Text style={styles.legalLink}>TERMOS</Text></TouchableOpacity>
+            <Text style={styles.legalDot}>•</Text>
+            <TouchableOpacity onPress={() => router.push("/legal?doc=privacy")}><Text style={styles.legalLink}>PRIVACIDADE</Text></TouchableOpacity>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -119,4 +124,7 @@ const styles = StyleSheet.create({
   appleBtn: { backgroundColor: colors.text },
   btnText: { fontSize: 16, fontWeight: "900", letterSpacing: 2, color: colors.text },
   legal: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, textAlign: "center", letterSpacing: 1, marginTop: 4 },
+  legalLinks: { flexDirection: "row", justifyContent: "center", gap: 10, marginTop: 4 },
+  legalLink: { fontSize: 11, fontWeight: "900", color: colors.text, letterSpacing: 1, textDecorationLine: "underline" },
+  legalDot: { color: colors.textSecondary, fontWeight: "900" },
 });

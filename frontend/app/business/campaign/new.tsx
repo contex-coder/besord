@@ -61,6 +61,7 @@ export default function NewCampaignScreen() {
           target_country_code: country.toUpperCase() || null,
           target_region: region || null,
           target_city: city || null,
+          promo_code: promoCode || null,
         }),
       });
       if (r.ok) {
@@ -149,12 +150,29 @@ export default function NewCampaignScreen() {
                      autoCapitalize="characters" maxLength={20} />
         </View>
 
+        <View style={{ marginTop: 18 }}>
+          <Text style={styles.section}>5. CÓDIGO PROMOCIONAL (opcional)</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TextInput testID="input-promo" style={[styles.input, { flex: 1 }]} placeholder="EX: LANCAMENTO" placeholderTextColor="#A1A1AA"
+                       value={promoCode} onChangeText={(v) => { setPromoCode(v.toUpperCase()); setPromoApplied(null); }} autoCapitalize="characters" />
+            <TouchableOpacity testID="btn-apply-promo" style={styles.applyBtn} onPress={validatePromo} disabled={!promoCode || !selectedTier}>
+              <Text style={styles.applyText}>APLICAR</Text>
+            </TouchableOpacity>
+          </View>
+          {promoApplied && (
+            <Text style={styles.promoOk}>✓ -{promoApplied.discount_pct}% aplicado!</Text>
+          )}
+        </View>
+
         <TouchableOpacity testID="btn-pay" style={[styles.payBtn, (!image || !word || !selectedTier || submitting) && { opacity: 0.5 }]}
                           onPress={submit} disabled={!image || !word || !selectedTier || submitting}>
           {submitting ? <ActivityIndicator color={colors.text} /> : (
             <>
               <Ionicons name="card" size={22} color={colors.text} />
-              <Text style={styles.payText}>PAGAR ${selectedTier?.amount_usd ?? "—"}</Text>
+              <Text style={styles.payText}>
+                PAGAR ${promoApplied ? (promoApplied.final_cents / 100).toFixed(2) : (selectedTier?.amount_usd ?? "—")}
+                {promoApplied && <Text style={{ textDecorationLine: "line-through", color: colors.textSecondary }}>  ${selectedTier?.amount_usd}</Text>}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -184,5 +202,8 @@ const styles = StyleSheet.create({
   wordInput: { borderWidth: 4, borderColor: colors.border, height: 64, paddingHorizontal: 16, fontSize: 28, fontWeight: "900", textAlign: "center", color: colors.text, backgroundColor: colors.bg, ...brutalShadow, ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}) },
   payBtn: { marginTop: 22, height: 64, backgroundColor: colors.aprovo, borderWidth: 4, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, ...brutalShadow },
   payText: { fontSize: 18, fontWeight: "900", letterSpacing: 2, color: colors.text },
+  applyBtn: { borderWidth: 3, borderColor: colors.border, backgroundColor: colors.neutral, paddingHorizontal: 14, justifyContent: "center", ...brutalShadow },
+  applyText: { fontSize: 12, fontWeight: "900", letterSpacing: 1, color: colors.text },
+  promoOk: { marginTop: 6, fontSize: 12, fontWeight: "900", color: colors.aprovo, letterSpacing: 1 },
   disclaimer: { textAlign: "center", marginTop: 12, fontSize: 10, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.5 },
 });

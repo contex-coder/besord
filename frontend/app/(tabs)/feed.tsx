@@ -10,6 +10,8 @@ import {
   RefreshControl,
   TextInput,
   Alert,
+  Share,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -265,6 +267,27 @@ function PostCard({ post, currentUserId, onVote, onComment, onReport, onWordPres
       </View>
       <View style={styles.voteStatRow}>
         <Text style={styles.voteStatText}>{aprovoPct}% APROVO</Text>
+        <TouchableOpacity
+          testID={`btn-share-${post.post_id}`}
+          onPress={async () => {
+            const url = `${typeof window !== "undefined" && window.location ? window.location.origin : "https://besord.app"}/word/${encodeURIComponent(post.word)}`;
+            const message = `🪲 BESORD — #${post.word}\n${aprovoPct}% APROVO • ${100 - aprovoPct}% DESAPROVO\n${total} votos\n${url}`;
+            try {
+              if (Platform.OS === "web" && (navigator as any).share) {
+                await (navigator as any).share({ title: `Besord #${post.word}`, text: message, url });
+              } else if (Platform.OS === "web" && typeof window !== "undefined") {
+                await navigator.clipboard?.writeText(message);
+                alert("Veredito copiado!");
+              } else {
+                await Share.share({ message, title: `Besord #${post.word}` });
+              }
+            } catch {}
+          }}
+          style={styles.shareBtn}
+        >
+          <Ionicons name="share-social" size={14} color={colors.text} />
+          <Text style={styles.shareText}>PARTILHAR</Text>
+        </TouchableOpacity>
         <Text style={styles.voteStatText}>{100 - aprovoPct}% DESAPROVO</Text>
       </View>
 
@@ -377,6 +400,8 @@ const styles = StyleSheet.create({
   voteBarFill: { height: "100%" },
   voteStatRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
   voteStatText: { fontSize: 11, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
+  shareBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 2, borderColor: colors.border, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: colors.neutral },
+  shareText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.text },
 
   commentsBlock: { marginTop: 14, borderTopWidth: 3, borderTopColor: colors.border, paddingTop: 12, gap: 8 },
   commentsHeader: { flexDirection: "row", alignItems: "center", gap: 6 },

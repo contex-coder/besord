@@ -107,6 +107,7 @@ class CampaignCreate(BaseModel):
     target_country_code: Optional[str] = None
     target_region: Optional[str] = None
     target_city: Optional[str] = None
+    promo_code: Optional[str] = None
 
 class CampaignOut(BaseModel):
     campaign_id: str
@@ -681,6 +682,30 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
 
     campaign_id = f"camp_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
+
+    # Apply promo code if provided
+    final_amount_cents = tier.amount_cents
+    promo_applied = None
+    if payload.promo_code:
+        code = payload.promo_code.strip().upper()
+        promo = await db.promo_codes.find_one({"code": code, "active": {"$ne": False}}, {"_id": 0})
+        if not promo:
+            raise HTTPException(status_code=400, detail=f"Código '{code}' inválido")
+        if promo.get("expires_at"):
+            exp = promo["expires_at"]
+            if isinstance(exp, datetime):
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                if exp < now:
+                    raise HTTPException(status_code=400, detail=f"Código '{code}' expirado")
+        if promo.get("max_uses") and promo.get("uses", 0) >= promo["max_uses"]:
+            raise HTTPException(status_code=400, detail=f"Código '{code}' esgotado")
+        discount_pct = int(promo["discount_pct"])
+        final_amount_cents = int(round(tier.amount_cents * (100 - discount_pct) / 100))
+        if final_amount_cents < 50:  # Stripe minimum
+            final_amount_cents = 50
+        promo_applied = {"code": code, "discount_pct": discount_pct}
+
     campaign = {
         "campaign_id": campaign_id,
         "user_id": user["user_id"],
@@ -690,7 +715,9 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
         "tier_key": tier.key,
         "scope": tier.scope,
         "duration_days": tier.duration_days,
-        "amount_cents": tier.amount_cents,
+        "amount_cents": final_amount_cents,
+        "base_amount_cents": tier.amount_cents,
+        "promo": promo_applied,
         "included_votes": tier.included_votes,
         "target_country_code": (payload.target_country_code or "").upper() or None,
         "target_region": payload.target_region,
@@ -712,7 +739,6 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
     cancel_url = f"{APP_BASE_URL}/business/campaign/{campaign_id}?canceled=1"
     is_mock_key = stripe.api_key in ("sk_test_emergent", "", None)
     if is_mock_key:
-        # Mock mode: skip Stripe and return a fake checkout URL that auto-activates on visit
         mock_session_id = f"cs_test_mock_{uuid.uuid4().hex[:16]}"
         campaign["stripe_session_id"] = mock_session_id
         campaign["checkout_url"] = f"{APP_BASE_URL}/business/campaign/{campaign_id}?paid=1&mock=1"
@@ -724,9 +750,9 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
                 line_items=[{
                     "price_data": {
                         "currency": "usd",
-                        "unit_amount": tier.amount_cents,
+                        "unit_amount": final_amount_cents,
                         "product_data": {
-                            "name": f"Besord {tier.name} — #{normalize_word(word)}",
+                            "name": f"Besord {tier.name} — #{normalize_word(word)}" + (f" ({promo_applied['discount_pct']}% off)" if promo_applied else ""),
                             "description": f"{tier.scope.upper()} • {tier.duration_days}d • {tier.included_votes} votos incl.",
                         },
                     },
@@ -734,7 +760,7 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
                 }],
                 success_url=success_url,
                 cancel_url=cancel_url,
-                metadata={"campaign_id": campaign_id, "user_id": user["user_id"], "tier_key": tier.key},
+                metadata={"campaign_id": campaign_id, "user_id": user["user_id"], "tier_key": tier.key, "promo_code": (promo_applied or {}).get("code", "")},
                 payment_intent_data={"metadata": {"campaign_id": campaign_id}},
                 customer_email=user["business_profile"].get("contact_email") or user["email"],
             )
@@ -745,6 +771,9 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
             raise HTTPException(status_code=502, detail=f"Falha ao criar pagamento: {str(e)[:120]}")
 
     await db.campaigns.insert_one(campaign.copy())
+    # Increment promo usage
+    if promo_applied:
+        await db.promo_codes.update_one({"code": promo_applied["code"]}, {"$inc": {"uses": 1}})
     return serialize_campaign(campaign)
 
 
@@ -906,6 +935,35 @@ async def my_geo(request: Request):
 @api_router.get("/")
 async def root():
     return {"message": "Besord API", "status": "ok", "version": "2.0"}
+
+
+# ---------- Promo validation (public) ----------
+class PromoValidateRequest(BaseModel):
+    code: str
+    tier_key: str
+
+@api_router.post("/promos/validate")
+async def validate_promo(payload: PromoValidateRequest):
+    code = payload.code.strip().upper()
+    promo = await db.promo_codes.find_one({"code": code, "active": {"$ne": False}}, {"_id": 0})
+    if not promo:
+        raise HTTPException(status_code=404, detail="Código inválido")
+    now = datetime.now(timezone.utc)
+    if promo.get("expires_at"):
+        exp = promo["expires_at"]
+        if isinstance(exp, datetime):
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp < now:
+                raise HTTPException(status_code=400, detail="Código expirado")
+    if promo.get("max_uses") and promo.get("uses", 0) >= promo["max_uses"]:
+        raise HTTPException(status_code=400, detail="Código esgotado")
+    if payload.tier_key not in TIERS:
+        raise HTTPException(status_code=400, detail="Plano inválido")
+    tier = TIERS[payload.tier_key]
+    discount_pct = int(promo["discount_pct"])
+    final = int(round(tier.amount_cents * (100 - discount_pct) / 100))
+    return {"valid": True, "code": code, "discount_pct": discount_pct, "original_cents": tier.amount_cents, "final_cents": final}
 
 
 # ---------- Admin (owner only) ----------

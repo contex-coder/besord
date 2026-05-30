@@ -13,16 +13,33 @@ function RootNavigator() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const [onboardedChecked, setOnboardedChecked] = React.useState(false);
+  const [onboarded, setOnboarded] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
+    (async () => {
+      const v = await (await import("@/src/utils/storage")).storage.get<string>("besord_onboarded", "");
+      setOnboarded(v === "1");
+      setOnboardedChecked(true);
+    })();
+  }, [user?.user_id]);
 
   useEffect(() => {
-    if (loading) return;
-    const inTabs = segments[0] === "(tabs)";
-    if (user && !inTabs) {
-      router.replace("/(tabs)/feed");
-    } else if (!user && inTabs) {
+    if (loading || !onboardedChecked) return;
+    const first = segments[0];
+    const inTabs = first === "(tabs)";
+    const inOnboarding = first === "onboarding";
+    const inLegal = first === "legal";
+    if (user) {
+      if (!onboarded && !inOnboarding) {
+        router.replace("/onboarding");
+      } else if (onboarded && !inTabs && !inLegal && first !== "business" && first !== "admin" && first !== "word") {
+        router.replace("/(tabs)/feed");
+      }
+    } else if (inTabs || first === "business" || first === "admin") {
       router.replace("/");
     }
-  }, [user, loading, segments, router]);
+  }, [user, loading, segments, router, onboarded, onboardedChecked]);
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FFFFFF" } }} />
