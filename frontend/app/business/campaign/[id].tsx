@@ -19,10 +19,15 @@ type Campaign = {
 };
 
 type RegionRow = { label: string; aprovo: number; desaprovo: number; total: number; aprovo_pct: number };
+type TopWord = { word: string; count: number; pct: number };
+type Pace = { votes_per_day: number; days_active: number; days_remaining: number; projected_total: number; target: number; on_track: boolean };
 type Report = {
   total_votes: number; aprovo_count: number; desaprovo_count: number; aprovo_pct: number;
+  verdict_tag: string; summary: string;
   by_country: RegionRow[]; by_region: RegionRow[]; by_city: RegionRow[];
   word_cloud: { word: string; count: number }[];
+  top_3_words: TopWord[]; total_comments: number;
+  pace: Pace;
 };
 
 export default function CampaignDetailScreen() {
@@ -125,11 +130,54 @@ export default function CampaignDetailScreen() {
 
             {report && report.total_votes > 0 && (
               <>
+                <View style={styles.summaryCard}>
+                  <Ionicons name="sparkles" size={22} color={colors.text} />
+                  <Text style={styles.summaryText}>{report.summary}</Text>
+                </View>
+
                 <View style={styles.verdictWrap}>
-                  <Text style={styles.verdictLabel}>VEREDITO COLETIVO</Text>
+                  <Text style={styles.verdictLabel}>VEREDITO COLECTIVO • {report.verdict_tag}</Text>
                   <Text style={styles.verdictBig}>{report.aprovo_pct}% APROVO</Text>
                   <View style={styles.voteBar}>
                     <View style={[styles.voteBarFill, { width: `${report.aprovo_pct}%` }]} />
+                  </View>
+                </View>
+
+                {report.top_3_words.length > 0 && (
+                  <View style={{ marginTop: 18 }}>
+                    <Text style={styles.section}>🏆 TOP 3 PALAVRAS NOS COMENTÁRIOS</Text>
+                    <View style={styles.podium}>
+                      {report.top_3_words.map((w, i) => {
+                        const medals = ["#FFD700", "#C0C0C0", "#CD7F32"];
+                        const labels = ["1º", "2º", "3º"];
+                        return (
+                          <View key={w.word} style={[styles.podiumItem, { backgroundColor: medals[i] }]}>
+                            <Text style={styles.podiumRank}>{labels[i]}</Text>
+                            <Text style={styles.podiumWord} numberOfLines={1}>{w.word}</Text>
+                            <Text style={styles.podiumStats}>{w.count} • {w.pct}%</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    <Text style={styles.podiumNote}>{report.total_comments} comentários totais</Text>
+                  </View>
+                )}
+
+                <View style={{ marginTop: 18 }}>
+                  <Text style={styles.section}>⏱️ RITMO DA CAMPANHA</Text>
+                  <View style={styles.paceGrid}>
+                    <View style={styles.paceBox}>
+                      <Text style={styles.paceValue}>{report.pace.votes_per_day}</Text>
+                      <Text style={styles.paceLabel}>VOTOS/DIA</Text>
+                    </View>
+                    <View style={styles.paceBox}>
+                      <Text style={styles.paceValue}>{report.pace.days_remaining}d</Text>
+                      <Text style={styles.paceLabel}>RESTAM</Text>
+                    </View>
+                    <View style={[styles.paceBox, { backgroundColor: report.pace.on_track ? colors.aprovo : colors.desaprovo }]}>
+                      <Text style={styles.paceValue}>{report.pace.projected_total}</Text>
+                      <Text style={styles.paceLabel}>PROJEÇÃO</Text>
+                    </View>
                   </View>
                 </View>
 
@@ -137,9 +185,9 @@ export default function CampaignDetailScreen() {
                 <RegionList title="POR REGIÃO" rows={report.by_region} />
                 <RegionList title="POR CIDADE" rows={report.by_city} />
 
-                {report.word_cloud.length > 0 && (
+                {report.word_cloud.length > 3 && (
                   <View style={styles.cloudWrap}>
-                    <Text style={styles.section}>NUVEM DE PALAVRAS</Text>
+                    <Text style={styles.section}>NUVEM DE PALAVRAS COMPLETA</Text>
                     <View style={styles.cloud}>
                       {report.word_cloud.map((w, i) => {
                         const max = report.word_cloud[0].count;
@@ -154,6 +202,26 @@ export default function CampaignDetailScreen() {
                     </View>
                   </View>
                 )}
+
+                <TouchableOpacity testID="btn-export-csv" style={styles.exportBtn} onPress={async () => {
+                  const token = (await import("@/src/utils/storage")).storage;
+                  const t = await token.secureGet<string>("besord_token", "");
+                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.csv`;
+                  if (Platform.OS === "web" && typeof window !== "undefined") {
+                    // Fetch with auth and trigger download
+                    const r = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
+                    const blob = await r.blob();
+                    const dl = document.createElement("a");
+                    dl.href = URL.createObjectURL(blob);
+                    dl.download = `besord_${campaign.campaign_id}.csv`;
+                    dl.click();
+                  } else {
+                    await WebBrowser.openBrowserAsync(url + `?auth=${encodeURIComponent(t || "")}`);
+                  }
+                }}>
+                  <Ionicons name="download" size={20} color={colors.text} />
+                  <Text style={styles.exportText}>EXPORTAR CSV</Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -250,4 +318,22 @@ const styles = StyleSheet.create({
   cloudCount: { fontSize: 10, fontWeight: "700", color: colors.textSecondary },
 
   empty: { textAlign: "center", marginTop: 30, fontSize: 14, fontWeight: "700", color: colors.textSecondary },
+
+  summaryCard: { flexDirection: "row", gap: 10, alignItems: "center", borderWidth: 4, borderColor: colors.border, backgroundColor: colors.neutral, padding: 14, marginTop: 18, ...brutalShadow },
+  summaryText: { flex: 1, fontSize: 14, fontWeight: "800", color: colors.text, lineHeight: 19 },
+
+  podium: { flexDirection: "row", gap: 8, marginTop: 4 },
+  podiumItem: { flex: 1, borderWidth: 3, borderColor: colors.border, padding: 10, alignItems: "center", ...brutalShadow },
+  podiumRank: { fontSize: 12, fontWeight: "900", letterSpacing: 1, color: colors.text },
+  podiumWord: { fontSize: 16, fontWeight: "900", letterSpacing: -0.5, color: colors.text, marginTop: 4 },
+  podiumStats: { fontSize: 10, fontWeight: "800", color: colors.text, marginTop: 4 },
+  podiumNote: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginTop: 6, textAlign: "center" },
+
+  paceGrid: { flexDirection: "row", gap: 8 },
+  paceBox: { flex: 1, borderWidth: 3, borderColor: colors.border, padding: 12, alignItems: "center", backgroundColor: colors.bg, ...brutalShadow },
+  paceValue: { fontSize: 22, fontWeight: "900", color: colors.text },
+  paceLabel: { fontSize: 9, fontWeight: "900", letterSpacing: 1.5, color: colors.text, marginTop: 2 },
+
+  exportBtn: { marginTop: 24, height: 56, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.text, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, ...brutalShadow },
+  exportText: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.textInverse },
 });

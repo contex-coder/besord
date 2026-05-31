@@ -918,7 +918,7 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
     by_region = await agg_votes("region")
     by_city = await agg_votes("city")
 
-    # Word cloud from comments
+    # Word cloud from comments (full list)
     cloud_pipeline = [
         {"$match": {"post_id": post_id}},
         {"$group": {"_id": "$word", "count": {"$sum": 1}}},
@@ -926,11 +926,49 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
         {"$limit": 30},
     ]
     word_cloud = await db.comments.aggregate(cloud_pipeline).to_list(length=30)
+    total_comments = sum(w["count"] for w in word_cloud) or 1
 
-    def fmt(items):
-        return [{"label": i["_id"] or "Desconhecido", "aprovo": i["aprovo"],
-                 "desaprovo": i["desaprovo"], "total": i["total"],
-                 "aprovo_pct": round(i["aprovo"] / i["total"] * 100) if i["total"] else 0} for i in items]
+    # Top 3 with percentage share
+    top_3_words = [
+        {"word": w["_id"], "count": w["count"], "pct": round(w["count"] / total_comments * 100)}
+        for w in word_cloud[:3]
+    ]
+
+    # Pace & time metrics
+    now = datetime.now(timezone.utc)
+    starts = c.get("starts_at")
+    ends = c.get("ends_at")
+    days_active = 0.0
+    days_remaining = 0.0
+    if starts and isinstance(starts, datetime):
+        starts_tz = starts if starts.tzinfo else starts.replace(tzinfo=timezone.utc)
+        days_active = max(0.01, (now - starts_tz).total_seconds() / 86400)
+    if ends and isinstance(ends, datetime):
+        ends_tz = ends if ends.tzinfo else ends.replace(tzinfo=timezone.utc)
+        days_remaining = max(0.0, (ends_tz - now).total_seconds() / 86400)
+
+    votes_per_day = round(c.get("votes_collected", 0) / days_active, 1) if days_active > 0 else 0
+    projected_total = round(c.get("votes_collected", 0) + votes_per_day * days_remaining)
+
+    # Executive summary
+    aprovo_pct = round(c.get("aprovo_count", 0) / max(1, c.get("votes_collected", 1)) * 100) if c.get("votes_collected") else 0
+    if aprovo_pct >= 75:
+        verdict_tag = "MUITO APROVADO"
+    elif aprovo_pct >= 55:
+        verdict_tag = "APROVADO"
+    elif aprovo_pct >= 45:
+        verdict_tag = "DIVIDIDO"
+    elif aprovo_pct >= 25:
+        verdict_tag = "DESAPROVADO"
+    else:
+        verdict_tag = "MUITO DESAPROVADO"
+
+    top_word = top_3_words[0]["word"] if top_3_words else None
+    summary = (
+        f"O teu post foi {verdict_tag.lower()} ({aprovo_pct}% aprovo) "
+        f"com {c.get('votes_collected', 0)} votos"
+        + (f" e a palavra mais associada é '{top_word}'." if top_word else ".")
+    )
 
     return {
         "campaign_id": campaign_id,
@@ -938,16 +976,62 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
         "total_votes": c.get("votes_collected", 0),
         "aprovo_count": c.get("aprovo_count", 0),
         "desaprovo_count": c.get("desaprovo_count", 0),
-        "aprovo_pct": round(c.get("aprovo_count", 0) / max(1, c.get("votes_collected", 1)) * 100) if c.get("votes_collected") else 0,
+        "aprovo_pct": aprovo_pct,
+        "verdict_tag": verdict_tag,
+        "summary": summary,
         "by_country": fmt(by_country),
         "by_region": fmt(by_region),
         "by_city": fmt(by_city),
         "word_cloud": [{"word": w["_id"], "count": w["count"]} for w in word_cloud],
+        "top_3_words": top_3_words,
+        "total_comments": sum(w["count"] for w in word_cloud),
+        "pace": {
+            "votes_per_day": votes_per_day,
+            "days_active": round(days_active, 1),
+            "days_remaining": round(days_remaining, 1),
+            "projected_total": projected_total,
+            "target": c.get("included_votes", 0),
+            "on_track": projected_total >= c.get("included_votes", 0),
+        },
         "scope": c["scope"],
         "duration_days": c["duration_days"],
         "starts_at": c["starts_at"].isoformat() if c.get("starts_at") else None,
         "ends_at": c["ends_at"].isoformat() if c.get("ends_at") else None,
     }
+
+
+@api_router.get("/business/campaigns/{campaign_id}/report.csv")
+async def campaign_report_csv(campaign_id: str, authorization: Optional[str] = Header(None)):
+    """CSV export of regional breakdown — anunciantes precisam para PowerPoint/Excel."""
+    user = await get_current_user(authorization)
+    c = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not c or not c.get("post_id"):
+        raise HTTPException(status_code=404, detail="Campanha sem dados")
+    post_id = c["post_id"]
+
+    pipeline = [
+        {"$match": {"post_id": post_id, "geo.country": {"$ne": None}}},
+        {"$group": {"_id": {"country": "$geo.country", "region": "$geo.region", "city": "$geo.city"},
+                    "aprovo": {"$sum": {"$cond": [{"$eq": ["$vote", "aprovo"]}, 1, 0]}},
+                    "desaprovo": {"$sum": {"$cond": [{"$eq": ["$vote", "desaprovo"]}, 1, 0]}},
+                    "total": {"$sum": 1}}},
+        {"$sort": {"total": -1}},
+    ]
+    rows = await db.votes.aggregate(pipeline).to_list(length=1000)
+
+    lines = ["country,region,city,aprovo,desaprovo,total,aprovo_pct"]
+    for r in rows:
+        k = r["_id"] or {}
+        pct = round(r["aprovo"] / r["total"] * 100) if r["total"] else 0
+        country = (k.get("country") or "").replace(",", " ")
+        region = (k.get("region") or "").replace(",", " ")
+        city = (k.get("city") or "").replace(",", " ")
+        lines.append(f"{country},{region},{city},{r['aprovo']},{r['desaprovo']},{r['total']},{pct}")
+
+    csv = "\n".join(lines)
+    from fastapi.responses import Response
+    return Response(content=csv, media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=besord_{campaign_id}.csv"})
 
 
 # ---------- Misc ----------
