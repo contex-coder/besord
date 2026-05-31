@@ -1,0 +1,44 @@
+{
+  "summary": "Backend-only iteration 3 testing for Besord. Created /app/backend/tests/test_besord_v3.py (25 new tests). Full regression: 70/70 PASSED (0 skipped, 0 failed). Real Stripe test key (sk_test_51RZJ...) verified: campaign creation hits live Stripe API, returns real checkout_url starting with https://checkout.stripe.com/ and cs_test_ (non-mock) session_id. Promo math verified: LANCAMENTO50 turns local tier 1900¢ → 950¢; WELCOME20 turns regional 4900¢ → 3920¢. /api/promos/validate returns 404 for invalid code, 400 for invalid tier, 200 case-insensitive. /api/auth/whoami returns proper authenticated/is_admin/matches_admin flags for unauth, regular and admin users. All /api/admin/* endpoints (overview, advertisers, campaigns, promos, tiers, campaign cancel, promo CRUD) gated correctly: 401 unauth, 403 non-admin, 200 admin@rodrigocontecunha. /admin/overview reports stripe_mode='TEST'. DELETE /api/posts/{id}: owner organic 200, non-owner 403, sponsored 400 ('patrocinado'), nonexistent 404. Vote geo metadata stored. Word filter and trending sort regressions pass. check-payment endpoint with real Stripe returns 200 with status='pending_payment' (no crash, no false-positive activation).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_besord_v3.py",
+    "/app/backend/tests/test_besord_v2.py",
+    "/app/backend/tests/test_besord_api.py",
+    "/app/test_reports/pytest/pytest_v3_results.xml",
+    "/app/test_reports/pytest/pytest_full_results.xml"
+  ],
+  "action_items": [
+    "No backend action items — all 70 tests pass. Main agent may now confidently address the frontend cache issues (storage.get, refreshUser, promoCode undefined) reported by user; backend contracts are stable.",
+    "Consider stripping STRIPE_API_KEY from any future test_credentials.md mention since real secret is now in /app/backend/.env (already gitignored — verify before committing).",
+    "Optional hardening: add Stripe webhook handler (currently relies on client-side polling via /check-payment) for production reliability."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1198 lines — exceeds 700-line guideline. Recommend splitting into routers: auth.py, posts.py, campaigns.py, admin.py, promos.py, business.py with a shared deps.py (get_current_user, require_admin) and models.py. Will significantly aid future maintenance.",
+    "Stripe Checkout uses currency='usd' (line 778) but the campaign brief and pricing notes state EUR (currency=EUR) for the Lisboa/Portugal market. Confirm with main agent — should be 'eur' if Portuguese B2B audience.",
+    "create_campaign uses APP_BASE_URL for success/cancel URLs which is set to the preview backend domain in /app/backend/.env. After payment Stripe redirects to <backend>/business/campaign/{id}?paid=1 which is NOT a frontend route — should be the Expo frontend URL. Verify APP_BASE_URL points to the user-facing app, not the API.",
+    "logger is configured (lines 1166-1167) AFTER it is referenced inside create_campaign exception handler (line 796) and other places. Works due to Python's late-binding, but ordering is fragile — move logger init to top of file.",
+    "Admin gating uses raw email comparison (user['email'].lower() == ADMIN_EMAIL); good. But user_out() additionally derives is_admin which means the client receives is_admin=true and may build UI off of that — server still re-checks via require_admin() so security is fine.",
+    "matches_target compares geo['country_code'] against target_country_code with no defensive .upper() — works because both sources upper-case, but a single comparator helper would be safer.",
+    "pick_sponsored_for_user fetches up to 50 sponsored posts then filters in Python; for production scale add a Mongo $lookup or pre-filter campaigns.status='active' & ends_at>now first.",
+    "Promo expires_at parsing accepts 'Z' suffix but silently swallows parse errors (line 1128) — unparseable dates result in expires_at=None (never expires). Consider returning 400 instead."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_besord_v3.py (new — 25 iteration-3 tests)"
+  ],
+  "success_rate": {"backend": "100% (70/70 passed across all iterations)", "frontend": "skipped per request"},
+  "seed_data_creation": "test_besord_v3.py seeds admin user (user_admin_rodrigo, token admin_test_token_for_rodrigo_xyz123, email rodrigocontecunha@gmail.com) with business_profile, and idempotently upserts promo codes LANCAMENTO50 (50%) and WELCOME20 (20%) into db.promo_codes. Existing seeded_user from conftest.py reused for non-admin tests. Teardown cleans created campaigns/posts/sessions but leaves promo codes (so app can use them).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://image-feedback-app.preview.emergentagent.com. Mongo: localhost:27017/test_database. Stripe key is now a REAL sk_test_ key (NOT sk_test_emergent) so all campaign creation tests hit the live Stripe API. Real checkout_url format: https://checkout.stripe.com/c/pay/cs_test_... Promo codes LANCAMENTO50 and WELCOME20 are pre-seeded by test_besord_v3.py's session-scoped fixture (idempotent upsert). Admin credentials in fixture: user_id=user_admin_rodrigo, session_token=admin_test_token_for_rodrigo_xyz123, email=rodrigocontecunha@gmail.com (= ADMIN_EMAIL). To run full regression: EXPO_PUBLIC_BACKEND_URL=https://image-feedback-app.preview.emergentagent.com pytest /app/backend/tests/ -v. Frontend tests intentionally skipped — user-reported frontend bugs were cached browser errors after the code-level fixes, not server-side regressions.",
+  "rca_of_issue": "No bug RCAs this iteration — all flows green. Notable observation: the previous iteration's 4 skipped tests are now PASSING because the placeholder sk_test_emergent was replaced with a real sk_test_51RZJ... key. Stripe Checkout Session creation now succeeds, returns real checkout_url, and the /check-payment endpoint correctly returns pending_payment without crashing or auto-activating the campaign."
+}

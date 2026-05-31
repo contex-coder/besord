@@ -171,6 +171,7 @@ export default function FeedScreen() {
             onVote={onVote}
             onComment={onComment}
             onReport={onReport}
+            onDelete={onDelete}
             onWordPress={onWordPress}
           />
         )}
@@ -179,12 +180,13 @@ export default function FeedScreen() {
   );
 }
 
-function PostCard({ post, currentUserId, onVote, onComment, onReport, onWordPress }: {
+function PostCard({ post, currentUserId, onVote, onComment, onReport, onDelete, onWordPress }: {
   post: Post;
   currentUserId: string | null;
   onVote: (id: string, v: "aprovo" | "desaprovo") => void;
   onComment: (id: string, word: string) => void;
   onReport: (id: string) => void;
+  onDelete: (id: string) => void;
   onWordPress: (word: string) => void;
 }) {
   const total = post.aprovo_count + post.desaprovo_count;
@@ -220,7 +222,11 @@ function PostCard({ post, currentUserId, onVote, onComment, onReport, onWordPres
           </View>
         )}
         <Text style={styles.authorName} numberOfLines={1}>{post.author_name.toUpperCase()}</Text>
-        {!isOwn && (
+        {isOwn ? (
+          <TouchableOpacity testID={`btn-delete-${post.post_id}`} onPress={() => onDelete(post.post_id)} style={[styles.reportBtn, { backgroundColor: colors.desaprovo }]}>
+            <Ionicons name="trash-outline" size={16} color={colors.text} />
+          </TouchableOpacity>
+        ) : (
           <TouchableOpacity testID={`btn-report-${post.post_id}`} onPress={() => onReport(post.post_id)} style={styles.reportBtn}>
             <Ionicons name="flag-outline" size={16} color={colors.text} />
           </TouchableOpacity>
@@ -409,6 +415,24 @@ const styles = StyleSheet.create({
   commentRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   commentAvatar: { width: 24, height: 24, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.bgSubtle },
   commentAvatarText: { fontSize: 10, fontWeight: "900", color: colors.text },
+  commentName: { fontSize: 11, fontWeight: "900", color: colors.textSecondary, flexShrink: 1, minWidth: 50 },
+  commentWord: { fontSize: 14, fontWeight: "900", color: colors.text, letterSpacing: -0.3, textDecorationLine: "underline" },
+  commentInputRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  commentInput: {
+    flex: 1,
+    borderWidth: 3,
+    borderColor: colors.border,
+    height: 42,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: "900",
+    color: colors.text,
+    backgroundColor: colors.bg,
+  },
+  commentSendBtn: { width: 42, height: 42, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.aprovo, alignItems: "center", justifyContent: "center" },
+  commentSendBtnDisabled: { backgroundColor: colors.bgSubtle, opacity: 0.6 },
+});
+lors.text },
   commentName: { fontSize: 11, fontWeight: "900", color: colors.textSecondary, flexShrink: 1, minWidth: 50 },
   commentWord: { fontSize: 14, fontWeight: "900", color: colors.text, letterSpacing: -0.3, textDecorationLine: "underline" },
   commentInputRow: { flexDirection: "row", gap: 8, marginTop: 4 },

@@ -21,7 +21,24 @@ export default function NewCampaignScreen() {
   const [country, setCountry] = useState("");
   const [region, setRegion] = useState("");
   const [city, setCity] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState<{ discount_pct: number; final_cents: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const validatePromo = async () => {
+    if (!promoCode || !selectedTier) { setPromoApplied(null); return; }
+    try {
+      const r = await apiFetch("/api/promos/validate", { method: "POST", body: JSON.stringify({ code: promoCode, tier_key: selectedTier.key }) });
+      if (r.ok) {
+        const data = await r.json();
+        setPromoApplied({ discount_pct: data.discount_pct, final_cents: data.final_cents });
+      } else {
+        const err = await r.json().catch(() => ({}));
+        Alert.alert("Código inválido", err.detail || "Código não pôde ser aplicado.");
+        setPromoApplied(null);
+      }
+    } catch { setPromoApplied(null); }
+  };
 
   useEffect(() => {
     if (!user?.has_business) {
