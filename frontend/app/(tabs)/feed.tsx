@@ -114,6 +114,26 @@ export default function FeedScreen() {
     } catch (e: any) { Alert.alert("Erro", e?.message || "Falha ao comentar."); }
   }, [apiFetch]);
 
+  const onDeleteComment = useCallback(async (post_id: string) => {
+    const doDelete = async () => {
+      try {
+        const r = await apiFetch(`/api/posts/${post_id}/comment`, { method: "DELETE" });
+        if (r.ok) {
+          const updated = await r.json();
+          setPosts(prev => prev.map(p => p.post_id === post_id ? updated : p));
+        }
+      } catch {}
+    };
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm("Eliminar o teu comentário?")) doDelete();
+      return;
+    }
+    Alert.alert("Eliminar comentário?", "", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Eliminar", style: "destructive", onPress: doDelete },
+    ]);
+  }, [apiFetch]);
+
   const onReport = useCallback(async (post_id: string) => {
     Alert.alert("Reportar post", "Deseja reportar este post como inadequado?", [
       { text: "Cancelar", style: "cancel" },
@@ -170,6 +190,7 @@ export default function FeedScreen() {
             currentUserId={user?.user_id || null}
             onVote={onVote}
             onComment={onComment}
+            onDeleteComment={onDeleteComment}
             onReport={onReport}
             onDelete={onDelete}
             onWordPress={onWordPress}
@@ -180,11 +201,12 @@ export default function FeedScreen() {
   );
 }
 
-function PostCard({ post, currentUserId, onVote, onComment, onReport, onDelete, onWordPress }: {
+function PostCard({ post, currentUserId, onVote, onComment, onDeleteComment, onReport, onDelete, onWordPress }: {
   post: Post;
   currentUserId: string | null;
   onVote: (id: string, v: "aprovo" | "desaprovo") => void;
   onComment: (id: string, word: string) => void;
+  onDeleteComment: (id: string) => void;
   onReport: (id: string) => void;
   onDelete: (id: string) => void;
   onWordPress: (word: string) => void;
@@ -322,7 +344,7 @@ function PostCard({ post, currentUserId, onVote, onComment, onReport, onDelete, 
           <TextInput
             testID={`input-comment-${post.post_id}`}
             style={styles.commentInput}
-            placeholder={post.user_comment ? `SEU: ${post.user_comment}` : "1 PALAVRA"}
+            placeholder={post.user_comment ? `EDITAR (atual: ${post.user_comment})` : "1 PALAVRA"}
             placeholderTextColor="#A1A1AA"
             value={commentInput}
             onChangeText={(t) => setCommentInput(t.replace(/\s+/g, "").replace(/[^A-Za-zÀ-ÿ0-9]/g, "").slice(0, 20).toUpperCase())}
@@ -341,6 +363,15 @@ function PostCard({ post, currentUserId, onVote, onComment, onReport, onDelete, 
           >
             <Ionicons name="send" size={16} color={colors.text} />
           </TouchableOpacity>
+          {post.user_comment && (
+            <TouchableOpacity
+              testID={`btn-delete-comment-${post.post_id}`}
+              style={[styles.commentSendBtn, { backgroundColor: colors.desaprovo }]}
+              onPress={() => onDeleteComment(post.post_id)}
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.text} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>
@@ -415,24 +446,6 @@ const styles = StyleSheet.create({
   commentRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   commentAvatar: { width: 24, height: 24, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.bgSubtle },
   commentAvatarText: { fontSize: 10, fontWeight: "900", color: colors.text },
-  commentName: { fontSize: 11, fontWeight: "900", color: colors.textSecondary, flexShrink: 1, minWidth: 50 },
-  commentWord: { fontSize: 14, fontWeight: "900", color: colors.text, letterSpacing: -0.3, textDecorationLine: "underline" },
-  commentInputRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-  commentInput: {
-    flex: 1,
-    borderWidth: 3,
-    borderColor: colors.border,
-    height: 42,
-    paddingHorizontal: 12,
-    fontSize: 14,
-    fontWeight: "900",
-    color: colors.text,
-    backgroundColor: colors.bg,
-  },
-  commentSendBtn: { width: 42, height: 42, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.aprovo, alignItems: "center", justifyContent: "center" },
-  commentSendBtnDisabled: { backgroundColor: colors.bgSubtle, opacity: 0.6 },
-});
-lors.text },
   commentName: { fontSize: 11, fontWeight: "900", color: colors.textSecondary, flexShrink: 1, minWidth: 50 },
   commentWord: { fontSize: 14, fontWeight: "900", color: colors.text, letterSpacing: -0.3, textDecorationLine: "underline" },
   commentInputRow: { flexDirection: "row", gap: 8, marginTop: 4 },
