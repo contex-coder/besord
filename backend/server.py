@@ -775,7 +775,7 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
                 mode="payment",
                 line_items=[{
                     "price_data": {
-                        "currency": "usd",
+                        "currency": "eur",
                         "unit_amount": final_amount_cents,
                         "product_data": {
                             "name": f"Besord {tier.name} — #{normalize_word(word)}" + (f" ({promo_applied['discount_pct']}% off)" if promo_applied else ""),
