@@ -49,7 +49,7 @@ BLOCKED_STEMS = {
     "merda", "caralho", "carai", "porra", "broche",
     "cabrao", "cabronzinho", "cabra", "cona", "conas", "panasca",
     "viado", "bicha", "paneleiro", "paneleir",
-    "preto" "negao",  # only when in slur context; we keep them as cautious
+    "preto", "negao",  # only when in slur context; we keep them as cautious
     "macaco",  # racial slur
     "monhe", "ciganaco", "ciganaca",
     "judiar", "judiou", "nazi", "nazista", "hitler", "fuhrer", "heil",
