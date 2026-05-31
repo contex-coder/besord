@@ -928,11 +928,64 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
     word_cloud = await db.comments.aggregate(cloud_pipeline).to_list(length=30)
     total_comments = sum(w["count"] for w in word_cloud) or 1
 
-    # Top 3 with percentage share
-    top_3_words = [
-        {"word": w["_id"], "count": w["count"], "pct": round(w["count"] / total_comments * 100)}
-        for w in word_cloud[:3]
-    ]
+    # Top 3 with percentage share + SENTIMENT per word (how the commenters voted)
+    async def word_sentiment(word: str) -> dict:
+        # Find votes from users who used this word in their comment
+        commenter_ids = await db.comments.distinct("user_id", {"post_id": post_id, "word": word})
+        if not commenter_ids:
+            return {"aprovo": 0, "desaprovo": 0, "aprovo_pct": 0, "votes": 0}
+        votes = await db.votes.find({"post_id": post_id, "user_id": {"$in": commenter_ids}}, {"_id": 0, "vote": 1}).to_list(length=len(commenter_ids))
+        aprovo = sum(1 for v in votes if v.get("vote") == "aprovo")
+        desaprovo = sum(1 for v in votes if v.get("vote") == "desaprovo")
+        total_v = aprovo + desaprovo
+        return {"aprovo": aprovo, "desaprovo": desaprovo, "votes": total_v,
+                "aprovo_pct": round(aprovo / total_v * 100) if total_v else 0}
+
+    top_3_words = []
+    for w in word_cloud[:3]:
+        sent = await word_sentiment(w["_id"])
+        top_3_words.append({
+            "word": w["_id"], "count": w["count"],
+            "pct": round(w["count"] / total_comments * 100),
+            "sentiment": sent,
+        })
+
+    # BENCHMARK: platform-wide average aprovo_pct (excluding this campaign's post)
+    platform_agg = await db.posts.aggregate([
+        {"$match": {"hidden": {"$ne": True}, "post_id": {"$ne": post_id},
+                    "$expr": {"$gt": [{"$add": ["$aprovo_count", "$desaprovo_count"]}, 0]}}},
+        {"$group": {"_id": None,
+                    "aprovo": {"$sum": "$aprovo_count"},
+                    "total": {"$sum": {"$add": ["$aprovo_count", "$desaprovo_count"]}}}},
+    ]).to_list(length=1)
+    platform_avg = round(platform_agg[0]["aprovo"] / platform_agg[0]["total"] * 100) if platform_agg and platform_agg[0]["total"] else 50
+    benchmark_delta = aprovo_pct - platform_avg
+    benchmark = {
+        "platform_avg_aprovo_pct": platform_avg,
+        "your_aprovo_pct": aprovo_pct,
+        "delta": benchmark_delta,
+        "label": f"{abs(benchmark_delta)} pts {'ACIMA' if benchmark_delta >= 0 else 'ABAIXO'} da média",
+    }
+
+    # RE-TARGETING offer
+    desaprovo_pct = 100 - aprovo_pct if c.get("votes_collected") else 0
+    retarget = None
+    if desaprovo_pct >= 20 and c.get("votes_collected", 0) >= 20:
+        retarget = {
+            "available": True,
+            "desaprovo_pct": desaprovo_pct,
+            "discount_pct": 20,
+            "promo_code": f"RETARGET-{campaign_id[-6:].upper()}",
+            "cta": f"Volta a anunciar para os {desaprovo_pct}% que desaprovaram com 20% off — investiga o motivo.",
+        }
+        # Ensure promo code exists in DB
+        await db.promo_codes.update_one(
+            {"code": retarget["promo_code"]},
+            {"$set": {"code": retarget["promo_code"], "discount_pct": 20, "max_uses": 1, "uses": 0,
+                      "expires_at": None, "active": True, "linked_user_id": c["user_id"],
+                      "created_at": datetime.now(timezone.utc)}},
+            upsert=True,
+        )
 
     # Pace & time metrics
     now = datetime.now(timezone.utc)
@@ -985,6 +1038,8 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
         "word_cloud": [{"word": w["_id"], "count": w["count"]} for w in word_cloud],
         "top_3_words": top_3_words,
         "total_comments": sum(w["count"] for w in word_cloud),
+        "benchmark": benchmark,
+        "retarget": retarget,
         "pace": {
             "votes_per_day": votes_per_day,
             "days_active": round(days_active, 1),
@@ -998,6 +1053,81 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
         "starts_at": c["starts_at"].isoformat() if c.get("starts_at") else None,
         "ends_at": c["ends_at"].isoformat() if c.get("ends_at") else None,
     }
+
+
+@api_router.post("/business/campaigns/{campaign_id}/renew")
+async def renew_campaign(campaign_id: str, authorization: Optional[str] = Header(None)):
+    """Auto-renew with 10% loyalty discount. Creates a NEW pending campaign cloning this one."""
+    user = await get_current_user(authorization)
+    original = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not original:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    if original["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Só campanhas concluídas podem ser renovadas")
+
+    try:
+        tier = get_tier(original["tier_key"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 10% loyalty discount
+    final_amount_cents = int(round(tier.amount_cents * 0.9))
+    new_campaign_id = f"camp_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+
+    campaign = {
+        "campaign_id": new_campaign_id, "user_id": user["user_id"],
+        "company_name": original["company_name"], "word": original["word"], "image_base64": original["image_base64"],
+        "tier_key": tier.key, "scope": tier.scope, "duration_days": tier.duration_days,
+        "amount_cents": final_amount_cents, "base_amount_cents": tier.amount_cents,
+        "promo": {"code": "RENEW10", "discount_pct": 10}, "included_votes": tier.included_votes,
+        "target_country_code": original.get("target_country_code"), "target_region": original.get("target_region"),
+        "target_city": original.get("target_city"), "status": "pending_payment",
+        "votes_collected": 0, "aprovo_count": 0, "desaprovo_count": 0,
+        "created_at": now, "renewed_from": campaign_id,
+        "post_id": None, "starts_at": None, "ends_at": None,
+        "stripe_session_id": None, "checkout_url": None,
+    }
+
+    success_url = f"{APP_BASE_URL}/business/campaign/{new_campaign_id}?paid=1"
+    cancel_url = f"{APP_BASE_URL}/business/campaign/{new_campaign_id}?canceled=1"
+    is_mock_key = stripe.api_key in ("sk_test_emergent", "", None)
+    if is_mock_key:
+        campaign["stripe_session_id"] = f"cs_test_mock_{uuid.uuid4().hex[:16]}"
+        campaign["checkout_url"] = f"{APP_BASE_URL}/business/campaign/{new_campaign_id}?paid=1&mock=1"
+    else:
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=[{"price_data": {"currency": "eur", "unit_amount": final_amount_cents,
+                                            "product_data": {"name": f"Besord {tier.name} — #{original['word']} (RENEW 10% off)",
+                                                             "description": f"{tier.scope.upper()} • {tier.duration_days}d • {tier.included_votes} votos"}},
+                             "quantity": 1}],
+                success_url=success_url, cancel_url=cancel_url,
+                metadata={"campaign_id": new_campaign_id, "renewed_from": campaign_id, "user_id": user["user_id"]},
+                customer_email=user["business_profile"].get("contact_email") or user["email"],
+            )
+            campaign["stripe_session_id"] = session.id
+            campaign["checkout_url"] = session.url
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Falha ao criar pagamento: {str(e)[:120]}")
+
+    await db.campaigns.insert_one(campaign.copy())
+    return serialize_campaign(campaign)
+
+
+@api_router.post("/business/campaigns/{campaign_id}/retarget")
+async def retarget_campaign(campaign_id: str, authorization: Optional[str] = Header(None)):
+    """Creates a new campaign reusing the retarget promo code (20% off)."""
+    user = await get_current_user(authorization)
+    original = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not original:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    promo_code = f"RETARGET-{campaign_id[-6:].upper()}"
+    # Just return the promo so frontend redirects to new campaign flow with code pre-applied
+    return {"promo_code": promo_code, "discount_pct": 20, "scope_hint": original["scope"],
+            "target_country_code": original.get("target_country_code"), "target_region": original.get("target_region"),
+            "target_city": original.get("target_city"), "word_hint": original["word"]}
 
 
 @api_router.get("/business/campaigns/{campaign_id}/report.csv")
