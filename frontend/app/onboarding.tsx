@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { storage } from "@/src/utils/storage";
+import { onboardingState } from "@/src/utils/onboardingState";
 import { colors, brutalShadow } from "@/src/theme";
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -37,7 +38,12 @@ export default function OnboardingScreen() {
   const listRef = useRef<FlatList>(null);
 
   const finish = async () => {
-    await storage.setItem("besord_onboarded", "1");
+    // Set both storage AND in-memory state synchronously, so the navigator
+    // guard in _layout doesn't bounce us back here on the next render.
+    onboardingState.set(true);
+    try {
+      await storage.setItem("besord_onboarded", "1");
+    } catch {}
     router.replace("/(tabs)/feed");
   };
 

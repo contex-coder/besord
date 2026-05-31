@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 4 regression on Besord: backend endpoints touched by review (DELETE /api/posts/{id}, comment upsert, vote, feed, /auth/me) all pass (10/10 pytest in test_iteration4.py). Frontend white-screen is FIXED: landing renders BESORD title, BETA badge, ONE IMAGE / ONE WORD / ONE VERDICT tagline, the static beetle mascot, and SIGN IN WITH GOOGLE button — no flying Reanimated animation. Feed renders without crashing after session injection: PostCard shows image, #WORD overlay, APROVO/DESAPROVO with counts, vote bar, share, comment input. The EDITAR + REMOVER buttons appear correctly on the 'O TEU: #WORD' row after the user comments, and EDITAR pre-fills the input. The onboarding navigation lock is FIXED — finish() redirects to /(tabs)/feed and stays there (verified at +3s/+5s/+7s, no bounce back to /onboarding), and besord_onboarded='1' is persisted in storage. Only console noise observed: deprecated 'shadow*' style props and 'props.pointerEvents' warnings — cosmetic, not crashing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "feed (PostCard + others using shadow*)",
+        "issues": [
+          "React Native Web logs deprecation warnings: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Visual rendering is fine; these are noise but should be migrated for forward compat."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/pytest_iter4_results.xml"
+  ],
+  "action_items": [
+    "(Optional/cosmetic) Migrate `shadowColor/shadowOffset/shadowOpacity/shadowRadius` to `boxShadow` in styled components (e.g. PostCard, feed header, buttons) to silence RN-Web deprecation warnings.",
+    "(Optional/cosmetic) Replace `pointerEvents` JSX prop with `style={{ pointerEvents: ... }}` wherever still used.",
+    "No functional fixes needed for this iteration — all P0 (white-screen) and P1 (edit-comment UX, onboarding lock) items are verified resolved."
+  ],
+  "critical_code_review_comments": [
+    "feed.tsx refactor cleanly extracted PostCard into /app/frontend/src/components/PostCard.tsx and onDeletePost is now defined and wired to DELETE /api/posts/{id} with confirm() — no more `onDelete is not defined`.",
+    "onboardingState pub/sub correctly sets state BEFORE router.replace, eliminating the AsyncStorage race; _layout.tsx subscribes and the redirect is now deterministic (verified end-to-end).",
+    "Landing (app/index.tsx) no longer imports react-native-reanimated FlyingBesord — the static mascot loads instantly and there are no Reanimated worklet errors in the console.",
+    "Comment endpoint correctly implements upsert semantics: comments_count stays at 1 across multiple POSTs from the same user, and decrements to 0 on DELETE — covered by TestCommentUpsert."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% on flows tested (landing render, feed render, vote, comment, EDITAR pre-fill, REMOVER button present, onboarding lock)"},
+  "seed_data_creation": "Seeded one MongoDB user `user_TEST_uitest_frontend` with session token `TEST_uitest_token_frontend_xyz` for UI auth bypass. Backend tests seed and clean their own ephemeral users/posts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use the local Mongo + session-token injection trick (set localStorage.besord_token = JSON.stringify('<token>') and localStorage.besord_onboarded = JSON.stringify('1') after first navigation to localhost:3000) to bypass Google OAuth in the web preview. Test token used here: TEST_uitest_token_frontend_xyz (still in DB after this run). Feed PostCard testIDs follow the pattern post-card-{post_id}, btn-aprovo-{post_id}, btn-desaprovo-{post_id}, input-comment-{post_id}, btn-comment-{post_id}, btn-edit-comment-{post_id}, btn-delete-comment-{post_id}, btn-cancel-edit-comment-{post_id}, word-link-{post_id}. Onboarding skip has testID 'btn-skip'.",
+  "rca_of_issue": "Original white-screen RCA confirmed by E1 was the undefined `onDelete` prop in feed.tsx — the rewrite that extracted PostCard and added onDeletePost in feed.tsx fully resolves it (feed renders, no JS errors). Onboarding bounce RCA was an async-storage race between writing 'besord_onboarded' and the layout's auth/onboarding gate reading it; the new pub/sub onboardingState.set(true) is called synchronously before router.replace, so the layout sees onboarded=true on the very next render and does not redirect back."
+}
