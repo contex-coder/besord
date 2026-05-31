@@ -17,6 +17,7 @@ from datetime import datetime, timezone, timedelta
 from geo import get_client_ip, geo_lookup
 from pricing import TIERS, get_tier, tiers_public
 from email_alerts import send_milestone_email, crossed_milestones
+from moderation import check_word as moderate_word
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -26,6 +27,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "sk_test_emergent")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 
@@ -49,6 +51,8 @@ class UserOut(BaseModel):
     picture: Optional[str] = None
     has_business: bool = False
     is_admin: bool = False
+    age_confirmed: bool = False
+    birth_year: Optional[int] = None
 
 class AuthResponse(BaseModel):
     token: str
@@ -171,6 +175,8 @@ def user_out(user: dict) -> UserOut:
         picture=user.get("picture"),
         has_business=bool(user.get("business_profile")),
         is_admin=is_admin,
+        age_confirmed=bool(user.get("age_confirmed_at")),
+        birth_year=user.get("birth_year"),
     )
 
 
@@ -345,6 +351,56 @@ async def auth_me(authorization: Optional[str] = Header(None)):
     return user_out(user)
 
 
+class AgeConfirmRequest(BaseModel):
+    birth_year: int
+
+
+# Portugal sets the GDPR-K consent age at 13. We also enforce a hard floor
+# at 13 globally because COPPA (US) is identical and Google Play classifies
+# 13+ as the minimum content rating for social UGC apps.
+MIN_AGE_YEARS = 13
+
+
+@api_router.post("/auth/confirm-age", response_model=UserOut)
+async def auth_confirm_age(payload: AgeConfirmRequest,
+                            authorization: Optional[str] = Header(None)):
+    """Record the user's self-declared birth year and reject < MIN_AGE_YEARS.
+
+    We deliberately store only the *year* — not the full DOB — to minimise
+    PII while still meeting platform age-rating obligations.
+    """
+    user = await get_current_user(authorization)
+    current_year = datetime.now(timezone.utc).year
+    if payload.birth_year < 1900 or payload.birth_year > current_year:
+        raise HTTPException(status_code=400, detail="Ano de nascimento inválido.")
+    age = current_year - payload.birth_year
+    if age < MIN_AGE_YEARS:
+        # Mark the account as blocked rather than silently rejecting — so
+        # we can audit attempts. We DO NOT delete the user (auditability).
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {
+                "age_blocked_at": datetime.now(timezone.utc),
+                "birth_year": payload.birth_year,
+            }},
+        )
+        # Invalidate sessions for this user — kicks them out immediately.
+        await db.user_sessions.delete_many({"user_id": user["user_id"]})
+        raise HTTPException(
+            status_code=403,
+            detail=f"Idade mínima exigida: {MIN_AGE_YEARS} anos.",
+        )
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "birth_year": payload.birth_year,
+            "age_confirmed_at": datetime.now(timezone.utc),
+        }},
+    )
+    user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return user_out(user)
+
+
 @api_router.post("/auth/logout")
 async def auth_logout(authorization: Optional[str] = Header(None)):
     if authorization and authorization.startswith("Bearer "):
@@ -379,6 +435,9 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
     word = payload.word.strip()
     if not WORD_RE.match(word):
         raise HTTPException(status_code=400, detail="A palavra deve conter apenas letras/números (sem espaços), até 20 caracteres.")
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
     if not payload.image_base64 or len(payload.image_base64) < 50:
         raise HTTPException(status_code=400, detail="Imagem é obrigatória.")
 
@@ -620,6 +679,9 @@ async def comment_post(post_id: str, payload: CommentCreate, request: Request,
     word = payload.word.strip()
     if not WORD_RE.match(word):
         raise HTTPException(status_code=400, detail="O comentário deve ser UMA palavra (letras/números, até 20).")
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
 
     normalized = normalize_word(word)
     ip = get_client_ip(dict(request.headers))
@@ -739,6 +801,9 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
     word = payload.word.strip()
     if not WORD_RE.match(word):
         raise HTTPException(status_code=400, detail="Palavra inválida.")
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
     if not payload.image_base64 or len(payload.image_base64) < 50:
         raise HTTPException(status_code=400, detail="Imagem obrigatória.")
     try:
@@ -1481,6 +1546,126 @@ async def admin_cancel_campaign(campaign_id: str, authorization: Optional[str] =
     await require_admin(authorization)
     await db.campaigns.update_one({"campaign_id": campaign_id}, {"$set": {"status": "canceled"}})
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Admin moderation queue
+# ---------------------------------------------------------------------------
+
+@api_router.get("/admin/moderation/queue")
+async def admin_moderation_queue(authorization: Optional[str] = Header(None),
+                                  status: str = Query("pending", regex="^(pending|hidden|all)$"),
+                                  limit: int = Query(50, ge=1, le=200)):
+    """List posts that have been reported. status=pending (>=1 report, not yet hidden),
+    hidden (already auto-hidden), all."""
+    await require_admin(authorization)
+    query: dict = {}
+    if status == "pending":
+        query = {"reports_count": {"$gte": 1}, "$or": [{"hidden": {"$exists": False}}, {"hidden": False}]}
+    elif status == "hidden":
+        query = {"hidden": True}
+    else:
+        query = {"reports_count": {"$gte": 1}}
+    docs = await db.posts.find(query, {"_id": 0, "image_base64": 0}).sort("reports_count", -1).limit(limit).to_list(length=limit)
+    for d in docs:
+        if isinstance(d.get("created_at"), datetime):
+            d["created_at"] = d["created_at"].isoformat()
+    return {"items": docs, "count": len(docs)}
+
+
+class ModerationAction(BaseModel):
+    action: str  # "hide" | "restore" | "delete"
+
+
+@api_router.post("/admin/moderation/post/{post_id}")
+async def admin_moderation_action(post_id: str, payload: ModerationAction,
+                                   authorization: Optional[str] = Header(None)):
+    admin_user = await require_admin(authorization)
+    post = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post não encontrado")
+    if payload.action == "hide":
+        await db.posts.update_one({"post_id": post_id}, {"$set": {"hidden": True, "hidden_at": datetime.now(timezone.utc), "hidden_by": admin_user["user_id"]}})
+    elif payload.action == "restore":
+        await db.posts.update_one({"post_id": post_id}, {"$set": {"hidden": False, "reports_count": 0}, "$unset": {"hidden_at": "", "hidden_by": ""}})
+    elif payload.action == "delete":
+        await db.posts.delete_one({"post_id": post_id})
+        await db.comments.delete_many({"post_id": post_id})
+        await db.votes.delete_many({"post_id": post_id})
+    else:
+        raise HTTPException(status_code=400, detail="Ação inválida")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Stripe webhook (signature-verified, idempotent reconciliation)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Receive Stripe events and reconcile campaign state.
+
+    Security:
+    - Requires `Stripe-Signature` header verified against STRIPE_WEBHOOK_SECRET.
+    - If the secret is not set we 503 — never trust unsigned webhooks in prod.
+    - Idempotent via `stripe_webhook_events` collection (event id de-dup).
+    """
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe webhook not configured")
+    payload_bytes = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(
+            payload_bytes, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except stripe.error.SignatureVerificationError as e:
+        logger.warning(f"Stripe webhook bad signature: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    except Exception as e:
+        logger.error(f"Stripe webhook parse error: {e}")
+        raise HTTPException(status_code=400, detail="Bad payload")
+
+    event_id = event.get("id")
+    if event_id:
+        existing = await db.stripe_webhook_events.find_one({"event_id": event_id})
+        if existing:
+            return {"received": True, "duplicate": True}
+        await db.stripe_webhook_events.insert_one({
+            "event_id": event_id,
+            "type": event.get("type"),
+            "received_at": datetime.now(timezone.utc),
+        })
+
+    etype = event.get("type")
+    data_obj = event.get("data", {}).get("object", {}) or {}
+
+    if etype == "checkout.session.completed":
+        campaign_id = (data_obj.get("metadata") or {}).get("campaign_id")
+        session_payment_status = data_obj.get("payment_status")
+        if campaign_id and session_payment_status == "paid":
+            now = datetime.now(timezone.utc)
+            camp = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+            if camp and camp.get("status") != "active":
+                ends_at = now + timedelta(days=int(camp.get("duration_days") or 0))
+                await db.campaigns.update_one(
+                    {"campaign_id": campaign_id},
+                    {"$set": {"status": "active", "starts_at": now, "ends_at": ends_at,
+                              "stripe_session_id": data_obj.get("id"),
+                              "paid_at": now}},
+                )
+                logger.info(f"Stripe webhook activated campaign {campaign_id}")
+
+    elif etype in ("charge.refunded", "checkout.session.expired"):
+        campaign_id = (data_obj.get("metadata") or {}).get("campaign_id")
+        if campaign_id:
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {"status": "canceled", "canceled_at": datetime.now(timezone.utc),
+                          "cancel_reason": etype}},
+            )
+            logger.info(f"Stripe webhook canceled campaign {campaign_id} ({etype})")
+
+    return {"received": True}
 
 
 app.include_router(api_router)

@@ -69,6 +69,19 @@ Conforme art.º 18.º da Lei n.º 144/2015, informa-se que pode recorrer ao Cent
 ## 13. Alterações
 Estes Termos podem ser actualizados. Mudanças materiais serão comunicadas via aplicação. O uso continuado após a alteração constitui aceitação.
 
+## 14. Idade mínima e proteção de menores
+14.1. O Besord destina-se a utilizadores com **13 anos ou mais**. Tem idade mínima alinhada com o art.º 8.º do RGPD (Portugal) e com a Children's Online Privacy Protection Act (COPPA, EUA).
+14.2. Ao criar conta, todos os utilizadores devem confirmar o ano de nascimento. Contas que declarem idade inferior a 13 anos são imediatamente bloqueadas e a sessão encerrada.
+14.3. Não recolhemos a data de nascimento completa — apenas o ano — para minimizar dados pessoais.
+14.4. Se descobrirmos posteriormente que um utilizador é menor de 13 anos, a conta é eliminada e os dados associados destruídos no prazo de 30 dias.
+14.5. Para utilizadores entre 13 e 16 anos em jurisdições onde a maioridade digital RGPD é superior a 13 anos, recomendamos a supervisão dos titulares das responsabilidades parentais.
+
+## 15. Regras da comunidade & moderação
+15.1. É proibido publicar imagens ou palavras que contenham: nudez explícita, pornografia, ódio racial/religioso/sexual, ameaças, violência gráfica, conteúdos que envolvam menores em contexto íntimo, promoção de drogas ilícitas, ou desinformação que cause dano real.
+15.2. As palavras de posts e comentários passam por um filtro automático. Posts com **3 ou mais denúncias** são automaticamente ocultados até revisão humana.
+15.3. O painel de administração revê manualmente conteúdo denunciado e pode eliminar definitivamente publicações em violação.
+15.4. Para reportar conteúdo ilegal ou abusivo, usa o botão de denúncia no próprio post ou escreve para **legal@besord.app**.
+
 `;
 
 const PRIVACY = `# POLÍTICA DE PRIVACIDADE

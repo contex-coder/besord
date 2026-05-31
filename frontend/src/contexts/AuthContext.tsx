@@ -15,6 +15,8 @@ export type User = {
   picture?: string | null;
   has_business?: boolean;
   is_admin?: boolean;
+  age_confirmed?: boolean;
+  birth_year?: number | null;
 };
 
 type AuthContextType = {

@@ -59,14 +59,19 @@ function RootNavigator() {
     const first = segments[0];
     const inTabs = first === "(tabs)";
     const inOnboarding = first === "onboarding";
+    const inAgeGate = first === "age-gate";
     const inLegal = first === "legal";
     if (user) {
-      if (!onboarded && !inOnboarding) {
+      // 1. Age gate FIRST — block everything until confirmed.
+      if (!user.age_confirmed && !inAgeGate && !inLegal) {
+        router.replace("/age-gate");
+      } else if (user.age_confirmed && !onboarded && !inOnboarding && !inLegal) {
         router.replace("/onboarding");
-      } else if (onboarded && !inTabs && !inLegal && first !== "business" && first !== "admin" && first !== "word") {
+      } else if (user.age_confirmed && onboarded && !inTabs && !inLegal &&
+                 first !== "business" && first !== "admin" && first !== "word") {
         router.replace("/(tabs)/feed");
       }
-    } else if (inTabs || first === "business" || first === "admin") {
+    } else if (inTabs || first === "business" || first === "admin" || inAgeGate) {
       router.replace("/");
     }
   }, [user, loading, segments, router, onboarded, onboardedChecked]);
