@@ -1024,6 +1024,49 @@ async def get_campaign(campaign_id: str, authorization: Optional[str] = Header(N
     return serialize_campaign(c)
 
 
+@api_router.post("/business/campaigns/{campaign_id}/cancel", response_model=CampaignOut)
+async def advertiser_cancel_campaign(campaign_id: str, authorization: Optional[str] = Header(None)):
+    """The advertiser cancels their own campaign. **No refund** — the campaign
+    simply stops being shown to users (the post is also hidden from the feed).
+    Already-canceled campaigns are returned as-is (idempotent)."""
+    user = await get_current_user(authorization)
+    c = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    if c.get("status") == "canceled":
+        return serialize_campaign(c)
+
+    now = datetime.now(timezone.utc)
+    await db.campaigns.update_one(
+        {"campaign_id": campaign_id},
+        {"$set": {
+            "status": "canceled",
+            "canceled_at": now,
+            "canceled_by": "advertiser",
+            "cancel_reason": "advertiser_request",
+            "refunded": False,
+        }},
+    )
+    # Also hide the underlying post from public feed (campaign is gone, ad shouldn't show).
+    if c.get("post_id"):
+        await db.posts.update_one(
+            {"post_id": c["post_id"]},
+            {"$set": {"hidden": True, "hidden_at": now, "hidden_by": "advertiser_cancel"}},
+        )
+    # Audit log
+    await db.campaign_audit.insert_one({
+        "campaign_id": campaign_id,
+        "user_id": user["user_id"],
+        "event": "advertiser_cancel",
+        "no_refund": True,
+        "previous_status": c.get("status"),
+        "created_at": now,
+    })
+
+    c = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    return serialize_campaign(c)
+
+
 @api_router.get("/business/campaigns/{campaign_id}/report")
 async def campaign_report(campaign_id: str, authorization: Optional[str] = Header(None)):
     """Aggregate votes & comments by region. Returns regional breakdown + word cloud."""

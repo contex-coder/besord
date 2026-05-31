@@ -1,0 +1,32 @@
+{
+  "summary": "Backend smoke test for new POST /api/business/campaigns/{campaign_id}/cancel endpoint. 7/7 tests passed. All ACs verified: 401 without auth, 404 for non-owner, 404 for non-existent id, 200 + status=canceled + refunded=false for owner, idempotent on re-cancel (no duplicate audit row), DB fields set correctly (canceled_at, canceled_by='advertiser', cancel_reason='advertiser_request', refunded=False), linked post hidden=true with hidden_by='advertiser_cancel', and campaign_audit row inserted with event='advertiser_cancel' and no_refund=True. Regression on GET /api/business/campaigns/{id}, GET /api/posts, POST /api/posts/{id}/vote all 200. Note: STRIPE_API_KEY in env is a real test key (not the 'sk_test_emergent' mock placeholder), so check-payment can't auto-activate without a real Stripe paid session; the test helper falls back to direct Mongo activation (insert sponsored post + flip campaign to active) so the post-hiding side-effect could be validated. This does not affect the production correctness of the cancel endpoint.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8.py",
+    "/app/test_reports/pytest/pytest_iter8_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "advertiser_cancel_campaign (server.py:1027) — implementation is correct and matches the spec exactly. Idempotent branch returns early before writing audit, so no duplicate rows on re-cancel (verified).",
+    "Minor: the cancel side-effect on posts uses post_id from the campaign doc fetched BEFORE the status update, which is fine because post_id is set at activation and never changes. No bug.",
+    "Observation: STRIPE_API_KEY in /app/backend/.env is currently a real test key (not 'sk_test_emergent'), so the documented mock-mode auto-activation flow described in /app/memory/test_credentials.md is not active in this env. Not a bug for this endpoint, but flagging for awareness if other tests rely on mock-mode."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "seed_data_creation": "Seeded one non-owner user (user_TEST_iter8_other_*) with bearer session, reused the admin email user as the owner. Test campaigns are prefixed TESTCANCEL* and cleaned up in fixture teardown along with their posts and campaign_audit rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_iteration8.py covers the advertiser cancel endpoint. If STRIPE_API_KEY is changed back to 'sk_test_emergent', the test_owner_cancel_success_and_idempotent helper will activate via the public check-payment endpoint (mock auto-pay); otherwise it falls back to direct Mongo activation. Either path correctly exercises the cancel endpoint's post-hiding side-effect.",
+  "rca_of_issue": "N/A — no bugs found."
+}

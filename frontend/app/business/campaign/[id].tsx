@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform, Modal, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
@@ -40,6 +40,32 @@ export default function CampaignDetailScreen() {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelConfirmText, setCancelConfirmText] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+
+  const doCancel = useCallback(async () => {
+    if (cancelConfirmText.trim().toUpperCase() !== "ELIMINAR") return;
+    setCancelling(true);
+    try {
+      const r = await apiFetch(`/api/business/campaigns/${id}/cancel`, { method: "POST" });
+      if (r.ok) {
+        const c = await r.json();
+        setCampaign(c);
+        setCancelModalOpen(false);
+        setCancelConfirmText("");
+        // Bounce back to campaigns list after a brief moment
+        setTimeout(() => router.replace("/business/campaigns"), 600);
+      } else {
+        const err = await r.json().catch(() => ({}));
+        if (typeof window !== "undefined" && (window as any).alert) {
+          (window as any).alert(err.detail || "Não foi possível eliminar a campanha.");
+        }
+      }
+    } finally {
+      setCancelling(false);
+    }
+  }, [apiFetch, id, cancelConfirmText, router]);
 
   const load = useCallback(async () => {
     try {
@@ -250,7 +276,103 @@ export default function CampaignDetailScreen() {
             )}
           </>
         )}
+
+        {/* Danger zone — advertiser cancellation (NO REFUND). Hidden if already cancelled. */}
+        {campaign.status !== "canceled" && (
+          <View style={styles.dangerZone} testID="danger-zone">
+            <View style={styles.dangerHeader}>
+              <Ionicons name="warning" size={16} color={colors.text} />
+              <Text style={styles.dangerTitle}>ZONA DE PERIGO</Text>
+            </View>
+            <Text style={styles.dangerSub}>
+              Pode eliminar esta campanha a qualquer momento. A acção é{" "}
+              <Text style={{ fontWeight: "900" }}>irreversível</Text> e{" "}
+              <Text style={{ fontWeight: "900" }}>não dá direito a reembolso</Text>.
+            </Text>
+            <TouchableOpacity
+              testID="btn-cancel-campaign"
+              style={styles.cancelCampaignBtn}
+              onPress={() => setCancelModalOpen(true)}
+            >
+              <Ionicons name="trash" size={18} color={colors.text} />
+              <Text style={styles.cancelCampaignText}>ELIMINAR CAMPANHA</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {campaign.status === "canceled" && (
+          <View style={[styles.dangerZone, { backgroundColor: colors.bgSubtle, borderStyle: "solid" }]}>
+            <Ionicons name="close-circle" size={18} color={colors.text} />
+            <Text style={[styles.dangerTitle, { marginLeft: 6 }]}>CAMPANHA ELIMINADA</Text>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Cancellation confirmation modal */}
+      <Modal
+        visible={cancelModalOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCancelModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard} testID="modal-cancel-campaign">
+            <View style={styles.modalIconWrap}>
+              <Ionicons name="warning" size={28} color={colors.text} />
+            </View>
+            <Text style={styles.modalTitle}>ELIMINAR CAMPANHA?</Text>
+            <Text style={styles.modalBody}>
+              Esta ação é <Text style={{ fontWeight: "900" }}>IRREVERSÍVEL</Text>.
+              {"\n"}A campanha #{campaign.word} será imediatamente removida do feed.
+              {"\n"}
+              {"\n"}
+              <Text style={{ fontWeight: "900" }}>NÃO HAVERÁ REEMBOLSO</Text> do valor pago
+              (€{(campaign.amount_cents / 100).toFixed(2)}).
+            </Text>
+
+            <Text style={styles.modalLabel}>
+              Para confirmar, escreve <Text style={{ fontWeight: "900" }}>ELIMINAR</Text> abaixo:
+            </Text>
+            <TextInput
+              testID="input-cancel-confirm"
+              style={styles.modalInput}
+              value={cancelConfirmText}
+              onChangeText={setCancelConfirmText}
+              placeholder="ELIMINAR"
+              placeholderTextColor="#A1A1AA"
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                testID="btn-cancel-modal-close"
+                style={[styles.modalBtn, { backgroundColor: colors.bg }]}
+                onPress={() => { setCancelModalOpen(false); setCancelConfirmText(""); }}
+                disabled={cancelling}
+              >
+                <Text style={styles.modalBtnText}>VOLTAR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="btn-cancel-modal-confirm"
+                style={[
+                  styles.modalBtn,
+                  { backgroundColor: colors.desaprovo },
+                  (cancelConfirmText.trim().toUpperCase() !== "ELIMINAR" || cancelling) && styles.modalBtnDisabled,
+                ]}
+                onPress={doCancel}
+                disabled={cancelConfirmText.trim().toUpperCase() !== "ELIMINAR" || cancelling}
+              >
+                {cancelling ? (
+                  <ActivityIndicator color={colors.text} />
+                ) : (
+                  <Text style={styles.modalBtnText}>SIM, ELIMINAR</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -369,4 +491,82 @@ const styles = StyleSheet.create({
 
   exportBtn: { marginTop: 24, height: 56, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.text, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, ...brutalShadow },
   exportText: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.textInverse },
+
+  // Danger zone
+  dangerZone: {
+    marginTop: 32,
+    borderWidth: 4,
+    borderColor: colors.border,
+    borderStyle: "dashed",
+    padding: 16,
+    gap: 10,
+    backgroundColor: "#FFF7F7",
+  },
+  dangerHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dangerTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 2, color: colors.text },
+  dangerSub: { fontSize: 13, lineHeight: 19, fontWeight: "600", color: colors.text },
+  cancelCampaignBtn: {
+    height: 52,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.desaprovo,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    ...brutalShadow,
+  },
+  cancelCampaignText: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.text },
+
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 480,
+    backgroundColor: colors.bg,
+    borderWidth: 4,
+    borderColor: colors.border,
+    padding: 22,
+    gap: 12,
+    ...brutalShadow,
+  },
+  modalIconWrap: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.neutral,
+    borderWidth: 3,
+    borderColor: colors.border,
+    padding: 8,
+  },
+  modalTitle: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
+  modalBody: { fontSize: 14, fontWeight: "600", lineHeight: 20, color: colors.text },
+  modalLabel: { fontSize: 12, fontWeight: "800", letterSpacing: 1, color: colors.text, marginTop: 4 },
+  modalInput: {
+    borderWidth: 3,
+    borderColor: colors.border,
+    height: 52,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 2,
+    color: colors.text,
+    backgroundColor: colors.bg,
+  },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 6 },
+  modalBtn: {
+    flex: 1,
+    height: 52,
+    borderWidth: 3,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    ...brutalShadow,
+  },
+  modalBtnText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
+  modalBtnDisabled: { opacity: 0.4 },
 });
