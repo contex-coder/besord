@@ -7,6 +7,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
+import HeatMap, { GeoPoint } from "@/src/components/HeatMap";
 
 type Campaign = {
   campaign_id: string; post_id: string | null; word: string; image_base64: string;
@@ -25,6 +26,7 @@ type Report = {
   total_votes: number; aprovo_count: number; desaprovo_count: number; aprovo_pct: number;
   verdict_tag: string; summary: string;
   by_country: RegionRow[]; by_region: RegionRow[]; by_city: RegionRow[];
+  geo_points?: GeoPoint[];
   word_cloud: { word: string; count: number }[];
   top_3_words: TopWord[]; total_comments: number;
   pace: Pace;
@@ -182,6 +184,14 @@ export default function CampaignDetailScreen() {
                 </View>
 
                 <RegionList title="POR PAÍS" rows={report.by_country} />
+
+                {report.geo_points && report.geo_points.length > 0 && (
+                  <View style={{ marginTop: 18 }}>
+                    <Text style={styles.section}>🗺️ MAPA DE CALOR — ONDE TE VOTARAM</Text>
+                    <HeatMap points={report.geo_points} height={360} />
+                  </View>
+                )}
+
                 <RegionList title="POR REGIÃO" rows={report.by_region} />
                 <RegionList title="POR CIDADE" rows={report.by_city} />
 

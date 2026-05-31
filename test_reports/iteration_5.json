@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 5 — Resend milestone emails + Mapbox geo_points. 23/23 backend tests pass after fixing two pre-existing latent bugs in /api/business/campaigns/{id}/report (NameError for fmt and UnboundLocalError for aprovo_pct) that were exposed by seeding real campaign data. email_alerts module is fully validated: crossed_milestones logic matches spec for all 6 cases, _milestone_subject + _milestone_html contain required substrings (dash URL, votes_collected, included_votes, aprovo_pct%), _is_configured() returns True. Idempotency filter verified — already_sent milestones are not re-sent. Vote endpoint regression passes on organic posts (no milestone hook crash). Real Resend send was triggered once at 50% threshold via crafted campaign; Resend correctly rejected the test recipient (sandbox limit) but milestones_sent was still updated to [50] on the campaign doc, confirming the server flow. Frontend: HeatMap.tsx exports default, accepts points: GeoPoint[], uses process.env.EXPO_PUBLIC_MAPBOX_TOKEN, embeds mapbox-gl via iframe srcDoc. /business/campaign/[id].tsx imports HeatMap from @/src/components/HeatMap and renders <HeatMap points={report.geo_points} height={360}/> when geo_points length > 0. Landing page renders cleanly, no new console errors from HeatMap import (only pre-existing 'shadow*' deprecation warning).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/business/campaigns/{id}/report",
+        "issue": "PRE-EXISTING (latent) — fmt() helper used at lines 1103-1105 was never defined; aprovo_pct used at line ~1028 before definition at line ~1073. Both raised exceptions only when seeded with a paid campaign + real votes. FIXED in this iteration by defining fmt() inline and hoisting aprovo_pct calculation above benchmark/retargeting blocks. Not caused by the new geo_points addition."
+      },
+      {
+        "endpoint": "email_alerts.send_milestone_email",
+        "issue": "Resend account is still on sandbox/onboarding tier — emails to any address other than rodrigocontecunha@gmail.com are rejected with 403: 'You can only send testing emails to your own email address. To send emails to other recipients, please verify a domain at resend.com/domains, and change the from address to an email using this domain.' Server-side, this surfaces as logger.error and send_milestone_email returns None. Milestone flagging still proceeds via milestones_sent update, so app state stays consistent — but real advertisers won't receive emails until a domain is verified at resend.com/domains and EMAIL_FROM is updated."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "global StyleSheet usage",
+        "issue": "Pre-existing 'shadow* style props are deprecated. Use boxShadow.' warnings on every web bundle. Not caused by HeatMap. Reference: frontend/app/**/*.tsx (multiple files)."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/pytest/pytest_iter5_results.xml"
+  ],
+  "action_items": [
+    "Verify a sending domain at https://resend.com/domains and update EMAIL_FROM in /app/backend/.env so advertiser emails are actually delivered (currently only rodrigocontecunha@gmail.com receives real sends — every other recipient is rejected by Resend 403).",
+    "OPTIONAL: confirm the two backend report fixes (fmt helper + early aprovo_pct) are acceptable — they are minimal and behavior-preserving, but a quick code review is recommended."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1496 lines — over the 700-line guideline. Should be split into routers per resource (auth, posts, comments, business, geo).",
+    "email_alerts.send_milestone_email swallows Resend errors via logger.error and returns None. Consider also recording the failure on the campaign doc (e.g., milestones_failed) so the next vote can retry — otherwise a 100% milestone with a transient API error is silently lost.",
+    "/api/business/campaigns/{id}/report has no test for empty/zero state (camp with 0 votes). Worth adding to catch division-by-zero like the aprovo_pct issue we just fixed."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (added inline fmt() helper at line ~969; hoisted aprovo_pct calc to before benchmark/retargeting blocks; removed duplicate aprovo_pct reassignment)",
+    "/app/backend/tests/test_iteration5.py (NEW — 23 tests)",
+    "/app/test_reports/pytest/pytest_iter5_results.xml (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23)",
+    "frontend": "100% (source verification + landing render)"
+  },
+  "seed_data_creation": "Two class-scoped pytest fixtures insert TEST_-prefixed campaigns/posts/votes into MongoDB and clean them up in teardown. No persisted seed data remains after the run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iteration_5 added /app/backend/tests/test_iteration5.py covering email_alerts + geo_points + milestone idempotency. Reuse it as regression. Two latent report-endpoint bugs (missing fmt(), pre-definition aprovo_pct) were fixed inside server.py — if iteration_6 changes the report shape, re-run TestCampaignReportGeoPoints. Resend is on sandbox/onboarding tier — sends to anyone other than rodrigocontecunha@gmail.com return 403 but milestone flags still persist on the campaign doc.",
+  "rca_of_issue": "While seeding a campaign + 3 votes (2 geocoded) and calling GET /api/business/campaigns/{id}/report, the endpoint returned 500. Two distinct latent bugs: (1) fmt() was referenced at lines 1103-1105 of server.py to reshape by_country/by_region/by_city aggregate output but was never defined → NameError. (2) aprovo_pct was consumed at line ~1028 inside the BENCHMARK block but only computed later at line ~1073 inside the executive-summary block → UnboundLocalError on any campaign with votes_collected > 0. Both were invisible before iteration 5 because no automated test exercised /report with a populated campaign. Mitigation applied: defined fmt() inline (returns {name, aprovo, desaprovo, total, aprovo_pct}) and moved aprovo_pct computation above the benchmark block (idempotent, same formula)."
+}

@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 
 from geo import get_client_ip, geo_lookup
 from pricing import TIERS, get_tier, tiers_public
+from email_alerts import send_milestone_email, crossed_milestones
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -548,9 +549,56 @@ async def vote_post(post_id: str, payload: VoteRequest, request: Request, author
         if post.get("campaign_id"):
             await db.campaigns.update_one({"campaign_id": post["campaign_id"]},
                                            {"$inc": {f"{new_vote}_count": 1, "votes_collected": 1}})
+            # Milestone email check (50/75/100% of included_votes goal)
+            await _maybe_send_milestone(post["campaign_id"])
 
     updated = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
     return await serialize_post(updated, user["user_id"])
+
+
+async def _maybe_send_milestone(campaign_id: str) -> None:
+    """Check if vote count crossed any milestone (50/75/100%) and send email idempotently."""
+    try:
+        camp = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+        if not camp or camp.get("status") != "active":
+            return
+        target = camp.get("included_votes") or 0
+        if target <= 0:
+            return
+        new_count = camp.get("votes_collected") or 0
+        prev_count = max(0, new_count - 1)
+        new_milestones = crossed_milestones(prev_count, new_count, target)
+        if not new_milestones:
+            return
+        already_sent = set(camp.get("milestones_sent") or [])
+        to_send = [m for m in new_milestones if m not in already_sent]
+        if not to_send:
+            return
+        # Lookup advertiser email
+        owner = await db.users.find_one({"user_id": camp["user_id"]}, {"_id": 0})
+        to_email = (camp.get("business_profile") or {}).get("contact_email") \
+                   or (owner.get("business_profile") or {}).get("contact_email") if owner else None
+        if not to_email and owner:
+            to_email = owner.get("email")
+        if not to_email:
+            return
+        aprovo_pct = round((camp.get("aprovo_count", 0) / max(1, new_count)) * 100)
+        for m in to_send:
+            send_milestone_email(
+                to_email=to_email,
+                milestone=m,
+                word=camp["word"],
+                votes_collected=new_count,
+                included_votes=target,
+                aprovo_pct=aprovo_pct,
+                campaign_id=campaign_id,
+            )
+        await db.campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$addToSet": {"milestones_sent": {"$each": to_send}}},
+        )
+    except Exception as e:
+        logger.error(f"Milestone email check failed for {campaign_id}: {e}")
 
 
 # ---------- Comments ----------
@@ -918,6 +966,39 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
     by_region = await agg_votes("region")
     by_city = await agg_votes("city")
 
+    def fmt(rows):
+        """Reshape aggregate rows for the response: rename _id -> name, add aprovo_pct."""
+        out = []
+        for r in rows:
+            total = r.get("total", 0) or 0
+            aprovo = r.get("aprovo", 0) or 0
+            out.append({
+                "name": r.get("_id"),
+                "aprovo": aprovo,
+                "desaprovo": r.get("desaprovo", 0) or 0,
+                "total": total,
+                "aprovo_pct": round(aprovo / total * 100) if total else 0,
+            })
+        return out
+
+    # Geo points for heatmap: lat/lon + vote type
+    geo_points_cursor = db.votes.find(
+        {"post_id": post_id, "geo.lat": {"$ne": None}, "geo.lon": {"$ne": None}},
+        {"_id": 0, "vote": 1, "geo.lat": 1, "geo.lon": 1, "geo.city": 1, "geo.country_code": 1},
+    ).limit(2000)
+    geo_docs = await geo_points_cursor.to_list(length=2000)
+    geo_points = [
+        {
+            "lat": float(d["geo"]["lat"]),
+            "lon": float(d["geo"]["lon"]),
+            "vote": d.get("vote"),
+            "city": d.get("geo", {}).get("city"),
+            "country_code": d.get("geo", {}).get("country_code"),
+        }
+        for d in geo_docs
+        if d.get("geo", {}).get("lat") is not None and d.get("geo", {}).get("lon") is not None
+    ]
+
     # Word cloud from comments (full list)
     cloud_pipeline = [
         {"$match": {"post_id": post_id}},
@@ -949,6 +1030,9 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
             "pct": round(w["count"] / total_comments * 100),
             "sentiment": sent,
         })
+
+    # Compute aprovo_pct early — used by BENCHMARK + RE-TARGETING + executive summary below
+    aprovo_pct = round(c.get("aprovo_count", 0) / max(1, c.get("votes_collected", 1)) * 100) if c.get("votes_collected") else 0
 
     # BENCHMARK: platform-wide average aprovo_pct (excluding this campaign's post)
     platform_agg = await db.posts.aggregate([
@@ -1004,7 +1088,6 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
     projected_total = round(c.get("votes_collected", 0) + votes_per_day * days_remaining)
 
     # Executive summary
-    aprovo_pct = round(c.get("aprovo_count", 0) / max(1, c.get("votes_collected", 1)) * 100) if c.get("votes_collected") else 0
     if aprovo_pct >= 75:
         verdict_tag = "MUITO APROVADO"
     elif aprovo_pct >= 55:
@@ -1035,6 +1118,7 @@ async def campaign_report(campaign_id: str, authorization: Optional[str] = Heade
         "by_country": fmt(by_country),
         "by_region": fmt(by_region),
         "by_city": fmt(by_city),
+        "geo_points": geo_points,
         "word_cloud": [{"word": w["_id"], "count": w["count"]} for w in word_cloud],
         "top_3_words": top_3_words,
         "total_comments": sum(w["count"] for w in word_cloud),
