@@ -124,7 +124,7 @@ export default function NewCampaignScreen() {
                 <Text style={styles.tierName}>{tt.name}</Text>
                 <Text style={styles.tierDesc}>{tt.scope.toUpperCase()} • {tt.duration_days}D • {tt.included_votes} VOTOS</Text>
               </View>
-              <Text style={styles.tierPrice}>${tt.amount_usd}</Text>
+              <Text style={styles.tierPrice}>€{tt.amount_usd}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -187,8 +187,8 @@ export default function NewCampaignScreen() {
             <>
               <Ionicons name="card" size={22} color={colors.text} />
               <Text style={styles.payText}>
-                PAGAR ${promoApplied ? (promoApplied.final_cents / 100).toFixed(2) : (selectedTier?.amount_usd ?? "—")}
-                {promoApplied && <Text style={{ textDecorationLine: "line-through", color: colors.textSecondary }}>  ${selectedTier?.amount_usd}</Text>}
+                PAGAR €{promoApplied ? (promoApplied.final_cents / 100).toFixed(2) : (selectedTier?.amount_usd ?? "—")}
+                {promoApplied && <Text style={{ textDecorationLine: "line-through", color: colors.textSecondary }}>  €{selectedTier?.amount_usd}</Text>}
               </Text>
             </>
           )}

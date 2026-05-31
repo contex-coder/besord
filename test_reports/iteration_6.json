@@ -1,0 +1,68 @@
+{
+  "summary": "Phase A validation PASS (13/13 backend tests green). Verified: EUR currency labels frontend-wide, Rodrigo→Besord legal swap, mascot/icon assets at correct sizes, campaign create still works with new Request param, audit row written to db.campaign_audit, new GET /api/admin/campaigns/{id}/audit endpoint returns correct shape and enforces admin role (401 without token, 403 for non-admin, 200 for admin). Stripe security audit: items a, b, c, d, e, f, g, h, j all PASS; item i (webhook) is a known gap. Found and fixed one minor bug: client_ip in campaign_audit was always None because get_client_ip(request) was passed a Request object instead of dict(request.headers). Patched line 864 of server.py.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/business/campaigns",
+        "issue": "`image_sha256` field in campaign_audit truncates SHA-256 hex to 32 chars (server.py:863). Field name says sha256 but value length matches MD5. Functionally harmless for dedupe but misleading. Suggest rename to `image_hash` or store full 64-char digest."
+      },
+      {
+        "endpoint": "Stripe checkout flow",
+        "issue": "No Stripe webhook configured. Reconciliation depends entirely on user returning to the success_url and the client polling /check-payment. If the user closes the tab after paying, the campaign stays in `pending_payment` until manually checked. Mitigate before public launch."
+      },
+      {
+        "endpoint": "POST /api/business/campaigns",
+        "issue": "Tier field returned by /api/business/tiers and consumed in frontend is still named `amount_usd` even though all displays/payments are EUR. Cosmetic/naming inconsistency only — values are correct. See pricing.py and frontend/app/business/campaign/new.tsx:127."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props (multiple screens)",
+        "issue": "Expo web console emits repeated warnings: \"shadow*\" style props are deprecated. Use \"boxShadow\". Replace shadowColor/shadowOpacity/shadowRadius/shadowOffset/elevation with the unified boxShadow API to silence warnings and stay forward-compatible."
+      }
+    ]
+  },
+  "stripe_security_audit": {
+    "a_api_key_from_env": "PASS — server.py:28 reads STRIPE_API_KEY from os.environ; fallback string `sk_test_emergent` is only used to flag mock mode, not as a real key. .env contains a real `sk_test_51RZJD...` key.",
+    "b_currency_eur_unit_amount_integer": "PASS — server.py:826-827 hardcode `currency: \"eur\"` and `unit_amount: final_amount_cents` (int). Same in renewal flow line 1205.",
+    "c_amount_server_side": "PASS — final_amount_cents derived from TIERS[payload.tier_key].amount_cents (server.py:761) with promo discount applied server-side (lines 777-780); client cannot inject price. Stripe minimum 50¢ floor enforced.",
+    "d_success_cancel_url_server_controlled": "PASS — server.py:812-813 built from APP_BASE_URL env + campaign_id; not user-supplied.",
+    "e_repoll_payment_status": "PASS — check_campaign_payment (server.py:894-897) re-fetches the Stripe session and asserts `session.payment_status == \"paid\"` before activation. URL query `?paid=1` is not trusted by itself.",
+    "f_ownership_enforced": "PASS — campaign queries scope by `user_id`: server.py:877 (check-payment), other endpoints similarly. Confirmed by test_campaign_ownership_enforced (admin user gets 404 trying to fetch another user's campaign via /business/campaigns/{id}).",
+    "g_promo_server_side_validation": "PASS — server.py:765-781 verifies code lookup, `active != false`, `expires_at`, `max_uses` vs `uses`, `discount_pct` all from db.promo_codes; client only submits the code string.",
+    "h_metadata_carries_campaign_user": "PASS — server.py:837 metadata = {campaign_id, user_id, tier_key, promo_code}; payment_intent metadata also has campaign_id (line 838).",
+    "i_no_webhook": "NOTE / KNOWN GAP — No /stripe/webhook endpoint exists. Without webhook, asynchronous reconciliation (paid users that never return) is impossible. Add stripe.Webhook.construct_event with STRIPE_WEBHOOK_SECRET and an /api/stripe/webhook route before public launch.",
+    "j_mock_fallback_gated": "PASS — is_mock_key check (server.py:814 and 889) only triggers when api_key in (\"sk_test_emergent\", \"\", None). Real `sk_test_*` keys bypass mock. Confirmed by backend logs showing real stripe.com API calls during tests."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/pytest_iter6_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Rename `image_sha256` field in campaign_audit to `image_hash` or store full 64-char digest (server.py:863).",
+    "(Pre-launch) Add Stripe webhook endpoint /api/stripe/webhook with signature verification (STRIPE_WEBHOOK_SECRET) for async payment reconciliation.",
+    "(Cosmetic) Rename tier field `amount_usd` → `amount_eur` across pricing.py + frontend usages to match the EUR pricing now displayed.",
+    "(Cleanup) Replace deprecated shadow* style props with boxShadow across screens to clear Expo web console warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1528 lines — past the 700-line guideline. Plan to split into auth.py, business_campaigns.py, posts.py, admin.py, promos.py modules.",
+    "Pattern `__import__(\"hashlib\").sha256(...)` (server.py:863) — prefer a top-of-file `import hashlib`. Minor style.",
+    "campaign_audit collection has no index on campaign_id; add `db.campaign_audit.create_index('campaign_id')` for the admin audit endpoint to stay fast as data grows."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (line 864: get_client_ip(request) → get_client_ip(dict(request.headers)))",
+    "/app/backend/tests/test_iteration6.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "smoke OK (landing renders, mascot visible)"},
+  "seed_data_creation": "Test seeds an admin session for rodrigocontecunha@gmail.com directly in db.user_sessions; teardown removes it. Business test user is created+deleted per run. All test campaigns/audit rows cleaned up.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase A clean. Stripe security audit is documented in this iteration — main agent should focus on (1) adding Stripe webhook before public launch, (2) splitting server.py, (3) renaming amount_usd→amount_eur. Iteration 6 fixed one latent bug (client_ip always None in audit). Real Stripe test mode is active (sk_test_51RZJD...) — mock path only runs when key literally equals sk_test_emergent.",
+  "rca_of_issue": "Audit row client_ip was always None because get_client_ip() expects a dict of headers but server.py:864 was passing the entire FastAPI Request. Because Starlette's Request is a Mapping over `scope` (not headers), the .get() calls inside get_client_ip silently returned None instead of raising. Fixed by wrapping with dict(request.headers), matching the convention used elsewhere in server.py (lines 481, 521, 625, 1273)."
+}

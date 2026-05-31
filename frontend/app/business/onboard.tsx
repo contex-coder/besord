@@ -80,7 +80,7 @@ export default function BusinessOnboardScreen() {
         <View style={styles.infoCard}>
           <Ionicons name="rocket" size={32} color={colors.text} />
           <Text style={styles.infoTitle}>BESORD INSIGHTS</Text>
-          <Text style={styles.infoSub}>Promova imagem + palavra. Receba veredito por região. Em USD.</Text>
+          <Text style={styles.infoSub}>Promova imagem + palavra. Receba veredito por região. Em EUR.</Text>
         </View>
 
         <Field label={t("company_name") + " *"}>

@@ -136,8 +136,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  heroMascot: { alignItems: "center", justifyContent: "center", flex: 1 },
-  mascot: { width: 320, height: 320, maxWidth: "100%", maxHeight: "100%" },
+  heroMascot: { alignItems: "center", justifyContent: "center", flex: 1, width: "100%" },
+  mascot: { width: "100%", height: undefined, aspectRatio: 1024 / 559, maxWidth: 720 },
 
   actions: { gap: 12 },
   googleBtn: {

@@ -731,7 +731,7 @@ async def list_tiers():
 
 
 @api_router.post("/business/campaigns", response_model=CampaignOut)
-async def create_campaign(payload: CampaignCreate, authorization: Optional[str] = Header(None)):
+async def create_campaign(payload: CampaignCreate, request: Request, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     if not user.get("business_profile"):
         raise HTTPException(status_code=400, detail="Crie o perfil empresarial primeiro.")
@@ -845,6 +845,25 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
             raise HTTPException(status_code=502, detail=f"Falha ao criar pagamento: {str(e)[:120]}")
 
     await db.campaigns.insert_one(campaign.copy())
+    # Audit log — immutable record of what was submitted (proves no later substitution)
+    await db.campaign_audit.insert_one({
+        "campaign_id": campaign_id,
+        "user_id": user["user_id"],
+        "event": "create",
+        "word_submitted": word,                       # raw user input
+        "word_stored": normalize_word(word),          # what we save
+        "tier_key": tier.key,
+        "scope": tier.scope,
+        "target_country_code": campaign["target_country_code"],
+        "target_region": campaign["target_region"],
+        "target_city": campaign["target_city"],
+        "amount_cents": final_amount_cents,
+        "base_amount_cents": tier.amount_cents,
+        "promo_code": (promo_applied or {}).get("code"),
+        "image_sha256": __import__("hashlib").sha256(payload.image_base64.encode()).hexdigest()[:32],
+        "client_ip": get_client_ip(dict(request.headers)),
+        "created_at": now,
+    })
     # Increment promo usage
     if promo_applied:
         await db.promo_codes.update_one({"code": promo_applied["code"]}, {"$inc": {"uses": 1}})
@@ -1381,6 +1400,19 @@ class TierUpdate(BaseModel):
     tier_key: str
     amount_cents: int
     included_votes: int
+
+
+@api_router.get("/admin/campaigns/{campaign_id}/audit")
+async def admin_campaign_audit(campaign_id: str, authorization: Optional[str] = Header(None)):
+    """Return the immutable audit trail for a campaign (creation only — words are never updated)."""
+    await require_admin(authorization)
+    rows = await db.campaign_audit.find({"campaign_id": campaign_id}, {"_id": 0}).sort("created_at", 1).to_list(length=100)
+    for r in rows:
+        if isinstance(r.get("created_at"), datetime):
+            r["created_at"] = r["created_at"].isoformat()
+    camp = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "word": 1, "user_id": 1, "status": 1})
+    return {"campaign_id": campaign_id, "current": camp, "audit_trail": rows}
+
 
 @api_router.post("/admin/tiers")
 async def admin_update_tier(payload: TierUpdate, authorization: Optional[str] = Header(None)):

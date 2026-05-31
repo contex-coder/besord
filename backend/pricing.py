@@ -1,4 +1,4 @@
-"""Pricing tiers for Besord sponsored campaigns. All amounts in USD cents."""
+"""Pricing tiers for Besord sponsored campaigns. All amounts in EUR cents."""
 from dataclasses import dataclass
 
 

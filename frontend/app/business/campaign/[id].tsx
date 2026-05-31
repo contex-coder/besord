@@ -93,6 +93,16 @@ export default function CampaignDetailScreen() {
           <View style={styles.heroFooter}>
             <Text style={styles.heroWord}>#{campaign.word}</Text>
             <Text style={styles.heroMeta}>{campaign.tier_name} • {campaign.scope.toUpperCase()} • {campaign.duration_days}D</Text>
+            {(campaign.target_country_code || campaign.target_region || campaign.target_city) && (
+              <View style={styles.geoTargetBadge} testID="campaign-geo-target">
+                <Ionicons name="location" size={14} color={colors.text} />
+                <Text style={styles.geoTargetText}>
+                  {[campaign.target_city, campaign.target_region, campaign.target_country_code]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -102,7 +112,7 @@ export default function CampaignDetailScreen() {
             else { await WebBrowser.openBrowserAsync(campaign.checkout_url!); checkPayment(); }
           }}>
             <Ionicons name="card" size={22} color={colors.text} />
-            <Text style={styles.payText}>PAGAR ${(campaign.amount_cents / 100).toFixed(2)}</Text>
+            <Text style={styles.payText}>PAGAR €{(campaign.amount_cents / 100).toFixed(2)}</Text>
           </TouchableOpacity>
         )}
 
@@ -291,6 +301,19 @@ const styles = StyleSheet.create({
   heroFooter: { padding: 12, borderTopWidth: 3, borderTopColor: colors.border, gap: 4 },
   heroWord: { fontSize: 28, fontWeight: "900", letterSpacing: -1, color: colors.text },
   heroMeta: { fontSize: 11, fontWeight: "800", color: colors.textSecondary, letterSpacing: 1 },
+  geoTargetBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: colors.neutral,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 6,
+  },
+  geoTargetText: { fontSize: 11, fontWeight: "900", letterSpacing: 1, color: colors.text },
 
   payBtn: { marginTop: 18, height: 64, backgroundColor: colors.aprovo, borderWidth: 4, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, ...brutalShadow },
   payText: { fontSize: 18, fontWeight: "900", letterSpacing: 2, color: colors.text },
