@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Besord <onboarding@resend.dev>")
-APP_BASE_URL = os.getenv("APP_BASE_URL", "https://besord.app")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://besord.eu")
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY

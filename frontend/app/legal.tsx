@@ -11,7 +11,7 @@ const TERMS = `# TERMOS E CONDIÇÕES DE UTILIZAÇÃO
 **Última atualização**: 30 de Maio de 2026
 **Aplicação**: Besord
 **Entidade responsável**: Besord, Lisboa, Portugal
-**Contacto**: legal@besord.app
+**Contacto**: support@besord.eu
 
 ## 1. Aceitação dos termos
 Ao criar conta ou utilizar a aplicação Besord ("Aplicação"), o Utilizador aceita integralmente os presentes Termos e Condições. Se não concordar, deverá abster-se de utilizar o serviço.
@@ -80,7 +80,7 @@ Estes Termos podem ser actualizados. Mudanças materiais serão comunicadas via 
 15.1. É proibido publicar imagens ou palavras que contenham: nudez explícita, pornografia, ódio racial/religioso/sexual, ameaças, violência gráfica, conteúdos que envolvam menores em contexto íntimo, promoção de drogas ilícitas, ou desinformação que cause dano real.
 15.2. As palavras de posts e comentários passam por um filtro automático. Posts com **3 ou mais denúncias** são automaticamente ocultados até revisão humana.
 15.3. O painel de administração revê manualmente conteúdo denunciado e pode eliminar definitivamente publicações em violação.
-15.4. Para reportar conteúdo ilegal ou abusivo, usa o botão de denúncia no próprio post ou escreve para **legal@besord.app**.
+15.4. Para reportar conteúdo ilegal ou abusivo, usa o botão de denúncia no próprio post ou escreve para **support@besord.eu**.
 
 `;
 
@@ -88,7 +88,7 @@ const PRIVACY = `# POLÍTICA DE PRIVACIDADE
 
 **Última atualização**: 30 de Maio de 2026
 **Responsável pelo tratamento**: Besord, Lisboa, Portugal
-**Contacto DPO/Encarregado**: privacy@besord.app
+**Contacto DPO/Encarregado**: support@besord.eu
 
 Esta política descreve como o Besord recolhe, utiliza e protege os dados pessoais, em conformidade com o **Regulamento (UE) 2016/679 (RGPD)** e a **Lei n.º 58/2019**.
 
@@ -136,7 +136,7 @@ Pode exercer a qualquer momento os direitos de:
 - **oposição** ao tratamento;
 - **retirada do consentimento** (quando aplicável).
 
-Para exercer, envie email para **privacy@besord.app**. Responderemos em até 30 dias.
+Para exercer, envie email para **support@besord.eu**. Responderemos em até 30 dias.
 
 ## 8. Reclamações
 Em caso de não-conformidade, pode apresentar reclamação à **Comissão Nacional de Protecção de Dados (CNPD)** — www.cnpd.pt — Av. D. Carlos I, n.º 134, 1.º, 1200-651 Lisboa.
