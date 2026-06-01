@@ -69,7 +69,7 @@ function RootNavigator() {
         router.replace("/onboarding");
       } else if (user.age_confirmed && onboarded && !inTabs && !inLegal &&
                  first !== "business" && first !== "admin" && first !== "word" &&
-                 first !== "notifications") {
+                 first !== "notifications" && first !== "trends") {
         router.replace("/(tabs)/feed");
       }
     } else if (inTabs || first === "business" || first === "admin" || inAgeGate) {

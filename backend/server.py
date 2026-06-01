@@ -18,6 +18,7 @@ from geo import get_client_ip, geo_lookup
 from pricing import TIERS, get_tier, tiers_public
 from email_alerts import send_milestone_email, crossed_milestones
 from moderation import check_word as moderate_word
+from themes import THEMES, THEME_KEYS
 from dataclasses import replace as dataclass_replace
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
@@ -66,6 +67,7 @@ class AuthResponse(BaseModel):
 class PostCreate(BaseModel):
     word: str
     image_base64: str
+    theme: Optional[str] = None  # one of THEME_KEYS, optional
 
 class CommentOut(BaseModel):
     comment_id: str
@@ -452,6 +454,11 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
     if not payload.image_base64 or len(payload.image_base64) < 50:
         raise HTTPException(status_code=400, detail="Imagem é obrigatória.")
 
+    # Optional theme — must be one of the 10 keys if provided
+    theme = (payload.theme or "").strip().lower() or None
+    if theme and theme not in THEME_KEYS:
+        raise HTTPException(status_code=400, detail="Tema inválido")
+
     post = {
         "post_id": f"post_{uuid.uuid4().hex[:12]}",
         "word": normalize_word(word),
@@ -466,6 +473,7 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
         "reports_count": 0,
         "hidden": False,
         "is_sponsored": False,
+        "theme": theme,
     }
     await db.posts.insert_one(post.copy())
     return await serialize_post(post, user["user_id"])
@@ -522,6 +530,11 @@ async def list_posts(
     authorization: Optional[str] = Header(None),
     sort: Literal["recent", "trending"] = Query("recent"),
     word: Optional[str] = Query(None),
+    theme: Optional[str] = Query(None),
+    source: Optional[Literal["styles"]] = Query(None),
+    geo_scope: Optional[Literal["world", "country", "city"]] = Query("world"),
+    country_code: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
 ):
     user = await get_optional_user(authorization)
     current_user_id = user["user_id"] if user else None
@@ -529,6 +542,25 @@ async def list_posts(
     query: dict = {"hidden": {"$ne": True}, "is_sponsored": {"$ne": True}}
     if word:
         query["word"] = normalize_word(word)
+    if theme and theme in THEME_KEYS:
+        query["theme"] = theme
+
+    # Geo scope filter — by country_code or city of the post AUTHOR's first vote
+    # location. For posts without geo we keep them visible on "world" only.
+    if geo_scope == "country" and country_code:
+        query["author_country_code"] = country_code.upper()
+    elif geo_scope == "city" and city:
+        query["author_city"] = city
+
+    # "My styles" filter — only posts whose `word` is in the user's followed list.
+    if source == "styles":
+        if not current_user_id:
+            return []
+        followed = await db.followed_styles.find({"user_id": current_user_id}, {"_id": 0, "word": 1}).to_list(length=500)
+        words = [f["word"] for f in followed]
+        if not words:
+            return []
+        query["word"] = {"$in": words}
 
     if sort == "trending":
         pipeline = [
@@ -970,6 +1002,15 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
                 metadata={"campaign_id": campaign_id, "user_id": user["user_id"], "tier_key": tier.key, "promo_code": (promo_applied or {}).get("code", "")},
                 payment_intent_data={"metadata": {"campaign_id": campaign_id}},
                 customer_email=user["business_profile"].get("contact_email") or user["email"],
+                invoice_creation={"enabled": True, "invoice_data": {
+                    "description": f"Campanha Besord #{normalize_word(word)} ({tier.name})",
+                    "metadata": {"campaign_id": campaign_id, "tier_key": tier.key},
+                    "custom_fields": [
+                        {"name": "NIF/NIPC", "value": user["business_profile"].get("vat") or "—"},
+                        {"name": "Empresa", "value": user["business_profile"].get("company_name") or user["name"]},
+                    ],
+                    "footer": "Besord · support@besord.eu",
+                }},
             )
             campaign["stripe_session_id"] = session.id
             campaign["checkout_url"] = session.url
@@ -1385,6 +1426,15 @@ async def renew_campaign(campaign_id: str, authorization: Optional[str] = Header
                 success_url=success_url, cancel_url=cancel_url,
                 metadata={"campaign_id": new_campaign_id, "renewed_from": campaign_id, "user_id": user["user_id"]},
                 customer_email=user["business_profile"].get("contact_email") or user["email"],
+                invoice_creation={"enabled": True, "invoice_data": {
+                    "description": f"Campanha Besord #{normalize_word(word)} ({tier.name})",
+                    "metadata": {"campaign_id": campaign_id, "tier_key": tier.key},
+                    "custom_fields": [
+                        {"name": "NIF/NIPC", "value": user["business_profile"].get("vat") or "—"},
+                        {"name": "Empresa", "value": user["business_profile"].get("company_name") or user["name"]},
+                    ],
+                    "footer": "Besord · support@besord.eu",
+                }},
             )
             campaign["stripe_session_id"] = session.id
             campaign["checkout_url"] = session.url
@@ -2151,6 +2201,150 @@ from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
 _WEBSITE_ZIP_PATH = Path(__file__).parent / "static" / "besord-site.zip"
+
+
+# ---------------------------------------------------------------------------
+# Themes (10 categories) — list + filtered post creation
+# ---------------------------------------------------------------------------
+
+@api_router.get("/themes")
+async def list_themes():
+    return THEMES
+
+
+# ---------------------------------------------------------------------------
+# BestWord Styles — follow a word (theme/word) to personalise feed
+# ---------------------------------------------------------------------------
+
+@api_router.get("/styles/me")
+async def list_followed_styles(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    rows = await db.followed_styles.find({"user_id": user["user_id"]}, {"_id": 0}).sort("followed_at", -1).to_list(length=200)
+    for r in rows:
+        if isinstance(r.get("followed_at"), datetime):
+            r["followed_at"] = r["followed_at"].isoformat()
+    return {"words": [r["word"] for r in rows], "items": rows}
+
+
+@api_router.post("/styles/{word}/follow")
+async def follow_style(word: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    w = normalize_word(word.strip())
+    if not WORD_RE.match(w):
+        raise HTTPException(status_code=400, detail="Palavra inválida")
+    ok, reason = moderate_word(w)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    await db.followed_styles.update_one(
+        {"user_id": user["user_id"], "word": w},
+        {"$setOnInsert": {"user_id": user["user_id"], "word": w,
+                           "followed_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    return {"ok": True, "word": w, "following": True}
+
+
+@api_router.delete("/styles/{word}/follow")
+async def unfollow_style(word: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    w = normalize_word(word.strip())
+    await db.followed_styles.delete_one({"user_id": user["user_id"], "word": w})
+    return {"ok": True, "word": w, "following": False}
+
+
+@api_router.get("/styles/{word}/status")
+async def style_status(word: str, authorization: Optional[str] = Header(None)):
+    user = await get_optional_user(authorization)
+    if not user:
+        return {"following": False, "follower_count": 0}
+    w = normalize_word(word.strip())
+    mine = await db.followed_styles.find_one({"user_id": user["user_id"], "word": w}, {"_id": 1})
+    total = await db.followed_styles.count_documents({"word": w})
+    return {"following": bool(mine), "follower_count": total, "word": w}
+
+
+# ---------------------------------------------------------------------------
+# Trends — top words by scope/period (public, no auth)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/trends")
+async def trends(scope: Literal["world", "country", "city"] = Query("world"),
+                 country_code: Optional[str] = Query(None),
+                 city: Optional[str] = Query(None),
+                 period: Literal["24h", "7d", "30d"] = Query("24h"),
+                 limit: int = Query(20, ge=1, le=50),
+                 theme: Optional[str] = Query(None)):
+    hours = {"24h": 24, "7d": 168, "30d": 720}[period]
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    vote_match: dict = {"created_at": {"$gte": since}}
+    if scope == "country" and country_code:
+        vote_match["geo.country_code"] = country_code.upper()
+    elif scope == "city" and city:
+        vote_match["geo.city"] = city
+    # Aggregate top words from posts that received votes in the window.
+    pipeline = [
+        {"$match": vote_match},
+        {"$lookup": {"from": "posts", "localField": "post_id", "foreignField": "post_id", "as": "p"}},
+        {"$unwind": "$p"},
+        *( [{"$match": {"p.theme": theme}}] if (theme and theme in THEME_KEYS) else [] ),
+        {"$match": {"p.hidden": {"$ne": True}}},
+        {"$group": {"_id": "$p.word",
+                     "votes": {"$sum": 1},
+                     "aprovo": {"$sum": {"$cond": [{"$eq": ["$vote", "aprovo"]}, 1, 0]}},
+                     "theme": {"$first": "$p.theme"}}},
+        {"$sort": {"votes": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db.votes.aggregate(pipeline).to_list(length=limit)
+    out = []
+    for r in rows:
+        v = r.get("votes", 0)
+        a = r.get("aprovo", 0)
+        out.append({
+            "word": r["_id"],
+            "theme": r.get("theme"),
+            "votes": v,
+            "aprovo_pct": round((a / v) * 100) if v else 0,
+        })
+    return {"scope": scope, "period": period, "country_code": country_code,
+            "city": city, "theme": theme, "items": out}
+
+
+# ---------------------------------------------------------------------------
+# Stripe invoice — fetch hosted invoice URL + PDF for a paid campaign
+# ---------------------------------------------------------------------------
+
+@api_router.get("/business/campaigns/{campaign_id}/invoice")
+async def campaign_invoice(campaign_id: str, authorization: Optional[str] = Header(None)):
+    """Return Stripe-generated invoice URL + PDF for a paid campaign.
+
+    Stripe auto-creates the invoice when `invoice_creation.enabled=true` was
+    set at checkout (now the default). We fetch it on demand to avoid storing
+    PDFs ourselves."""
+    user = await get_current_user(authorization)
+    camp = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    sid = camp.get("stripe_session_id")
+    if not sid or sid.startswith("cs_test_mock_"):
+        return {"available": False, "reason": "Pagamento ainda não confirmado ou em modo de demonstração."}
+    try:
+        session = stripe.checkout.Session.retrieve(sid)
+        invoice_id = session.get("invoice")
+        if not invoice_id:
+            return {"available": False, "reason": "Stripe ainda não emitiu a fatura. Aguarda alguns minutos."}
+        invoice = stripe.Invoice.retrieve(invoice_id)
+        return {
+            "available": True,
+            "invoice_id": invoice_id,
+            "number": invoice.get("number"),
+            "hosted_url": invoice.get("hosted_invoice_url"),
+            "pdf_url": invoice.get("invoice_pdf"),
+            "amount_paid_eur": (invoice.get("amount_paid", 0) / 100),
+        }
+    except Exception as e:
+        logger.error(f"Stripe invoice fetch failed for {campaign_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"Falha ao obter fatura: {str(e)[:120]}")
 
 
 app.include_router(api_router)

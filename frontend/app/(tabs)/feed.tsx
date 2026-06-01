@@ -225,6 +225,10 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.brand}>BESORD</Text>
+        <TouchableOpacity testID="btn-trends" onPress={() => router.push("/trends")} style={styles.trendsBtn}>
+          <Ionicons name="trending-up" size={14} color={colors.text} />
+          <Text style={styles.trendsText}>TRENDS</Text>
+        </TouchableOpacity>
         <View style={styles.sortToggle}>
           <TouchableOpacity
             testID="sort-recent"
@@ -297,6 +301,18 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   brand: { fontSize: 26, fontWeight: "900", letterSpacing: -1, color: colors.text },
+  trendsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.aprovo,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    ...brutalShadow,
+  },
+  trendsText: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2, color: colors.text },
   sortToggle: {
     flexDirection: "row",
     borderWidth: 3,

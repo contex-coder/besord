@@ -34,15 +34,32 @@ export default function WordScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [following, setFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+
+  const toggleFollow = useCallback(async () => {
+    const method = following ? "DELETE" : "POST";
+    const r = await apiFetch(`/api/styles/${encodeURIComponent(word)}/follow`, { method });
+    if (r.ok) {
+      setFollowing(!following);
+      setFollowerCount((c) => Math.max(0, c + (following ? -1 : 1)));
+    }
+  }, [apiFetch, word, following]);
 
   const load = useCallback(async () => {
     try {
-      const [r1, r2] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         apiFetch(`/api/posts?word=${encodeURIComponent(word)}`),
         apiFetch(`/api/words/${encodeURIComponent(word)}/stats`),
+        apiFetch(`/api/styles/${encodeURIComponent(word)}/status`),
       ]);
       if (r1.ok) setPosts(await r1.json());
       if (r2.ok) setStats(await r2.json());
+      if (r3.ok) {
+        const s = await r3.json();
+        setFollowing(!!s.following);
+        setFollowerCount(s.follower_count || 0);
+      }
     } finally {
       setLoading(false);
     }
@@ -71,6 +88,16 @@ export default function WordScreen() {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View style={styles.statsBlock}>
+            <TouchableOpacity
+              testID="btn-follow-style"
+              onPress={toggleFollow}
+              style={[styles.followBtn, following && styles.followBtnActive]}
+            >
+              <Ionicons name={following ? "checkmark-circle" : "add-circle-outline"} size={18} color={colors.text} />
+              <Text style={styles.followText}>
+                {following ? "A SEGUIR" : "SEGUIR ESTILO"}{followerCount ? ` · ${followerCount}` : ""}
+              </Text>
+            </TouchableOpacity>
             <View style={styles.statRow}>
               <View style={styles.statBox}>
                 <Text style={styles.statValue}>{stats?.posts_count ?? 0}</Text>
@@ -135,6 +162,19 @@ const styles = StyleSheet.create({
 
   listContent: { padding: 20, paddingBottom: 40, gap: 12 },
   statsBlock: { gap: 12, marginBottom: 8 },
+  followBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.neutral,
+    height: 48,
+    ...brutalShadow,
+  },
+  followBtnActive: { backgroundColor: colors.aprovo },
+  followText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
   statRow: { flexDirection: "row", gap: 8 },
   statBox: { flex: 1, backgroundColor: colors.bg, borderWidth: 3, borderColor: colors.border, paddingVertical: 14, alignItems: "center", ...brutalShadow },
   statValue: { fontSize: 22, fontWeight: "900", color: colors.text },

@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 12 backend validation: Themes (10), BestWord Styles follow/unfollow/status, Zone-filtered feed (theme + source=styles), Trends (public, scope/period/theme), and Stripe invoicing endpoint. 24/24 pytest cases passed. Frontend landing renders cleanly (no red screen, bundle compiles). Mock Stripe path returns available:false with PT message; non-mock fake sid returns 502 (route reachable + handled). All regression endpoints (posts, vote, comment, notifications auth-gate, business dashboard auth-gate, besord-site.zip download) still passing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/business/campaigns/{id}/renew", "issue": "Line 1430: invoice_data.description references undefined variable `word` (NameError at runtime when renew is invoked with a real Stripe key). Currently dead code in mock mode but will 500 in real test mode. Use original['word'] like the rest of the function."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Appears at app boot — pre-existing across iterations, not introduced in iter12."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12.py",
+    "/app/test_reports/pytest/pytest_iter12_results.xml"
+  ],
+  "action_items": [
+    "Fix /app/backend/server.py line 1430 in renew_campaign: replace `normalize_word(word)` with `original['word']` (the variable `word` is undefined in that scope — would crash any real-key renewal). Same custom_fields block also uses local `word`/`tier`/`campaign_id` correctly but description string references undefined `word`.",
+    "(Optional, low priority) Migrate React Native `shadow*` style props to `boxShadow` to silence the deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "renew_campaign() bug: line 1430 references undefined `word` (should be `original['word']`); will NameError when STRIPE_API_KEY is a real sk_test_ key.",
+    "server.py is 2403 lines — exceeds the 700-line guideline. Consider splitting into routers/ (themes, styles, trends, business, admin)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12.py (new)"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "smoke OK"},
+  "seed_data_creation": "Test posts/votes/comments/follows/campaigns created with TEST_ prefix or random uuid suffix and cleaned up in finally blocks. Pre-existing seeded_user fixture (user_test_pytest_001) reused.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All iter12 scope (themes/styles/trends/zone/invoice) is green. Next iteration can skip these. Known dormant bug in renew_campaign (line 1430) — not blocking but should be patched before switching to a real sk_test_ key.",
+  "rca_of_issue": "N/A — no failing tests."
+}
