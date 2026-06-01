@@ -1427,8 +1427,8 @@ async def renew_campaign(campaign_id: str, authorization: Optional[str] = Header
                 metadata={"campaign_id": new_campaign_id, "renewed_from": campaign_id, "user_id": user["user_id"]},
                 customer_email=user["business_profile"].get("contact_email") or user["email"],
                 invoice_creation={"enabled": True, "invoice_data": {
-                    "description": f"Campanha Besord #{normalize_word(word)} ({tier.name})",
-                    "metadata": {"campaign_id": campaign_id, "tier_key": tier.key},
+                    "description": f"Campanha Besord #{original['word']} ({tier.name}) — Renovação",
+                    "metadata": {"campaign_id": new_campaign_id, "renewed_from": campaign_id, "tier_key": tier.key},
                     "custom_fields": [
                         {"name": "NIF/NIPC", "value": user["business_profile"].get("vat") or "—"},
                         {"name": "Empresa", "value": user["business_profile"].get("company_name") or user["name"]},
