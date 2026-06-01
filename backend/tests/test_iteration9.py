@@ -203,6 +203,48 @@ class TestPublicTiersHonorsOverrides:
         requests.delete(f"{BASE_URL}/api/admin/tiers/regional", headers=H(admin_token["token"]))
 
 
+# ---------- 5b. Concurrent overrides on two tiers ----------
+class TestConcurrentOverrides:
+    def test_two_tiers_overridden_simultaneously(self, admin_token):
+        # Clean slate for these two keys
+        requests.delete(f"{BASE_URL}/api/admin/tiers/local", headers=H(admin_token["token"]))
+        requests.delete(f"{BASE_URL}/api/admin/tiers/regional", headers=H(admin_token["token"]))
+
+        r1 = requests.post(f"{BASE_URL}/api/admin/tiers", headers=H(admin_token["token"]),
+                           json={"tier_key": "local", "amount_cents": 3300, "included_votes": 660})
+        assert r1.status_code == 200, r1.text
+        r2 = requests.post(f"{BASE_URL}/api/admin/tiers", headers=H(admin_token["token"]),
+                           json={"tier_key": "regional", "amount_cents": 5555, "included_votes": 1100})
+        assert r2.status_code == 200, r2.text
+
+        r = requests.get(f"{BASE_URL}/api/admin/tiers", headers=H(admin_token["token"]))
+        assert r.status_code == 200
+        by_key = {t["key"]: t for t in r.json()}
+        assert by_key["local"]["amount_cents"] == 3300
+        assert by_key["local"]["included_votes"] == 660
+        assert by_key["local"]["is_overridden"] is True
+        assert by_key["regional"]["amount_cents"] == 5555
+        assert by_key["regional"]["included_votes"] == 1100
+        assert by_key["regional"]["is_overridden"] is True
+        # Untouched tiers stay at defaults
+        assert by_key["national"]["is_overridden"] is False
+        assert by_key["national"]["amount_cents"] == 9900
+        assert by_key["global"]["is_overridden"] is False
+        assert by_key["global"]["amount_cents"] == 49900
+
+        # Public endpoint should also reflect both
+        pr = requests.get(f"{BASE_URL}/api/business/tiers")
+        assert pr.status_code == 200
+        pby = {t["key"]: t for t in pr.json()}
+        assert pby["local"]["amount_cents"] == 3300
+        assert pby["regional"]["amount_cents"] == 5555
+        assert pby["national"]["amount_cents"] == 9900
+
+        # cleanup
+        requests.delete(f"{BASE_URL}/api/admin/tiers/local", headers=H(admin_token["token"]))
+        requests.delete(f"{BASE_URL}/api/admin/tiers/regional", headers=H(admin_token["token"]))
+
+
 # ---------- 6. Auth session race ----------
 class TestAuthSessionRace:
     def test_invalid_session_returns_401_not_500(self):

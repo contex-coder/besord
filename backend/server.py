@@ -18,6 +18,11 @@ from geo import get_client_ip, geo_lookup
 from pricing import TIERS, get_tier, tiers_public
 from email_alerts import send_milestone_email, crossed_milestones
 from moderation import check_word as moderate_word
+from dataclasses import replace as dataclass_replace
+
+# Snapshot of the *original* tier definitions imported from pricing.py.
+# Used by the admin "reset" endpoint to restore defaults — never mutated.
+_ORIGINAL_TIERS = {k: dataclass_replace(v) for k, v in TIERS.items()}
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -795,19 +800,26 @@ async def get_business_profile(authorization: Optional[str] = Header(None)):
 # ---------- Campaigns ----------
 async def apply_tier_overrides() -> None:
     """Pull tier overrides from db.tier_overrides and apply to the in-memory TIERS dict.
-    Called by every endpoint that prices a campaign so admin changes take effect immediately."""
+    Called by every endpoint that prices a campaign so admin changes take effect immediately.
+
+    `CampaignTier` is a frozen dataclass — we rebuild the entry via dataclasses.replace
+    rather than mutating fields. Starting point is the ORIGINAL snapshot so removing an
+    override (delete row) correctly restores defaults on the next call.
+    """
     try:
         overrides = await db.tier_overrides.find({}, {"_id": 0}).to_list(length=100)
     except Exception:
         overrides = []
-    for ov in overrides:
-        key = ov.get("tier_key")
-        if key in TIERS:
-            t = TIERS[key]
-            if "amount_cents" in ov and isinstance(ov["amount_cents"], int) and ov["amount_cents"] > 0:
-                t.amount_cents = ov["amount_cents"]
-            if "included_votes" in ov and isinstance(ov["included_votes"], int) and ov["included_votes"] > 0:
-                t.included_votes = ov["included_votes"]
+    overrides_map = {ov.get("tier_key"): ov for ov in overrides if ov.get("tier_key")}
+    for key, original in _ORIGINAL_TIERS.items():
+        ov = overrides_map.get(key)
+        if not ov:
+            # No override → ensure runtime entry matches the immutable original.
+            TIERS[key] = original
+            continue
+        amount = ov.get("amount_cents") if isinstance(ov.get("amount_cents"), int) and ov["amount_cents"] > 0 else original.amount_cents
+        votes = ov.get("included_votes") if isinstance(ov.get("included_votes"), int) and ov["included_votes"] > 0 else original.included_votes
+        TIERS[key] = dataclass_replace(original, amount_cents=amount, included_votes=votes)
 
 
 @api_router.get("/business/tiers")
@@ -1625,10 +1637,10 @@ async def admin_reset_tier(tier_key: str, authorization: Optional[str] = Header(
         "actor_email": admin_user["email"],
         "created_at": datetime.now(timezone.utc),
     })
-    from pricing import TIERS as DEFAULTS
-    if tier_key in DEFAULTS:
-        TIERS[tier_key].amount_cents = DEFAULTS[tier_key].amount_cents
-        TIERS[tier_key].included_votes = DEFAULTS[tier_key].included_votes
+    # Restore from the immutable original snapshot (not from TIERS itself,
+    # which may already carry an override at this point).
+    if tier_key in _ORIGINAL_TIERS:
+        TIERS[tier_key] = _ORIGINAL_TIERS[tier_key]
     return {"ok": True, "tier_key": tier_key}
 
 

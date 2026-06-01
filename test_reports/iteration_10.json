@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 10 retest of admin tier feature after FrozenInstanceError + defaults-snapshot fix. All 16/16 backend tests in /app/backend/tests/test_iteration9.py PASS (previously 12/15 in iter 9). The 3 previously-failing tests now succeed: POST /api/admin/tiers returns 200 with override visible on subsequent GET; DELETE /api/admin/tiers/local returns 200 and GET now shows is_overridden=false with amount_cents=1900/included_votes=380 (true pricing.py defaults, not stale mutated values); public GET /api/business/tiers returns 200 with override numbers reflected. New TestConcurrentOverrides also passes — local+regional simultaneously overridden, national+global remain at defaults, public endpoint matches. Validation 400s still trigger (amount<100, >1M, votes<10, unknown tier_key). Audit rows correctly appended for both update and reset. Auth session race test still 401 (not 500). Zip download still 200 (~115KB application/zip). Regression smoke (GET /api/posts, /api/auth/me, /api/) all pass. Frontend bundle still 200. Code review of the applied fix in server.py:21-25 (_ORIGINAL_TIERS snapshot via dataclass_replace), server.py:801-822 (apply_tier_overrides rebuilds via dataclasses.replace iterating the snapshot), and server.py:1640-1643 (admin_reset_tier restores from snapshot) all match the recommended fix from iteration_9 — correct, idempotent, and safe with frozen=True still on CampaignTier.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9.py",
+    "/app/test_reports/pytest/pytest_iter10_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:25 — _ORIGINAL_TIERS uses dataclass_replace(v) with no overrides, which returns a new frozen instance with identical field values. This is functionally equivalent to a shallow copy for this dataclass shape (all fields are immutable scalars/strings), so the snapshot is safe.",
+    "server.py:814-822 — apply_tier_overrides now iterates _ORIGINAL_TIERS (not TIERS), so removing an override row automatically restores defaults on the very next call, even without an explicit reset. Correct.",
+    "server.py:1642-1643 — admin_reset_tier restores TIERS[tier_key] from _ORIGINAL_TIERS. apply_tier_overrides is NOT re-invoked here, but that's fine because the DELETE has already removed the override row, so the next priced-path call (which always invokes apply_tier_overrides) will idempotently keep TIERS at the original. Verified by GET-after-DELETE assertion.",
+    "Potential micro-concern: apply_tier_overrides() rebuilds TIERS entries on every call (4 dataclass_replace operations per request). For the volume of tier-priced endpoints this is negligible; flagged only for awareness, not a fix request."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9.py (added TestConcurrentOverrides class for the concurrent-edits scenario requested by main agent)",
+    "/app/test_reports/pytest/pytest_iter10_results.xml (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "smoke_only_passed (bundle 200, no frontend re-test scope per request)"},
+  "seed_data_creation": "Admin session + non-admin user session injected via MongoDB fixtures; tier_overrides and tier_price_update/reset audit rows wiped on teardown. No leftover state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Admin tier feature fully fixed and verified. All 16 tests in test_iteration9.py green. No outstanding bugs from the FrozenInstanceError or defaults-snapshot regressions. Future iterations can build on this baseline.",
+  "rca_of_issue": "Resolved. Root cause was mutation of @dataclass(frozen=True) instances and a self-referencing 'defaults' alias. Fix applied: (a) module-load snapshot _ORIGINAL_TIERS via dataclass_replace, (b) apply_tier_overrides rebuilds via dataclass_replace from the snapshot, (c) admin_reset_tier restores TIERS[k] from the snapshot. Verified end-to-end through POST → GET → DELETE → GET cycle plus concurrent-tier scenario."
+}
