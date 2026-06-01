@@ -13,16 +13,28 @@ type Campaign = {
   votes_collected: number; aprovo_count: number; desaprovo_count: number;
 };
 
+type Dashboard = {
+  total_campaigns: number; active_count: number; completed_count: number;
+  canceled_count: number; pending_count: number;
+  total_votes_collected: number; total_votes_target: number;
+  aprovo_pct: number; total_amount_eur: number;
+};
+
 export default function CampaignsListScreen() {
   const { apiFetch } = useAuth();
   const router = useRouter();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [dash, setDash] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const r = await apiFetch("/api/business/campaigns");
-      if (r.ok) setCampaigns(await r.json());
+      const [r1, r2] = await Promise.all([
+        apiFetch("/api/business/campaigns"),
+        apiFetch("/api/business/dashboard"),
+      ]);
+      if (r1.ok) setCampaigns(await r1.json());
+      if (r2.ok) setDash(await r2.json());
     } finally { setLoading(false); }
   }, [apiFetch]);
 
@@ -45,6 +57,37 @@ export default function CampaignsListScreen() {
           data={campaigns}
           keyExtractor={(c) => c.campaign_id}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            dash && dash.total_campaigns > 0 ? (
+              <View style={styles.dashCard} testID="business-dashboard">
+                <Text style={styles.dashTitle}>VISÃO GERAL</Text>
+                <View style={styles.kpiRow}>
+                  <View style={styles.kpi}>
+                    <Text style={styles.kpiVal}>{dash.total_campaigns}</Text>
+                    <Text style={styles.kpiLabel}>CAMPANHAS</Text>
+                  </View>
+                  <View style={styles.kpi}>
+                    <Text style={styles.kpiVal}>{dash.total_votes_collected}</Text>
+                    <Text style={styles.kpiLabel}>VOTOS</Text>
+                  </View>
+                  <View style={[styles.kpi, { backgroundColor: colors.aprovo }]}>
+                    <Text style={styles.kpiVal}>{dash.aprovo_pct}%</Text>
+                    <Text style={styles.kpiLabel}>APROVO</Text>
+                  </View>
+                  <View style={[styles.kpi, { backgroundColor: colors.neutral }]}>
+                    <Text style={styles.kpiVal}>€{dash.total_amount_eur.toFixed(0)}</Text>
+                    <Text style={styles.kpiLabel}>INVESTIDO</Text>
+                  </View>
+                </View>
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusChip}>● {dash.active_count} ATIVA</Text>
+                  <Text style={styles.statusChip}>● {dash.completed_count} CONCL.</Text>
+                  <Text style={styles.statusChip}>● {dash.canceled_count} ELIM.</Text>
+                  <Text style={styles.statusChip}>● {dash.pending_count} PEND.</Text>
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>NENHUMA CAMPANHA</Text>
@@ -105,5 +148,14 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
   emptySub: { fontSize: 13, fontWeight: "600", color: colors.textSecondary, textAlign: "center", paddingHorizontal: 30, marginBottom: 20 },
   emptyBtn: { borderWidth: 4, borderColor: colors.border, backgroundColor: colors.aprovo, paddingHorizontal: 20, paddingVertical: 14, ...brutalShadow },
+  emptyBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.text },
+  dashCard: { borderWidth: 3, borderColor: colors.border, backgroundColor: colors.bg, padding: 14, marginBottom: 16, ...brutalShadow },
+  dashTitle: { fontSize: 11, fontWeight: "900", letterSpacing: 2, color: colors.text, marginBottom: 10 },
+  kpiRow: { flexDirection: "row", gap: 8 },
+  kpi: { flex: 1, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.bg, padding: 8, alignItems: "center" },
+  kpiVal: { fontSize: 18, fontWeight: "900", color: colors.text, letterSpacing: -0.5 },
+  kpiLabel: { fontSize: 8, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary, marginTop: 2 },
+  statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  statusChip: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
   emptyBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
 });

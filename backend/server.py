@@ -653,7 +653,37 @@ async def _maybe_send_milestone(campaign_id: str) -> None:
         if not to_email:
             return
         aprovo_pct = round((camp.get("aprovo_count", 0) / max(1, new_count)) * 100)
+        now = datetime.now(timezone.utc)
         for m in to_send:
+            # 1. In-app notification (zero-cost, no dependency on email).
+            try:
+                await db.notifications.insert_one({
+                    "notification_id": f"ntf_{uuid.uuid4().hex[:12]}",
+                    "user_id": camp["user_id"],
+                    "campaign_id": campaign_id,
+                    "type": "campaign_milestone",
+                    "title": (
+                        f"🎯 {m}% atingido — #{camp['word']}"
+                        if m < 100 else
+                        f"🏁 Meta concluída — #{camp['word']}"
+                    ),
+                    "body": (
+                        f"A tua campanha #{camp['word']} alcançou {m}% da meta "
+                        f"({new_count}/{target} votos · {aprovo_pct}% aprovo)."
+                    ),
+                    "payload": {
+                        "milestone": m,
+                        "votes_collected": new_count,
+                        "included_votes": target,
+                        "aprovo_pct": aprovo_pct,
+                    },
+                    "read_at": None,
+                    "created_at": now,
+                })
+            except Exception as e:
+                logger.warning(f"Notification insert failed for {campaign_id}: {e}")
+            # 2. Email (best-effort — sandbox tier may drop). Failure here does
+            #    NOT block the in-app notification which the advertiser sees.
             send_milestone_email(
                 to_email=to_email,
                 milestone=m,
@@ -1819,7 +1849,296 @@ async def stripe_webhook(request: Request):
     return {"received": True}
 
 
-app.include_router(api_router)
+# ---------------------------------------------------------------------------
+# Notifications — replaces email alerts. Zero-cost, real-time, in-app.
+# ---------------------------------------------------------------------------
+
+@api_router.get("/notifications")
+async def list_notifications(authorization: Optional[str] = Header(None),
+                              limit: int = Query(30, ge=1, le=100),
+                              unread_only: bool = Query(False)):
+    user = await get_current_user(authorization)
+    q: dict = {"user_id": user["user_id"]}
+    if unread_only:
+        q["read_at"] = None
+    cursor = db.notifications.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = await cursor.to_list(length=limit)
+    for it in items:
+        for k in ("created_at", "read_at"):
+            v = it.get(k)
+            if isinstance(v, datetime):
+                it[k] = v.isoformat()
+    unread = await db.notifications.count_documents({"user_id": user["user_id"], "read_at": None})
+    return {"items": items, "unread_count": unread}
+
+
+@api_router.get("/notifications/unread-count")
+async def notifications_unread_count(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    unread = await db.notifications.count_documents({"user_id": user["user_id"], "read_at": None})
+    return {"unread_count": unread}
+
+
+@api_router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str,
+                                  authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    r = await db.notifications.update_one(
+        {"notification_id": notification_id, "user_id": user["user_id"], "read_at": None},
+        {"$set": {"read_at": datetime.now(timezone.utc)}},
+    )
+    return {"ok": True, "modified": r.modified_count}
+
+
+@api_router.post("/notifications/read-all")
+async def mark_all_read(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    r = await db.notifications.update_many(
+        {"user_id": user["user_id"], "read_at": None},
+        {"$set": {"read_at": datetime.now(timezone.utc)}},
+    )
+    return {"ok": True, "modified": r.modified_count}
+
+
+# ---------------------------------------------------------------------------
+# Aggregated KPIs for advertiser hub
+# ---------------------------------------------------------------------------
+
+@api_router.get("/business/dashboard")
+async def business_dashboard(authorization: Optional[str] = Header(None)):
+    """Aggregated stats across ALL the advertiser's campaigns."""
+    user = await get_current_user(authorization)
+    pipeline = [
+        {"$match": {"user_id": user["user_id"]}},
+        {"$group": {
+            "_id": None,
+            "total_campaigns": {"$sum": 1},
+            "active_count": {"$sum": {"$cond": [{"$eq": ["$status", "active"]}, 1, 0]}},
+            "completed_count": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
+            "canceled_count": {"$sum": {"$cond": [{"$eq": ["$status", "canceled"]}, 1, 0]}},
+            "pending_count": {"$sum": {"$cond": [{"$eq": ["$status", "pending_payment"]}, 1, 0]}},
+            "total_amount_cents": {"$sum": "$amount_cents"},
+            "total_votes_collected": {"$sum": "$votes_collected"},
+            "total_votes_target": {"$sum": "$included_votes"},
+            "total_aprovo": {"$sum": "$aprovo_count"},
+            "total_desaprovo": {"$sum": "$desaprovo_count"},
+        }},
+    ]
+    rows = await db.campaigns.aggregate(pipeline).to_list(length=1)
+    agg = rows[0] if rows else {}
+    agg.pop("_id", None)
+    total_votes = (agg.get("total_aprovo", 0) or 0) + (agg.get("total_desaprovo", 0) or 0)
+    aprovo_pct = round(((agg.get("total_aprovo", 0) or 0) / total_votes) * 100) if total_votes else 0
+    # Recent milestones reached (last 10)
+    recent_milestones = await db.notifications.find(
+        {"user_id": user["user_id"], "type": "campaign_milestone"},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(10).to_list(length=10)
+    for m in recent_milestones:
+        for k in ("created_at", "read_at"):
+            v = m.get(k)
+            if isinstance(v, datetime):
+                m[k] = v.isoformat()
+    return {
+        **{k: int(v) if isinstance(v, (int, float)) else v for k, v in agg.items()},
+        "aprovo_pct": aprovo_pct,
+        "total_amount_eur": round((agg.get("total_amount_cents", 0) or 0) / 100, 2),
+        "recent_milestones": recent_milestones,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Share link (read-only public report) — token-based, 30-day expiry default.
+# ---------------------------------------------------------------------------
+
+class ShareLinkCreate(BaseModel):
+    expires_days: int = 30
+
+
+@api_router.post("/business/campaigns/{campaign_id}/share")
+async def create_share_link(campaign_id: str, payload: ShareLinkCreate,
+                             authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    camp = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    days = max(1, min(365, payload.expires_days or 30))
+    token = f"r_{uuid.uuid4().hex[:24]}"
+    now = datetime.now(timezone.utc)
+    await db.share_tokens.insert_one({
+        "token": token,
+        "campaign_id": campaign_id,
+        "user_id": user["user_id"],
+        "expires_at": now + timedelta(days=days),
+        "created_at": now,
+    })
+    return {"token": token, "expires_at": (now + timedelta(days=days)).isoformat()}
+
+
+@app.get("/api/r/{token}")
+async def public_share_report(token: str):
+    """Public, read-only report — no auth. Lookup token + return the same
+    report payload the owner sees. Excludes anything user-identifying."""
+    row = await db.share_tokens.find_one({"token": token}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Link inválido ou expirado")
+    exp = row.get("expires_at")
+    if exp is not None:
+        # Mongo returns naive UTC datetimes — normalize to aware before compare.
+        if getattr(exp, "tzinfo", None) is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp < datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="Link expirado")
+    campaign_id = row["campaign_id"]
+    camp = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    # Reuse the same internal aggregation as the authenticated report.
+    # We pass a synthetic "owner" to the report function — easier path: just
+    # build a stripped-down summary inline (no comments list, no audit).
+    total = (camp.get("aprovo_count", 0) or 0) + (camp.get("desaprovo_count", 0) or 0)
+    aprovo_pct = round(((camp.get("aprovo_count", 0) or 0) / total) * 100) if total else 0
+    return {
+        "word": camp.get("word"),
+        "image_base64": camp.get("image_base64"),
+        "tier_name": camp.get("tier_name"),
+        "scope": camp.get("scope"),
+        "duration_days": camp.get("duration_days"),
+        "target_country_code": camp.get("target_country_code"),
+        "target_region": camp.get("target_region"),
+        "target_city": camp.get("target_city"),
+        "votes_collected": total,
+        "included_votes": camp.get("included_votes"),
+        "aprovo_pct": aprovo_pct,
+        "aprovo_count": camp.get("aprovo_count", 0),
+        "desaprovo_count": camp.get("desaprovo_count", 0),
+        "status": camp.get("status"),
+        "starts_at": (camp.get("starts_at").isoformat() if isinstance(camp.get("starts_at"), datetime) else camp.get("starts_at")),
+        "ends_at": (camp.get("ends_at").isoformat() if isinstance(camp.get("ends_at"), datetime) else camp.get("ends_at")),
+    }
+
+
+# ---------------------------------------------------------------------------
+# PDF report — server-side via fpdf2, brutalist style. Zero external deps.
+# ---------------------------------------------------------------------------
+
+@api_router.get("/business/campaigns/{campaign_id}/report.pdf")
+async def campaign_report_pdf(campaign_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    camp = await db.campaigns.find_one(
+        {"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+
+    # Aggregate the same way the JSON report does — local copy to keep things simple.
+    async def agg_votes(field: str):
+        pipeline = [
+            {"$match": {"post_id": camp["post_id"]}},
+            {"$group": {"_id": f"$geo.{field}",
+                        "total": {"$sum": 1},
+                        "aprovo": {"$sum": {"$cond": [{"$eq": ["$vote", "aprovo"]}, 1, 0]}}}},
+            {"$sort": {"total": -1}}, {"$limit": 10},
+        ]
+        return await db.votes.aggregate(pipeline).to_list(length=10)
+
+    by_country = await agg_votes("country")
+    by_city = await agg_votes("city")
+    total = (camp.get("aprovo_count", 0) or 0) + (camp.get("desaprovo_count", 0) or 0)
+    aprovo_pct = round(((camp.get("aprovo_count", 0) or 0) / total) * 100) if total else 0
+    verdict = ("MUITO APROVADO" if aprovo_pct >= 75 else
+               "APROVADO" if aprovo_pct >= 55 else
+               "DIVIDIDO" if 45 <= aprovo_pct < 55 else
+               "DESAPROVADO" if aprovo_pct >= 25 else
+               "MUITO DESAPROVADO")
+
+    # ---- Build PDF with fpdf2 ----
+    from fpdf import FPDF
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+
+    # Header band
+    pdf.set_fill_color(255, 212, 0)  # neutral yellow
+    pdf.rect(0, 0, 210, 16, "F")
+    pdf.set_xy(15, 4)
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(10, 10, 10)
+    pdf.cell(0, 8, "BESORD INSIGHTS", ln=True)
+
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "B", 28)
+    pdf.cell(0, 12, f"#{camp.get('word', '')}", ln=True)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(90, 90, 90)
+    geo = " - ".join(filter(None, [camp.get("target_city"), camp.get("target_region"), camp.get("target_country_code")])) or "GLOBAL"
+    pdf.cell(0, 6, f"{camp.get('tier_name','')} - {geo} - {camp.get('duration_days','')}D", ln=True)
+    pdf.ln(4)
+
+    # KPI band (3 cols)
+    pdf.set_fill_color(124, 252, 139)  # aprovo green
+    pdf.set_text_color(10, 10, 10)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.cell(60, 24, f"{aprovo_pct}% APROVO", border=1, align="C", fill=True)
+    pdf.set_fill_color(255, 92, 92)  # desaprovo red
+    pdf.cell(60, 24, f"{100 - aprovo_pct}% DESAPROVO", border=1, align="C", fill=True)
+    pdf.set_fill_color(245, 245, 244)
+    pdf.cell(60, 24, f"{total} VOTOS", border=1, align="C", fill=True)
+    pdf.ln(28)
+
+    # Verdict
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, f"VEREDITO: {verdict}", ln=True)
+    pdf.ln(2)
+
+    # By country
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "TOP 10 - POR PAIS", ln=True, border="B")
+    pdf.set_font("Helvetica", "", 11)
+    if by_country:
+        for row in by_country:
+            label = row.get("_id") or "?"
+            tot = row.get("total", 0)
+            aprov = row.get("aprovo", 0)
+            pct = round((aprov / tot) * 100) if tot else 0
+            pdf.cell(0, 7, f"  {label:<6}  {tot:>6} votos   {pct}% aprovo", ln=True)
+    else:
+        pdf.cell(0, 7, "  (sem dados ainda)", ln=True)
+    pdf.ln(4)
+
+    # By city
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "TOP 10 - POR CIDADE", ln=True, border="B")
+    pdf.set_font("Helvetica", "", 11)
+    if by_city:
+        for row in by_city:
+            label = (row.get("_id") or "?")[:30]
+            tot = row.get("total", 0)
+            aprov = row.get("aprovo", 0)
+            pct = round((aprov / tot) * 100) if tot else 0
+            pdf.cell(0, 7, f"  {label:<30}  {tot:>6}   {pct}%", ln=True)
+    else:
+        pdf.cell(0, 7, "  (sem dados ainda)", ln=True)
+
+    # Footer
+    pdf.set_y(-22)
+    pdf.set_draw_color(10, 10, 10)
+    pdf.set_line_width(0.6)
+    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 4, f"Gerado em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} - besord.eu - campaign={campaign_id}", ln=True)
+
+    pdf_bytes = bytes(pdf.output(dest="S"))
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=besord_{camp.get('word','')}_{campaign_id[:8]}.pdf"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1832,6 +2151,9 @@ from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
 _WEBSITE_ZIP_PATH = Path(__file__).parent / "static" / "besord-site.zip"
+
+
+app.include_router(api_router)
 
 
 @app.get("/api/download/besord-site.zip")

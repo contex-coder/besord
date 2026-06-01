@@ -21,6 +21,17 @@ export default function PerfilScreen() {
   const router = useRouter();
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const loadUnread = useCallback(async () => {
+    try {
+      const r = await apiFetch("/api/notifications/unread-count");
+      if (r.ok) {
+        const d = await r.json();
+        setUnreadCount(d.unread_count || 0);
+      }
+    } catch {}
+  }, [apiFetch]);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -30,6 +41,7 @@ export default function PerfilScreen() {
         const data = await r.json();
         setMyPosts(data.filter((p: Post) => p.author_id === user.user_id));
       }
+      loadUnread();
     } finally {
       setLoading(false);
     }
@@ -69,9 +81,24 @@ export default function PerfilScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.title}>PERFIL</Text>
-        <TouchableOpacity testID="btn-logout" style={styles.logoutBtn} onPress={handleSignOut} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={20} color={colors.text} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            testID="btn-notifications"
+            style={styles.logoutBtn}
+            onPress={() => router.push("/notifications")}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="notifications-outline" size={20} color={colors.text} />
+            {unreadCount > 0 && (
+              <View style={styles.notifDot}>
+                <Text style={styles.notifDotText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity testID="btn-logout" style={styles.logoutBtn} onPress={handleSignOut} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.identityBanner}>
@@ -184,15 +211,29 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 28, fontWeight: "900", letterSpacing: -1, color: colors.text },
   logoutBtn: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderWidth: 3,
     borderColor: colors.border,
-    backgroundColor: colors.desaprovo,
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
-    ...brutalShadow,
   },
+  notifDot: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: colors.desaprovo,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notifDotText: { fontSize: 9, fontWeight: "900", color: colors.text },
   identityBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.neutral, borderBottomWidth: 3, borderBottomColor: colors.border },
   identityText: { flex: 1, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, color: colors.text },
   listContent: { padding: 20, paddingBottom: 40, gap: 12 },

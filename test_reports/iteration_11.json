@@ -1,0 +1,43 @@
+{
+  "summary": "Backend deep + frontend smoke for iteration 11 (notifications, business dashboard aggregate, public share link, PDF report, milestone hook). All 25 backend tests PASS (100%). Two real bugs found and FIXED in-flight: (1) Frontend bundle was failing to compile due to an orphan style block in perfil.tsx (lines 237-245 had free-floating object properties with no key, causing Babel to report a misleading error at line 258 col 109 — bell+badge UI was inaccessible); (2) Public share endpoint GET /api/r/{token} returned 500 on every call (happy AND expired) due to naive-vs-aware datetime comparison when reading expires_at back from Mongo. After both fixes: frontend serves HTTP 200 with no Metro error overlay, all share-link tests pass, milestone hook writes notification correctly (verified via real vote that crossed 50%). All 4 endpoint groups now route correctly (router-ordering bug from previous iteration is confirmed fixed: 401/200/404/410 codes as expected). Smoke regression (posts, auth/me, business/tiers, posts/vote, download/besord-site.zip) all 200. Frontend source verification: notifications.tsx exists, _layout.tsx whitelists 'notifications', business/campaigns.tsx has KPI block, business/campaign/[id].tsx has 3 export buttons (testID btn-share-report, etc.).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/r/{token}", "issue": "Naive datetime stored in Mongo for share_tokens.expires_at compared against tz-aware datetime.now(timezone.utc) — caused 500 on every call. FIXED by normalizing tzinfo before compare (server.py L1987)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "perfil.tsx", "issue": "Orphan StyleSheet block at lines 237-245 (object properties without a key after `notifDotText`) broke Metro bundle and made entire app a static error page. FIXED by removing the orphan block; bell+badge testID 'btn-notifications' now reachable.", "testID": "btn-notifications", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* props (perfil.tsx, theme.ts)", "issue": "Metro warns 'shadow* style props are deprecated. Use boxShadow'. Reference: /app/frontend/src/theme.ts:24 (brutalShadow uses shadowColor/shadowOffset/shadowOpacity/shadowRadius). Non-blocking but should migrate to React Native boxShadow on web/RN-Web for forward-compat."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11.py",
+    "/app/test_reports/pytest/pytest_iter11_results.xml"
+  ],
+  "action_items": [
+    "[OPTIONAL] Migrate brutalShadow (theme.ts:24) from shadow* props to boxShadow to silence Metro deprecation warnings.",
+    "[OPTIONAL] Audit other endpoints that compare Mongo-stored datetimes against datetime.now(timezone.utc) for the same naive-vs-aware bug class (e.g., any expiry check on user_sessions, campaigns.ends_at). The pattern `if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)` should be normalized into a helper.",
+    "[VERIFY] Resend is still rejecting emails for non-verified domain `besord.eu` (logs: 'You can only send testing emails to your own email address'). The in-app notification fallback works (verified via milestone test), so user requirement is met — but if Resend domain ever gets verified, no code change needed."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 2204 lines — over the 700-line guideline. Consider splitting into routers/notifications.py, routers/business.py, routers/share.py, services/email.py, services/pdf.py.",
+    "Mongo datetime tz handling is inconsistent across the codebase — formalize on UTC-aware everywhere or add a helper."
+  ],
+  "updated_files": [
+    "/app/frontend/app/(tabs)/perfil.tsx (removed orphan style block 237-245)",
+    "/app/backend/server.py (normalized tz on row['expires_at'] in public_share_report, L1987-1993)",
+    "/app/backend/tests/test_iteration11.py (new — 25 tests)"
+  ],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "compiles + serves 200; OAuth login source-verified per request"},
+  "seed_data_creation": "Seeded 2 test users (user_TEST_iter11_owner with business_profile + user_TEST_iter11_other), 2 sessions, 3 campaigns (active/completed/pending_payment) and 1 post under camp_TEST_iter11_a. All seeded data is teardown-cleaned via the module-scoped fixture at end of run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 new endpoint groups (notifications / dashboard / share-link / PDF) plus milestone-hook → notification persistence are verified end-to-end. The router-ordering bug from the previous iteration is confirmed fixed (no 404 on these routes anymore). Two bugs were fixed in this iteration: (a) perfil.tsx orphan style block — frontend now compiles; (b) public share endpoint tz-compare bug — now returns 200/410 correctly. The Resend integration is still failing on `besord.eu` domain (DNS pending) — this is expected per the original problem statement and the in-app notification path replaces it.",
+  "rca_of_issue": "BUG 1 (perfil.tsx orphan styles): Likely a previous refactor removed a style key (e.g., `notifBtn:`) but left the property body behind. Babel emitted a confusing 'Unexpected token (258:109)' message that pointed at the *next* spread operator it tried to parse, not at the actual orphan. RCA: when adding new styles, always wrap the value in a key. Mitigation: ESLint rule `@typescript-eslint/no-unused-expressions` or running `tsc --noEmit` in CI would have caught this. BUG 2 (share link 500): Motor (async pymongo) returns BSON datetimes as offset-naive Python datetimes; the code did `row['expires_at'] < datetime.now(timezone.utc)` which raises TypeError. RCA: missing tz normalization on Mongo read. Mitigation applied: detect `tzinfo is None` and `replace(tzinfo=timezone.utc)` before compare. Reproduction: POST /api/business/campaigns/{id}/share then GET /api/r/{token} — previously 500, now 200."
+}

@@ -68,7 +68,8 @@ function RootNavigator() {
       } else if (user.age_confirmed && !onboarded && !inOnboarding && !inLegal) {
         router.replace("/onboarding");
       } else if (user.age_confirmed && onboarded && !inTabs && !inLegal &&
-                 first !== "business" && first !== "admin" && first !== "word") {
+                 first !== "business" && first !== "admin" && first !== "word" &&
+                 first !== "notifications") {
         router.replace("/(tabs)/feed");
       }
     } else if (inTabs || first === "business" || first === "admin" || inAgeGate) {

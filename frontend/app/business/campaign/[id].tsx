@@ -254,7 +254,6 @@ export default function CampaignDetailScreen() {
                   const t = await token.secureGet<string>("besord_token", "");
                   const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.csv`;
                   if (Platform.OS === "web" && typeof window !== "undefined") {
-                    // Fetch with auth and trigger download
                     const r = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
                     const blob = await r.blob();
                     const dl = document.createElement("a");
@@ -267,6 +266,51 @@ export default function CampaignDetailScreen() {
                 }}>
                   <Ionicons name="download" size={20} color={colors.text} />
                   <Text style={styles.exportText}>EXPORTAR CSV</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity testID="btn-export-pdf" style={[styles.exportBtn, { backgroundColor: colors.desaprovo, marginTop: 10 }]} onPress={async () => {
+                  const token = (await import("@/src/utils/storage")).storage;
+                  const t = await token.secureGet<string>("besord_token", "");
+                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.pdf`;
+                  if (Platform.OS === "web" && typeof window !== "undefined") {
+                    const r = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
+                    const blob = await r.blob();
+                    const dl = document.createElement("a");
+                    dl.href = URL.createObjectURL(blob);
+                    dl.download = `besord_${campaign.word}.pdf`;
+                    dl.click();
+                  } else {
+                    await WebBrowser.openBrowserAsync(url + `?auth=${encodeURIComponent(t || "")}`);
+                  }
+                }}>
+                  <Ionicons name="document-text" size={20} color={colors.textInverse} />
+                  <Text style={[styles.exportText, { color: colors.textInverse }]}>RELATÓRIO PDF</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity testID="btn-share-report" style={[styles.exportBtn, { backgroundColor: colors.neutral, marginTop: 10 }]} onPress={async () => {
+                  try {
+                    const r = await apiFetch(`/api/business/campaigns/${campaign.campaign_id}/share`, {
+                      method: "POST",
+                      body: JSON.stringify({ expires_days: 30 }),
+                    });
+                    if (r.ok) {
+                      const data = await r.json();
+                      const origin = typeof window !== "undefined" && (window as any).location
+                        ? (window as any).location.origin
+                        : "https://besord.eu";
+                      const shareUrl = `${origin}/api/r/${data.token}`;
+                      if (Platform.OS === "web" && typeof navigator !== "undefined") {
+                        await (navigator as any).clipboard?.writeText(shareUrl);
+                        (window as any).alert?.(`Link copiado!\n\n${shareUrl}\n\nVálido 30 dias.`);
+                      } else {
+                        const { Share } = await import("react-native");
+                        await Share.share({ message: `Vê este relatório Besord: ${shareUrl}`, url: shareUrl });
+                      }
+                    }
+                  } catch (e) { console.error(e); }
+                }}>
+                  <Ionicons name="link" size={20} color={colors.text} />
+                  <Text style={styles.exportText}>PARTILHAR LINK (30D)</Text>
                 </TouchableOpacity>
               </>
             )}
