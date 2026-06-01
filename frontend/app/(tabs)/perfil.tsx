@@ -175,30 +175,38 @@ export default function PerfilScreen() {
 
             {/* ──────────── ESPAÇO EMPRESA ──────────── */}
             <Text style={styles.sectionHeader}>🏢  ESPAÇO EMPRESA</Text>
-            <TouchableOpacity
-              testID="btn-advertise"
-              style={styles.advertiseBtn}
-              onPress={() => router.push(user.has_business ? "/business/campaigns" : "/workspaces?new=1")}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="rocket" size={20} color={colors.text} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.advertiseTitle}>{user.has_business ? "CAMPANHAS DA EMPRESA" : "ANUNCIAR COMO EMPRESA"}</Text>
-                <Text style={styles.advertiseSub}>{user.has_business ? "Gerir campanhas patrocinadas" : "Pagas com Stripe, fatura com NIF"}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.text} />
-            </TouchableOpacity>
+            {user.has_business ? (
+              <TouchableOpacity
+                testID="btn-advertise"
+                style={styles.advertiseBtn}
+                onPress={() => router.push("/business/campaigns")}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="rocket" size={20} color={colors.text} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.advertiseTitle}>ANUNCIAR / CAMPANHAS DA EMPRESA</Text>
+                  <Text style={styles.advertiseSub}>Cria ou gerir campanhas (pagas com Stripe)</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.text} />
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               testID="btn-workspaces"
               style={styles.advertiseBtn}
-              onPress={() => router.push("/workspaces")}
+              onPress={() => router.push(user.has_business ? "/workspaces" : "/workspaces?new=1")}
               activeOpacity={0.85}
             >
               <Ionicons name="business" size={20} color={colors.text} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.advertiseTitle}>MINHAS EMPRESAS</Text>
-                <Text style={styles.advertiseSub}>Adicionar / trocar empresa anunciante</Text>
+                <Text style={styles.advertiseTitle}>
+                  {user.has_business ? "MINHAS EMPRESAS" : "ADICIONAR A 1.ª EMPRESA"}
+                </Text>
+                <Text style={styles.advertiseSub}>
+                  {user.has_business
+                    ? "Adicionar / editar / trocar empresa ativa"
+                    : "Cadastra a tua empresa para começares a anunciar"}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </TouchableOpacity>

@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
+import { errorMessage } from "@/src/utils/errorMessage";
 
 type Workspace = {
   workspace_id: string;
@@ -129,7 +130,7 @@ export default function WorkspacesScreen() {
     setSubmitting(false);
     if (!r.ok) {
       const body = await r.json().catch(() => null);
-      setCreateError(body?.detail || "Não foi possível criar.");
+      setCreateError(errorMessage(body, "Não foi possível criar."));
       return;
     }
     setName(""); setTaxId(""); setBillingEmail(""); setContactName(""); setContactEmail("");

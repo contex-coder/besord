@@ -8,6 +8,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
+import { errorMessage } from "@/src/utils/errorMessage";
 
 type Tier = { key: string; name: string; scope: string; duration_days: number; amount_cents: number; amount_usd: number; included_votes: number };
 type Theme = { key: string; name: string; emoji: string; covers: string };
@@ -47,21 +48,26 @@ export default function NewCampaignScreen() {
   };
 
   useEffect(() => {
-    if (!user?.has_business) {
-      router.replace("/business/onboard");
-      return;
-    }
+    // Note: we no longer auto-redirect when !has_business — the JSX gate below
+    // (when workspaces.length === 0) shows a friendly "add company first" card
+    // with a button, which is mounted-safe and respects the user's flow.
+  }, [user, router]);
+
+  // Track loading of workspaces so we can show an "add company first" gate
+  const [wsLoaded, setWsLoaded] = useState(false);
+
+  useEffect(() => {
     apiFetch("/api/business/tiers").then(r => r.json()).then(setTiers);
     apiFetch("/api/themes").then(r => r.ok ? r.json() : []).then((d) => setThemes(Array.isArray(d) ? d : []));
     apiFetch("/api/workspaces").then(r => r.ok ? r.json() : null).then((d) => {
-      if (!d) return;
+      if (!d) { setWsLoaded(true); return; }
       const list: Workspace[] = (d.workspaces || []).filter((w: Workspace) => w.type === "business");
       setWorkspaces(list);
-      // Prefer active_workspace_id if it is a business one
       const active = d.active_workspace_id && list.find((w: Workspace) => w.workspace_id === d.active_workspace_id)
         ? d.active_workspace_id
         : (list[0]?.workspace_id || null);
       setSelectedWorkspace(active);
+      setWsLoaded(true);
     });
   }, []);  // eslint-disable-line
 
@@ -113,7 +119,7 @@ export default function NewCampaignScreen() {
         router.replace(`/business/campaign/${data.campaign_id}`);
       } else {
         const err = await r.json().catch(() => ({}));
-        Alert.alert("Erro", err.detail || "Falha ao criar.");
+        Alert.alert("Erro", errorMessage(err, "Falha ao criar."));
       }
     } finally {
       setSubmitting(false);
@@ -129,6 +135,23 @@ export default function NewCampaignScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {wsLoaded && workspaces.length === 0 && (
+          <View style={styles.gateCard}>
+            <Ionicons name="business" size={32} color={colors.text} />
+            <Text style={styles.gateTitle}>ADICIONA UMA EMPRESA PRIMEIRO</Text>
+            <Text style={styles.gateSub}>
+              Para anunciares como empresa precisas primeiro de cadastrar uma. A fatura sairá em nome dela.
+            </Text>
+            <TouchableOpacity
+              testID="btn-gate-add-ws"
+              style={styles.gateBtn}
+              onPress={() => router.replace("/workspaces?new=1")}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.gateBtnText}>ADICIONAR EMPRESA</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {workspaces.length > 0 && (
           <View>
             <Text style={styles.section}>0. EMPRESA ANUNCIANTE</Text>
@@ -158,17 +181,8 @@ export default function NewCampaignScreen() {
                   </TouchableOpacity>
                 );
               })}
-              <TouchableOpacity
-                testID="ws-chip-add"
-                style={[styles.wsChip, styles.wsChipAdd]}
-                onPress={() => router.push("/workspaces")}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="add" size={14} color={colors.text} />
-                <Text style={[styles.wsChipText, { color: colors.text }]}>NOVA</Text>
-              </TouchableOpacity>
             </ScrollView>
-            <Text style={styles.wsHint}>A fatura será emitida em nome desta empresa.</Text>
+            <Text style={styles.wsHint}>A fatura será emitida em nome desta empresa. Para adicionar/editar empresas, vai a <Text style={{fontWeight:"900"}}>Perfil → Minhas Empresas</Text>.</Text>
             <View style={{ height: 12 }} />
           </View>
         )}
@@ -348,5 +362,10 @@ const styles = StyleSheet.create({
   wsChipTextActive: { color: colors.text },
   wsChipNif: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, marginLeft: 4 },
   wsHint: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginTop: 6 },
+  gateCard: { borderWidth: 4, borderColor: colors.border, padding: 20, marginBottom: 24, backgroundColor: colors.aprovo, alignItems: "center", gap: 10, ...brutalShadow },
+  gateTitle: { fontSize: 16, fontWeight: "900", letterSpacing: 2, color: colors.text, textAlign: "center", marginTop: 6 },
+  gateSub: { fontSize: 12, fontWeight: "700", color: colors.text, textAlign: "center", lineHeight: 18 },
+  gateBtn: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: colors.text, borderWidth: 3, borderColor: colors.border, ...brutalShadow },
+  gateBtnText: { fontSize: 13, fontWeight: "900", letterSpacing: 2, color: colors.textInverse },
   disclaimer: { textAlign: "center", marginTop: 12, fontSize: 10, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.5 },
 });

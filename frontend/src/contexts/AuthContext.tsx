@@ -249,7 +249,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (!r.ok) {
           const body = await r.json().catch(() => null);
-          return { ok: false, error: body?.detail || "Falha no login." };
+          const detail = body?.detail;
+          const msg = typeof detail === "string"
+            ? detail
+            : (Array.isArray(detail) ? detail.map((e: any) => e?.msg || "").filter(Boolean).join(" · ") : "")
+              || "Falha no login.";
+          return { ok: false, error: msg };
         }
         const data = await r.json();
         await finishPasswordAuth(data);

@@ -76,7 +76,9 @@ class TestLogin:
         assert r.status_code == 400
         assert "inválid" in r.text.lower() or "invalid" in r.text.lower()
 
-    def test_login_unknown_email_generic(self, base_url, api_client):
+    def test_login_unknown_email_generic(self, base_url, api_client, mongo_db):
+        # Clean rate-limit attempts so prior tests don't trigger 429 here
+        mongo_db.login_attempts.delete_many({"email": "nonexistent-xyz@besord.eu"})
         r = api_client.post(_u(base_url, "/api/auth/login"),
                             json={"email": "nonexistent-xyz@besord.eu", "password": "abc12345"})
         assert r.status_code == 400  # never 404, no enumeration
