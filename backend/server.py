@@ -2305,10 +2305,11 @@ async def unfollow_style(word: str, authorization: Optional[str] = Header(None))
 
 @api_router.get("/styles/{word}/status")
 async def style_status(word: str, authorization: Optional[str] = Header(None)):
+    w = normalize_word(word.strip())
     user = await get_optional_user(authorization)
     if not user:
-        return {"following": False, "follower_count": 0}
-    w = normalize_word(word.strip())
+        total = await db.followed_styles.count_documents({"word": w})
+        return {"following": False, "follower_count": total, "word": w}
     mine = await db.followed_styles.find_one({"user_id": user["user_id"], "word": w}, {"_id": 1})
     total = await db.followed_styles.count_documents({"word": w})
     return {"following": bool(mine), "follower_count": total, "word": w}

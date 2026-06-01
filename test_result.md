@@ -101,3 +101,108 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Besord - protótipo de app social para feedback de 1 palavra sobre imagens. Iteração B: implementar Carteira BW (BestWord XP, 1 voto = +1 BW, sem valor monetário) e BestWord Styles (seguir palavras/temas para feed personalizado)."
+
+backend:
+  - task: "BW Wallet - voter rewarded +1 BW per new vote"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Pytest 15/15 passou. Vote on other post awards BW; self-vote does NOT award; vote update/undo do NOT re-award."
+
+  - task: "GET /api/wallet/me returns balance/total_earned/total_spent/transactions"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Endpoint criado e validado por pytest."
+
+  - task: "Styles follow/unfollow/status/me endpoints"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Idempotente. Validação de bad-words via moderation. Unauth status agora retorna word + follower_count global."
+
+  - task: "GET /api/posts?source=styles filters by followed words"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Sem auth → []. Sem follows → []. Com follow PIZZA → só posts com word=PIZZA."
+
+frontend:
+  - task: "AuthContext exposes bw_balance + bw_total_earned"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/contexts/AuthContext.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Tipo User atualizado. Refresh via /api/auth/me carrega os campos."
+
+  - task: "Perfil exibe Carteira BW"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/perfil.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Card BW (saldo grande + total ganho + explicação) renderizado acima do botão de anunciar."
+
+  - task: "Feed - aba ESTILOS filtra por followed words"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/feed.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Sort toggle com 3 botões: RECENTE / EM ALTA / ESTILOS. Estilos usa source=styles param."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.3"
+  test_sequence: 14
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Iteração B - Carteira BW + Styles (BACKEND COMPLETO, 15/15 testes passando)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Iteração B finalizada. Backend testado via pytest (test_iteration13.py): 15/15 PASS. Frontend já estava implementado da sessão anterior (AuthContext, perfil card BW, feed ESTILOS tab). Próxima fase (Fase 2): permitir escolher tema/categoria ao criar anúncio (B2B)."
