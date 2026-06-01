@@ -27,6 +27,9 @@ type AuthContextType = {
   loading: boolean;
   signIn: () => Promise<void>;
   signInWithApple: () => Promise<void>;
+  signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  registerWithPassword: (email: string, password: string, name?: string) => Promise<{ ok: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
@@ -217,6 +220,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const finishPasswordAuth = useCallback(async (data: { token: string; user_id: string; email: string; name?: string }) => {
+    await storage.secureSet(TOKEN_KEY, data.token);
+    setToken(data.token);
+    // Fetch the full user object (with bw_balance, is_admin, etc.)
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${data.token}` },
+      });
+      if (r.ok) {
+        const u = await r.json();
+        setUser(u);
+      } else {
+        setUser({ user_id: data.user_id, email: data.email, name: data.name || data.email });
+      }
+    } catch {
+      setUser({ user_id: data.user_id, email: data.email, name: data.name || data.email });
+    }
+  }, []);
+
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => null);
+          return { ok: false, error: body?.detail || "Falha no login." };
+        }
+        const data = await r.json();
+        await finishPasswordAuth(data);
+        return { ok: true };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || "Erro de rede." };
+      }
+    },
+    [finishPasswordAuth]
+  );
+
+  const registerWithPassword = useCallback(
+    async (email: string, password: string, name?: string) => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password, name: name || null }),
+        });
+        if (!r.ok) {
+          const body = await r.json().catch(() => null);
+          const detail = body?.detail;
+          const msg = typeof detail === "string" ? detail : "Não foi possível criar a conta.";
+          return { ok: false, error: msg };
+        }
+        const data = await r.json();
+        await finishPasswordAuth(data);
+        return { ok: true };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || "Erro de rede." };
+      }
+    },
+    [finishPasswordAuth]
+  );
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      if (!r.ok) return { ok: false, error: "Falha no pedido." };
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Erro de rede." };
+    }
+  }, []);
+
   const refreshUser = useCallback(async () => {
     if (!token) return;
     try {
@@ -249,7 +331,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signInWithApple, signOut, refreshUser, apiFetch }}>
+    <AuthContext.Provider value={{ user, token, loading, signIn, signInWithApple, signInWithPassword, registerWithPassword, requestPasswordReset, signOut, refreshUser, apiFetch }}>
       {children}
     </AuthContext.Provider>
   );

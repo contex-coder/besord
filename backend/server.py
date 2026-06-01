@@ -21,6 +21,7 @@ from moderation import check_word as moderate_word
 from themes import THEMES, THEME_KEYS
 from bw_pricing import BW_TIERS_DEFAULTS, BW_TIER_KEYS
 from dataclasses import replace as dataclass_replace
+import password_auth as _pwd_auth
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
 # Used by the admin "reset" endpoint to restore defaults — never mutated.
@@ -2523,6 +2524,7 @@ async def list_personal_ads(authorization: Optional[str] = Header(None)):
     return rows
 
 
+api_router.include_router(_pwd_auth.build_router(db, user_out))
 app.include_router(api_router)
 
 
@@ -2574,6 +2576,7 @@ async def setup_indexes():
         await db.campaigns.create_index("campaign_id", unique=True)
         await db.campaigns.create_index("user_id")
         await db.campaigns.create_index("status")
+        await _pwd_auth.ensure_indexes(db)
     except Exception as e:
         logger.warning(f"Index setup warning: {e}")
 

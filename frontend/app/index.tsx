@@ -88,6 +88,15 @@ export default function Landing() {
               </Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            testID="btn-login-email"
+            style={[styles.googleBtn, styles.emailBtn]}
+            onPress={() => router.push("/login-email")}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="mail-outline" size={22} color={colors.text} />
+            <Text style={styles.btnText}>EMAIL / PALAVRA-PASSE</Text>
+          </TouchableOpacity>
           <Text style={styles.legal}>{t("legal")}</Text>
           <View style={styles.legalLinks}>
             <TouchableOpacity onPress={() => router.push("/legal?doc=terms")}>
@@ -152,6 +161,7 @@ const styles = StyleSheet.create({
     ...brutalShadow,
   },
   appleBtn: { backgroundColor: colors.text },
+  emailBtn: { backgroundColor: colors.neutral },
   btnText: { fontSize: 16, fontWeight: "900", letterSpacing: 2, color: colors.text },
   legal: {
     fontSize: 10,
