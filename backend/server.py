@@ -123,6 +123,7 @@ class CampaignCreate(BaseModel):
     target_region: Optional[str] = None
     target_city: Optional[str] = None
     promo_code: Optional[str] = None
+    theme: Optional[str] = None  # one of THEME_KEYS, optional
 
 class CampaignOut(BaseModel):
     campaign_id: str
@@ -136,6 +137,7 @@ class CampaignOut(BaseModel):
     target_country_code: Optional[str] = None
     target_region: Optional[str] = None
     target_city: Optional[str] = None
+    theme: Optional[str] = None
     status: str  # pending_payment, active, completed, canceled
     amount_cents: int
     included_votes: int
@@ -258,6 +260,7 @@ def serialize_campaign(c: dict, checkout_url: Optional[str] = None) -> CampaignO
         target_country_code=c.get("target_country_code"),
         target_region=c.get("target_region"),
         target_city=c.get("target_city"),
+        theme=c.get("theme"),
         status=c["status"],
         amount_cents=int(c["amount_cents"]),
         included_votes=int(c["included_votes"]),
@@ -944,6 +947,11 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
     if tier.scope == "city" and (not payload.target_country_code or not payload.target_city):
         raise HTTPException(status_code=400, detail="País e cidade alvos obrigatórios.")
 
+    # Optional theme (one of THEME_KEYS)
+    campaign_theme = (payload.theme or "").strip().lower() or None
+    if campaign_theme and campaign_theme not in THEME_KEYS:
+        raise HTTPException(status_code=400, detail="Tema inválido.")
+
     campaign_id = f"camp_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
 
@@ -986,6 +994,7 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
         "target_country_code": (payload.target_country_code or "").upper() or None,
         "target_region": payload.target_region,
         "target_city": payload.target_city,
+        "theme": campaign_theme,
         "status": "pending_payment",
         "votes_collected": 0,
         "aprovo_count": 0,
@@ -1118,6 +1127,7 @@ async def check_campaign_payment(campaign_id: str, authorization: Optional[str] 
             "hidden": False,
             "is_sponsored": True,
             "campaign_id": campaign_id,
+            "theme": campaign.get("theme"),
         }
         await db.posts.insert_one(post.copy())
         await db.campaigns.update_one(

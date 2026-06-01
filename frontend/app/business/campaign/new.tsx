@@ -10,12 +10,15 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 
 type Tier = { key: string; name: string; scope: string; duration_days: number; amount_cents: number; amount_usd: number; included_votes: number };
+type Theme = { key: string; name: string; emoji: string; covers: string };
 
 export default function NewCampaignScreen() {
   const { apiFetch, user } = useAuth();
   const router = useRouter();
   const [tiers, setTiers] = useState<Tier[]>([]);
+  const [themes, setThemes] = useState<Theme[]>([]);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
+  const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const [image, setImage] = useState<string | null>(null);
   const [word, setWord] = useState("");
   const [country, setCountry] = useState("");
@@ -46,6 +49,7 @@ export default function NewCampaignScreen() {
       return;
     }
     apiFetch("/api/business/tiers").then(r => r.json()).then(setTiers);
+    apiFetch("/api/themes").then(r => r.ok ? r.json() : []).then((d) => setThemes(Array.isArray(d) ? d : []));
   }, []);  // eslint-disable-line
 
   const pickImage = useCallback(async () => {
@@ -78,6 +82,7 @@ export default function NewCampaignScreen() {
           target_country_code: country.toUpperCase() || null,
           target_region: region || null,
           target_city: city || null,
+          theme: selectedTheme,
           promo_code: promoCode || null,
         }),
       });
@@ -168,7 +173,47 @@ export default function NewCampaignScreen() {
         </View>
 
         <View style={{ marginTop: 18 }}>
-          <Text style={styles.section}>5. CÓDIGO PROMOCIONAL (opcional)</Text>
+          <Text style={styles.section}>5. TEMA (opcional)</Text>
+          <Text style={styles.themeHint}>Categoriza teu anúncio para aparecer em Estilos e Trends do mesmo tema.</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+            style={{ marginTop: 8 }}
+          >
+            <TouchableOpacity
+              testID="theme-chip-none"
+              style={[styles.themeChip, !selectedTheme && styles.themeChipActive]}
+              onPress={() => setSelectedTheme(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.themeChipEmoji}>—</Text>
+              <Text style={[styles.themeChipText, !selectedTheme && styles.themeChipTextActive]}>NENHUM</Text>
+            </TouchableOpacity>
+            {themes.map((t) => {
+              const active = selectedTheme === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  testID={`theme-chip-${t.key}`}
+                  style={[styles.themeChip, active && styles.themeChipActive]}
+                  onPress={() => setSelectedTheme(active ? null : t.key)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.themeChipEmoji}>{t.emoji}</Text>
+                  <Text style={[styles.themeChipText, active && styles.themeChipTextActive]}>{t.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          {selectedTheme && (() => {
+            const t = themes.find((x) => x.key === selectedTheme);
+            return t ? <Text style={styles.themeCovers} numberOfLines={2}>{t.covers}</Text> : null;
+          })()}
+        </View>
+
+        <View style={{ marginTop: 18 }}>
+          <Text style={styles.section}>6. CÓDIGO PROMOCIONAL (opcional)</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TextInput testID="input-promo" style={[styles.input, { flex: 1 }]} placeholder="EX: LANCAMENTO" placeholderTextColor="#A1A1AA"
                        value={promoCode} onChangeText={(v) => { setPromoCode(v.toUpperCase()); setPromoApplied(null); }} autoCapitalize="characters" />
@@ -222,5 +267,21 @@ const styles = StyleSheet.create({
   applyBtn: { borderWidth: 3, borderColor: colors.border, backgroundColor: colors.neutral, paddingHorizontal: 14, justifyContent: "center", ...brutalShadow },
   applyText: { fontSize: 12, fontWeight: "900", letterSpacing: 1, color: colors.text },
   promoOk: { marginTop: 6, fontSize: 12, fontWeight: "900", color: colors.aprovo, letterSpacing: 1 },
+  themeHint: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.3 },
+  themeChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    borderWidth: 3, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: colors.bg, ...brutalShadow,
+  },
+  themeChipActive: {
+    backgroundColor: colors.aprovo,
+    transform: [{ translateX: 2 }, { translateY: 2 }],
+    shadowOpacity: 0, elevation: 0,
+  },
+  themeChipEmoji: { fontSize: 14 },
+  themeChipText: { fontSize: 11, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
+  themeChipTextActive: { color: colors.text },
+  themeCovers: { marginTop: 8, fontSize: 11, fontWeight: "700", color: colors.text, lineHeight: 16 },
   disclaimer: { textAlign: "center", marginTop: 12, fontSize: 10, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.5 },
 });

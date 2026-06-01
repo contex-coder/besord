@@ -206,3 +206,5 @@ test_plan:
 agent_communication:
     - agent: "main"
       message: "Iteração B finalizada. Backend testado via pytest (test_iteration13.py): 15/15 PASS. Frontend já estava implementado da sessão anterior (AuthContext, perfil card BW, feed ESTILOS tab). Próxima fase (Fase 2): permitir escolher tema/categoria ao criar anúncio (B2B)."
+    - agent: "main"
+      message: "Fase 2 finalizada. Backend: CampaignCreate/CampaignOut aceitam campo `theme` opcional, validado contra THEME_KEYS, persistido em campaigns, e propagado para o post patrocinado ao ativar. Frontend: tela /business/campaign/new agora tem seção 5 'TEMA' com 11 chips (NENHUM + 10 temas oficiais carregados de /api/themes). Pytest 4/4 PASS no novo test_iteration14_campaign_theme.py. Sem regressões (244/244 na suíte completa após fix de schema label->name no test_besord_v2)."

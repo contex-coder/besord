@@ -349,7 +349,7 @@ class TestSponsoredFeedAndGeo:
         assert rep["aprovo_pct"] == 60
 
         # by_country: Brazil(3 votes: 2 aprovo, 1 desaprovo), US (2 votes: 1 aprovo, 1 desaprovo)
-        by_country = {row["label"]: row for row in rep["by_country"]}
+        by_country = {row["name"]: row for row in rep["by_country"]}
         assert "Brazil" in by_country
         assert by_country["Brazil"]["total"] == 3
         assert by_country["Brazil"]["aprovo"] == 2
@@ -358,12 +358,12 @@ class TestSponsoredFeedAndGeo:
         assert by_country["United States"]["total"] == 2
 
         # by_region
-        by_region = {row["label"]: row for row in rep["by_region"]}
+        by_region = {row["name"]: row for row in rep["by_region"]}
         assert by_region["São Paulo"]["total"] == 2
         assert by_region["São Paulo"]["aprovo"] == 2
 
         # by_city
-        by_city = {row["label"]: row for row in rep["by_city"]}
+        by_city = {row["name"]: row for row in rep["by_city"]}
         assert by_city["São Paulo"]["total"] == 1
         assert by_city["Campinas"]["total"] == 1
 
