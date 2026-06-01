@@ -23,6 +23,7 @@ from bw_pricing import BW_TIERS_DEFAULTS, BW_TIER_KEYS
 from dataclasses import replace as dataclass_replace
 import password_auth as _pwd_auth
 import workspaces as _ws_mod
+from routes import discovery as _discovery_mod
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
 # Used by the admin "reset" endpoint to restore defaults — never mutated.
@@ -694,6 +695,13 @@ async def vote_post(post_id: str, payload: VoteRequest, request: Request, author
             # Milestone email check (50/75/100% of included_votes goal)
             await _maybe_send_milestone(post["campaign_id"])
 
+        if post.get("personal_ad_id"):
+            await db.personal_ads.update_one(
+                {"personal_ad_id": post["personal_ad_id"], "status": "active"},
+                {"$inc": {f"{new_vote}_count": 1, "votes_collected": 1}},
+            )
+            await _maybe_close_personal_ad(post["personal_ad_id"])
+
     updated = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
     return await serialize_post(updated, user["user_id"])
 
@@ -771,6 +779,64 @@ async def _maybe_send_milestone(campaign_id: str) -> None:
         )
     except Exception as e:
         logger.error(f"Milestone email check failed for {campaign_id}: {e}")
+
+
+async def _maybe_close_personal_ad(personal_ad_id: str) -> None:
+    """If a personal ad has reached its included_votes cap, mark it completed,
+    flag the post non-sponsored anymore, and create an in-app notification.
+    Idempotent."""
+    try:
+        ad = await db.personal_ads.find_one({"personal_ad_id": personal_ad_id}, {"_id": 0})
+        if not ad or ad.get("status") != "active":
+            return
+        cap = int(ad.get("included_votes") or 0)
+        if cap <= 0:
+            return
+        votes = int(ad.get("votes_collected") or 0)
+        if votes < cap:
+            return
+        now = datetime.now(timezone.utc)
+        # Mark completed
+        r = await db.personal_ads.update_one(
+            {"personal_ad_id": personal_ad_id, "status": "active"},
+            {"$set": {"status": "completed", "completed_at": now, "completion_reason": "cap_reached"}},
+        )
+        if r.modified_count != 1:
+            return  # already closed by a concurrent vote
+        # Unsponsor the post so it stops getting boosted
+        await db.posts.update_one(
+            {"post_id": ad.get("post_id")},
+            {"$set": {"is_sponsored": False}, "$unset": {"campaign_id": ""}},
+        )
+        # Compute final stats
+        aprovo = int(ad.get("aprovo_count", 0))
+        desaprovo = int(ad.get("desaprovo_count", 0))
+        total = aprovo + desaprovo
+        pct = round((aprovo / total) * 100) if total > 0 else 0
+        # In-app notification
+        await db.notifications.insert_one({
+            "notification_id": f"ntf_{uuid.uuid4().hex[:12]}",
+            "user_id": ad["user_id"],
+            "personal_ad_id": personal_ad_id,
+            "type": "personal_ad_completed",
+            "title": f"🏁 Anúncio pessoal concluído — {votes}/{cap} impressões",
+            "body": (
+                f"O teu anúncio pessoal atingiu a meta de {cap} impressões. "
+                f"Resultado: {aprovo} aprovo · {desaprovo} desaprovo ({pct}% aprovo)."
+            ),
+            "payload": {
+                "post_id": ad.get("post_id"),
+                "votes_collected": votes,
+                "included_votes": cap,
+                "aprovo": aprovo,
+                "desaprovo": desaprovo,
+                "aprovo_pct": pct,
+            },
+            "read_at": None,
+            "created_at": now,
+        })
+    except Exception as e:
+        logger.error(f"_maybe_close_personal_ad failed for {personal_ad_id}: {e}")
 
 
 # ---------- Comments ----------
@@ -2277,135 +2343,7 @@ _WEBSITE_ZIP_PATH = Path(__file__).parent / "static" / "besord-site.zip"
 # ---------------------------------------------------------------------------
 # Themes (10 categories) — list + filtered post creation
 # ---------------------------------------------------------------------------
-
-@api_router.get("/themes")
-async def list_themes():
-    return THEMES
-
-
-# ---------------------------------------------------------------------------
-# BW Wallet — Best Word internal XP. Empresas EXCLUÍDAS (só EUR para PJ).
-# 1 voto dado = +1 BW; gasto futuro em anúncios pessoais (PF only).
-# ---------------------------------------------------------------------------
-
-@api_router.get("/wallet/me")
-async def wallet_me(authorization: Optional[str] = Header(None),
-                    limit: int = Query(30, ge=1, le=200)):
-    user = await get_current_user(authorization)
-    bal = int(user.get("bw_balance", 0) or 0)
-    earned = int(user.get("bw_total_earned", 0) or 0)
-    spent = max(0, earned - bal)
-    txs = await db.bw_transactions.find(
-        {"user_id": user["user_id"]}, {"_id": 0}
-    ).sort("created_at", -1).limit(limit).to_list(length=limit)
-    for t in txs:
-        if isinstance(t.get("created_at"), datetime):
-            t["created_at"] = t["created_at"].isoformat()
-    return {
-        "balance": bal,
-        "total_earned": earned,
-        "total_spent": spent,
-        "transactions": txs,
-    }
-
-
-# ---------------------------------------------------------------------------
-# BestWord Styles — follow a word (theme/word) to personalise feed
-# ---------------------------------------------------------------------------
-
-@api_router.get("/styles/me")
-async def list_followed_styles(authorization: Optional[str] = Header(None)):
-    user = await get_current_user(authorization)
-    rows = await db.followed_styles.find({"user_id": user["user_id"]}, {"_id": 0}).sort("followed_at", -1).to_list(length=200)
-    for r in rows:
-        if isinstance(r.get("followed_at"), datetime):
-            r["followed_at"] = r["followed_at"].isoformat()
-    return {"words": [r["word"] for r in rows], "items": rows}
-
-
-@api_router.post("/styles/{word}/follow")
-async def follow_style(word: str, authorization: Optional[str] = Header(None)):
-    user = await get_current_user(authorization)
-    w = normalize_word(word.strip())
-    if not WORD_RE.match(w):
-        raise HTTPException(status_code=400, detail="Palavra inválida")
-    ok, reason = moderate_word(w)
-    if not ok:
-        raise HTTPException(status_code=400, detail=reason)
-    await db.followed_styles.update_one(
-        {"user_id": user["user_id"], "word": w},
-        {"$setOnInsert": {"user_id": user["user_id"], "word": w,
-                           "followed_at": datetime.now(timezone.utc)}},
-        upsert=True,
-    )
-    return {"ok": True, "word": w, "following": True}
-
-
-@api_router.delete("/styles/{word}/follow")
-async def unfollow_style(word: str, authorization: Optional[str] = Header(None)):
-    user = await get_current_user(authorization)
-    w = normalize_word(word.strip())
-    await db.followed_styles.delete_one({"user_id": user["user_id"], "word": w})
-    return {"ok": True, "word": w, "following": False}
-
-
-@api_router.get("/styles/{word}/status")
-async def style_status(word: str, authorization: Optional[str] = Header(None)):
-    w = normalize_word(word.strip())
-    user = await get_optional_user(authorization)
-    if not user:
-        total = await db.followed_styles.count_documents({"word": w})
-        return {"following": False, "follower_count": total, "word": w}
-    mine = await db.followed_styles.find_one({"user_id": user["user_id"], "word": w}, {"_id": 1})
-    total = await db.followed_styles.count_documents({"word": w})
-    return {"following": bool(mine), "follower_count": total, "word": w}
-
-
-# ---------------------------------------------------------------------------
-# Trends — top words by scope/period (public, no auth)
-# ---------------------------------------------------------------------------
-
-@api_router.get("/trends")
-async def trends(scope: Literal["world", "country", "city"] = Query("world"),
-                 country_code: Optional[str] = Query(None),
-                 city: Optional[str] = Query(None),
-                 period: Literal["24h", "7d", "30d"] = Query("24h"),
-                 limit: int = Query(20, ge=1, le=50),
-                 theme: Optional[str] = Query(None)):
-    hours = {"24h": 24, "7d": 168, "30d": 720}[period]
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    vote_match: dict = {"created_at": {"$gte": since}}
-    if scope == "country" and country_code:
-        vote_match["geo.country_code"] = country_code.upper()
-    elif scope == "city" and city:
-        vote_match["geo.city"] = city
-    # Aggregate top words from posts that received votes in the window.
-    pipeline = [
-        {"$match": vote_match},
-        {"$lookup": {"from": "posts", "localField": "post_id", "foreignField": "post_id", "as": "p"}},
-        {"$unwind": "$p"},
-        *( [{"$match": {"p.theme": theme}}] if (theme and theme in THEME_KEYS) else [] ),
-        {"$match": {"p.hidden": {"$ne": True}}},
-        {"$group": {"_id": "$p.word",
-                     "votes": {"$sum": 1},
-                     "aprovo": {"$sum": {"$cond": [{"$eq": ["$vote", "aprovo"]}, 1, 0]}},
-                     "theme": {"$first": "$p.theme"}}},
-        {"$sort": {"votes": -1}},
-        {"$limit": limit},
-    ]
-    rows = await db.votes.aggregate(pipeline).to_list(length=limit)
-    out = []
-    for r in rows:
-        v = r.get("votes", 0)
-        a = r.get("aprovo", 0)
-        out.append({
-            "word": r["_id"],
-            "theme": r.get("theme"),
-            "votes": v,
-            "aprovo_pct": round((a / v) * 100) if v else 0,
-        })
-    return {"scope": scope, "period": period, "country_code": country_code,
-            "city": city, "theme": theme, "items": out}
+# NOTE: /themes, /wallet/me, /styles/*, /trends moved to routes/discovery.py
 
 
 # ---------------------------------------------------------------------------
@@ -2570,6 +2508,7 @@ async def list_personal_ads(authorization: Optional[str] = Header(None)):
 
 api_router.include_router(_pwd_auth.build_router(db, user_out))
 api_router.include_router(_ws_mod.build_router(db, get_current_user))
+api_router.include_router(_discovery_mod.build_router(db, get_current_user, get_optional_user, WORD_RE, normalize_word, moderate_word))
 app.include_router(api_router)
 
 

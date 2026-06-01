@@ -11,12 +11,15 @@ import { colors, brutalShadow } from "@/src/theme";
 
 type Tier = { key: string; name: string; scope: string; duration_days: number; amount_cents: number; amount_usd: number; included_votes: number };
 type Theme = { key: string; name: string; emoji: string; covers: string };
+type Workspace = { workspace_id: string; type: "personal" | "business"; name: string; nif?: string | null };
 
 export default function NewCampaignScreen() {
   const { apiFetch, user } = useAuth();
   const router = useRouter();
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [themes, setThemes] = useState<Theme[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const [image, setImage] = useState<string | null>(null);
@@ -50,6 +53,16 @@ export default function NewCampaignScreen() {
     }
     apiFetch("/api/business/tiers").then(r => r.json()).then(setTiers);
     apiFetch("/api/themes").then(r => r.ok ? r.json() : []).then((d) => setThemes(Array.isArray(d) ? d : []));
+    apiFetch("/api/workspaces").then(r => r.ok ? r.json() : null).then((d) => {
+      if (!d) return;
+      const list: Workspace[] = (d.workspaces || []).filter((w: Workspace) => w.type === "business");
+      setWorkspaces(list);
+      // Prefer active_workspace_id if it is a business one
+      const active = d.active_workspace_id && list.find((w: Workspace) => w.workspace_id === d.active_workspace_id)
+        ? d.active_workspace_id
+        : (list[0]?.workspace_id || null);
+      setSelectedWorkspace(active);
+    });
   }, []);  // eslint-disable-line
 
   const pickImage = useCallback(async () => {
@@ -83,6 +96,7 @@ export default function NewCampaignScreen() {
           target_region: region || null,
           target_city: city || null,
           theme: selectedTheme,
+          workspace_id: selectedWorkspace,
           promo_code: promoCode || null,
         }),
       });
@@ -115,6 +129,50 @@ export default function NewCampaignScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {workspaces.length > 0 && (
+          <View>
+            <Text style={styles.section}>0. EMPRESA ANUNCIANTE</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+              style={{ marginBottom: 4 }}
+            >
+              {workspaces.map((ws) => {
+                const active = selectedWorkspace === ws.workspace_id;
+                return (
+                  <TouchableOpacity
+                    key={ws.workspace_id}
+                    testID={`ws-chip-${ws.workspace_id}`}
+                    style={[styles.wsChip, active && styles.wsChipActive]}
+                    onPress={() => setSelectedWorkspace(ws.workspace_id)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name="business"
+                      size={14}
+                      color={active ? colors.text : colors.textSecondary}
+                    />
+                    <Text style={[styles.wsChipText, active && styles.wsChipTextActive]}>{ws.name}</Text>
+                    {ws.nif ? <Text style={styles.wsChipNif}>{ws.nif}</Text> : null}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                testID="ws-chip-add"
+                style={[styles.wsChip, styles.wsChipAdd]}
+                onPress={() => router.push("/workspaces")}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="add" size={14} color={colors.text} />
+                <Text style={[styles.wsChipText, { color: colors.text }]}>NOVA</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <Text style={styles.wsHint}>A fatura será emitida em nome desta empresa.</Text>
+            <View style={{ height: 12 }} />
+          </View>
+        )}
+
         <Text style={styles.section}>1. ESCOLHA O ALCANCE</Text>
         <View style={{ gap: 10 }}>
           {tiers.map(tt => (
@@ -283,5 +341,12 @@ const styles = StyleSheet.create({
   themeChipText: { fontSize: 11, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
   themeChipTextActive: { color: colors.text },
   themeCovers: { marginTop: 8, fontSize: 11, fontWeight: "700", color: colors.text, lineHeight: 16 },
+  wsChip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 3, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.bg, ...brutalShadow },
+  wsChipActive: { backgroundColor: colors.aprovo, transform: [{ translateX: 2 }, { translateY: 2 }], shadowOpacity: 0, elevation: 0 },
+  wsChipAdd: { backgroundColor: colors.neutral, borderStyle: "dashed" },
+  wsChipText: { fontSize: 12, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
+  wsChipTextActive: { color: colors.text },
+  wsChipNif: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, marginLeft: 4 },
+  wsHint: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginTop: 6 },
   disclaimer: { textAlign: "center", marginTop: 12, fontSize: 10, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.5 },
 });

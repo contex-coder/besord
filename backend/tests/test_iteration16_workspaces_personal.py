@@ -131,6 +131,8 @@ class TestPersonalAdLimits:
 
     def test_only_one_active_personal_ad(self, base_url, auth_headers, biz, api_client, mongo_db):
         user_id = biz["user_id"]
+        # Pre-clean any active ad from previous tests (e.g. test_iteration17)
+        mongo_db.personal_ads.delete_many({"user_id": user_id})
         # Set BW balance high enough for 2 ads
         mongo_db.users.update_one({"user_id": user_id}, {"$set": {"bw_balance": 5000}})
         # Create a post first
