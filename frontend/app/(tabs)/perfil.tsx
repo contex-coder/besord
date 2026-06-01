@@ -178,7 +178,7 @@ export default function PerfilScreen() {
             <TouchableOpacity
               testID="btn-advertise"
               style={styles.advertiseBtn}
-              onPress={() => router.push(user.has_business ? "/business/campaigns" : "/business/onboard")}
+              onPress={() => router.push(user.has_business ? "/business/campaigns" : "/workspaces?new=1")}
               activeOpacity={0.85}
             >
               <Ionicons name="rocket" size={20} color={colors.text} />

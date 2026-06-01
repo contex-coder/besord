@@ -20,21 +20,63 @@ from pydantic import BaseModel, Field, EmailStr
 logger = logging.getLogger(__name__)
 
 
+# ---------- Country → Tax ID metadata ----------
+# Single source of truth for which fiscal field a country uses.
+COUNTRY_TAX_META = {
+    "BR": {"name": "Brasil",          "tax_label": "CNPJ"},
+    "US": {"name": "United States",   "tax_label": "EIN"},
+    "GB": {"name": "United Kingdom",  "tax_label": "VAT"},
+    "PT": {"name": "Portugal",        "tax_label": "NIPC"},
+    "DE": {"name": "Germany",         "tax_label": "USt-IdNr"},
+    "FR": {"name": "France",          "tax_label": "SIRET"},
+    "ES": {"name": "España",          "tax_label": "CIF"},
+    "IT": {"name": "Italia",          "tax_label": "P.IVA"},
+    "CA": {"name": "Canada",          "tax_label": "BN"},
+    "MX": {"name": "México",          "tax_label": "RFC"},
+    "AR": {"name": "Argentina",       "tax_label": "CUIT"},
+    "CN": {"name": "中国",             "tax_label": "USCC"},
+    "JP": {"name": "日本",             "tax_label": "法人番号"},
+    "OT": {"name": "Other / Outro",   "tax_label": "Tax ID"},
+}
+
+
+def tax_label_for(country_code: Optional[str]) -> str:
+    cc = (country_code or "").upper()
+    return (COUNTRY_TAX_META.get(cc) or COUNTRY_TAX_META["OT"])["tax_label"]
+
+
+def country_name_for(country_code: Optional[str]) -> Optional[str]:
+    cc = (country_code or "").upper()
+    return (COUNTRY_TAX_META.get(cc) or {}).get("name")
+
+
 # ---------- Models ----------
 class WorkspaceCreate(BaseModel):
     type: str = Field(..., pattern="^(personal|business)$")
     name: str = Field(min_length=1, max_length=100)
+    # Legacy field — accepted for back-compat (mapped to tax_id internally)
     nif: Optional[str] = Field(default=None, max_length=30)
-    billing_email: Optional[EmailStr] = None
+    # New rich fiscal fields
+    tax_id: Optional[str] = Field(default=None, max_length=30)
+    tax_id_label: Optional[str] = Field(default=None, max_length=30)
     country_code: Optional[str] = Field(default=None, max_length=2)
-    picture: Optional[str] = None  # base64 logo, optional
+    country_name: Optional[str] = Field(default=None, max_length=80)
+    contact_name: Optional[str] = Field(default=None, max_length=80)
+    contact_email: Optional[EmailStr] = None
+    billing_email: Optional[EmailStr] = None
+    picture: Optional[str] = None  # base64 logo
 
 
 class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     nif: Optional[str] = Field(default=None, max_length=30)
-    billing_email: Optional[EmailStr] = None
+    tax_id: Optional[str] = Field(default=None, max_length=30)
+    tax_id_label: Optional[str] = Field(default=None, max_length=30)
     country_code: Optional[str] = Field(default=None, max_length=2)
+    country_name: Optional[str] = Field(default=None, max_length=80)
+    contact_name: Optional[str] = Field(default=None, max_length=80)
+    contact_email: Optional[EmailStr] = None
+    billing_email: Optional[EmailStr] = None
     picture: Optional[str] = None
 
 
@@ -43,9 +85,17 @@ class WorkspaceOut(BaseModel):
     owner_user_id: str
     type: str  # personal | business
     name: str
+    # Tax fields (kept both for back-compat: nif==tax_id always)
     nif: Optional[str] = None
-    billing_email: Optional[str] = None
+    tax_id: Optional[str] = None
+    tax_id_label: Optional[str] = None
+    # Country
     country_code: Optional[str] = None
+    country_name: Optional[str] = None
+    # Contact
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    billing_email: Optional[str] = None
     picture: Optional[str] = None
     created_at: str
     is_default: bool = False
@@ -61,14 +111,20 @@ def _ws_id(prefix: str = "ws") -> str:
 
 
 def _serialize(doc: dict, default_id: Optional[str] = None) -> WorkspaceOut:
+    tax_id = doc.get("tax_id") or doc.get("nif")
     return WorkspaceOut(
         workspace_id=doc["workspace_id"],
         owner_user_id=doc["owner_user_id"],
         type=doc["type"],
         name=doc.get("name") or "",
-        nif=doc.get("nif"),
-        billing_email=doc.get("billing_email"),
+        nif=tax_id,  # legacy alias
+        tax_id=tax_id,
+        tax_id_label=doc.get("tax_id_label") or tax_label_for(doc.get("country_code")),
         country_code=doc.get("country_code"),
+        country_name=doc.get("country_name") or country_name_for(doc.get("country_code")),
+        contact_name=doc.get("contact_name"),
+        contact_email=doc.get("contact_email") or doc.get("billing_email"),
+        billing_email=doc.get("billing_email") or doc.get("contact_email"),
         picture=doc.get("picture"),
         created_at=(doc.get("created_at") or _now()).isoformat()
         if not isinstance(doc.get("created_at"), str)
@@ -108,20 +164,48 @@ async def ensure_business_workspace_from_profile(db, user: dict) -> Optional[dic
     )
     if existing:
         return existing
+    cc = (bp.get("country_code") or "").upper() or None
     doc = {
         "workspace_id": _ws_id("ws"),
         "owner_user_id": user["user_id"],
         "type": "business",
         "name": bp.get("company_name") or "Minha Empresa",
-        "nif": bp.get("nif"),
-        "billing_email": bp.get("billing_email") or user.get("email"),
-        "country_code": (bp.get("country_code") or "").upper() or None,
+        "tax_id": bp.get("tax_id") or bp.get("nif"),
+        "tax_id_label": tax_label_for(cc),
+        "country_code": cc,
+        "country_name": bp.get("country") or country_name_for(cc),
+        "contact_name": bp.get("contact_name"),
+        "contact_email": bp.get("contact_email") or user.get("email"),
+        "billing_email": bp.get("billing_email") or bp.get("contact_email") or user.get("email"),
         "picture": bp.get("logo") or user.get("picture"),
         "created_at": _now(),
         "migrated_from_business_profile": True,
     }
     await db.workspaces.insert_one(doc)
     return doc
+
+
+async def mirror_to_business_profile(db, ws: dict) -> None:
+    """Workspaces is the source of truth — keep `users.business_profile` as a read-only mirror
+    so legacy code (PDFs, emails, has_business gate) keeps working without changes."""
+    if ws.get("type") != "business" or ws.get("deleted_at"):
+        return
+    profile = {
+        "company_name": ws.get("name"),
+        "country": ws.get("country_name") or country_name_for(ws.get("country_code")),
+        "country_code": (ws.get("country_code") or "").upper() or None,
+        "tax_id": ws.get("tax_id") or ws.get("nif"),
+        "tax_id_label": ws.get("tax_id_label") or tax_label_for(ws.get("country_code")),
+        "contact_email": ws.get("contact_email") or ws.get("billing_email"),
+        "contact_name": ws.get("contact_name"),
+        "billing_email": ws.get("billing_email") or ws.get("contact_email"),
+        "active_workspace_id": ws["workspace_id"],
+        "updated_at": _now(),
+    }
+    await db.users.update_one(
+        {"user_id": ws["owner_user_id"]},
+        {"$set": {"business_profile": profile}},
+    )
 
 
 async def ensure_indexes(db) -> None:
@@ -135,6 +219,13 @@ async def ensure_indexes(db) -> None:
 # ---------- Router ----------
 def build_router(db, get_current_user) -> APIRouter:
     router = APIRouter()
+
+    @router.get("/countries")
+    async def list_countries():
+        return {"countries": [
+            {"code": code, "name": meta["name"], "tax_label": meta["tax_label"]}
+            for code, meta in COUNTRY_TAX_META.items()
+        ]}
 
     async def _list(user) -> List[dict]:
         # Idempotent migration on read
@@ -172,23 +263,31 @@ def build_router(db, get_current_user) -> APIRouter:
                 raise HTTPException(409, "Já tens um workspace pessoal.")
 
         if payload.type == "business":
-            if not payload.nif:
-                raise HTTPException(400, "NIF obrigatório para empresa.")
-            if not payload.billing_email:
+            tax_id = (payload.tax_id or payload.nif or "").strip() or None
+            if not tax_id:
+                raise HTTPException(400, "ID fiscal obrigatório para empresa.")
+            if not payload.billing_email and not payload.contact_email:
                 raise HTTPException(400, "Email de faturação obrigatório para empresa.")
 
+        cc = (payload.country_code or "").upper() or None
         doc = {
             "workspace_id": _ws_id("ws"),
             "owner_user_id": user["user_id"],
             "type": payload.type,
             "name": payload.name.strip(),
-            "nif": (payload.nif or "").strip() or None,
-            "billing_email": payload.billing_email,
-            "country_code": (payload.country_code or "").upper() or None,
+            "tax_id": (payload.tax_id or payload.nif or "").strip() or None,
+            "tax_id_label": payload.tax_id_label or tax_label_for(cc),
+            "country_code": cc,
+            "country_name": payload.country_name or country_name_for(cc),
+            "contact_name": (payload.contact_name or "").strip() or None,
+            "contact_email": payload.contact_email,
+            "billing_email": payload.billing_email or payload.contact_email,
             "picture": payload.picture,
             "created_at": _now(),
         }
         await db.workspaces.insert_one(doc)
+        if doc["type"] == "business":
+            await mirror_to_business_profile(db, doc)
         return _serialize(doc)
 
     @router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
@@ -200,12 +299,22 @@ def build_router(db, get_current_user) -> APIRouter:
         if not ws or ws["owner_user_id"] != user["user_id"]:
             raise HTTPException(404, "Workspace não encontrado.")
         update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+        # Normalize legacy alias nif → tax_id
+        if "nif" in update and "tax_id" not in update:
+            update["tax_id"] = update.pop("nif")
+        elif "nif" in update:
+            update.pop("nif")
         if "country_code" in update and update["country_code"]:
             update["country_code"] = update["country_code"].upper()
+            # Auto-fill label/name from country if not provided
+            update.setdefault("tax_id_label", tax_label_for(update["country_code"]))
+            update.setdefault("country_name", country_name_for(update["country_code"]))
         if update:
             update["updated_at"] = _now()
             await db.workspaces.update_one({"_id": ws["_id"]}, {"$set": update})
             ws.update(update)
+            if ws.get("type") == "business":
+                await mirror_to_business_profile(db, ws)
         return _serialize(ws)
 
     @router.delete("/workspaces/{workspace_id}")

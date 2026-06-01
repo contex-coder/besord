@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "@/src/contexts/AuthContext";
@@ -15,42 +15,65 @@ type Workspace = {
   owner_user_id: string;
   type: "personal" | "business";
   name: string;
+  tax_id?: string | null;
+  tax_id_label?: string | null;
   nif?: string | null;
   billing_email?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
   country_code?: string | null;
+  country_name?: string | null;
   is_default?: boolean;
 };
 
+type Country = { code: string; name: string; tax_label: string };
+
 export default function WorkspacesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ new?: string }>();
   const { apiFetch } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [countries, setCountries] = useState<Country[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(params.new === "1");
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
 
   // Create form
   const [name, setName] = useState("");
-  const [nif, setNif] = useState("");
-  const [email, setEmail] = useState("");
-  const [country, setCountry] = useState("PT");
+  const [taxId, setTaxId] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const r = await apiFetch("/api/workspaces");
-      if (r.ok) {
-        const data = await r.json();
+      const [wsRes, ctyRes] = await Promise.all([
+        apiFetch("/api/workspaces"),
+        apiFetch("/api/countries").catch(() => null),
+      ]);
+      if (wsRes.ok) {
+        const data = await wsRes.json();
         setWorkspaces(data.workspaces || []);
         setActiveId(data.active_workspace_id || null);
+      }
+      if (ctyRes && ctyRes.ok) {
+        const cd = await ctyRes.json();
+        const list: Country[] = cd.countries || [];
+        setCountries(list);
+        if (!selectedCountry) {
+          setSelectedCountry(list.find((c) => c.code === "PT") || list[0] || null);
+        }
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, selectedCountry]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -85,17 +108,22 @@ export default function WorkspacesScreen() {
   const onCreate = async () => {
     setCreateError(null);
     if (!name.trim()) { setCreateError("Indica o nome da empresa."); return; }
-    if (!nif.trim()) { setCreateError("Indica o NIF."); return; }
-    if (!email.trim()) { setCreateError("Indica o email de faturação."); return; }
+    if (!selectedCountry) { setCreateError("Escolhe o país."); return; }
+    if (!taxId.trim()) { setCreateError(`Indica o ${selectedCountry.tax_label}.`); return; }
+    if (!billingEmail.trim()) { setCreateError("Indica o email de faturação."); return; }
     setSubmitting(true);
     const r = await apiFetch("/api/workspaces", {
       method: "POST",
       body: JSON.stringify({
         type: "business",
         name: name.trim(),
-        nif: nif.trim(),
-        billing_email: email.trim().toLowerCase(),
-        country_code: country.trim().toUpperCase() || null,
+        tax_id: taxId.trim(),
+        tax_id_label: selectedCountry.tax_label,
+        country_code: selectedCountry.code,
+        country_name: selectedCountry.name,
+        billing_email: billingEmail.trim().toLowerCase(),
+        contact_name: contactName.trim() || null,
+        contact_email: (contactEmail.trim() || billingEmail.trim()).toLowerCase(),
       }),
     });
     setSubmitting(false);
@@ -104,7 +132,7 @@ export default function WorkspacesScreen() {
       setCreateError(body?.detail || "Não foi possível criar.");
       return;
     }
-    setName(""); setNif(""); setEmail(""); setCountry("PT");
+    setName(""); setTaxId(""); setBillingEmail(""); setContactName(""); setContactEmail("");
     setShowCreate(false);
     load();
   };
@@ -146,9 +174,9 @@ export default function WorkspacesScreen() {
                 {isActive && <Text style={styles.activeLabel}>● ATIVO</Text>}
               </View>
               <Text style={styles.wsName}>{ws.name}</Text>
-              {ws.nif ? <Text style={styles.wsMeta}>NIF: {ws.nif}</Text> : null}
+              {(ws.tax_id || ws.nif) ? <Text style={styles.wsMeta}>{(ws.tax_id_label || "ID")}: {ws.tax_id || ws.nif}</Text> : null}
               {ws.billing_email ? <Text style={styles.wsMeta}>{ws.billing_email}</Text> : null}
-              {ws.country_code ? <Text style={styles.wsMeta}>{ws.country_code}</Text> : null}
+              {(ws.country_name || ws.country_code) ? <Text style={styles.wsMeta}>{ws.country_name || ws.country_code}</Text> : null}
 
               <View style={styles.actionsRow}>
                 {!isActive && (
@@ -175,17 +203,50 @@ export default function WorkspacesScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={styles.formCard}>
               <Text style={styles.formTitle}>NOVA EMPRESA (PJ)</Text>
+
+              <Text style={styles.label}>PAÍS</Text>
+              <TouchableOpacity
+                style={styles.input}
+                onPress={() => setCountryPickerOpen(!countryPickerOpen)}
+                testID="input-country"
+              >
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
+                  {selectedCountry ? `${selectedCountry.name}` : "Escolhe o país..."}
+                </Text>
+              </TouchableOpacity>
+              {countryPickerOpen && (
+                <View style={[styles.input, { padding: 0, maxHeight: 200 }]}>
+                  <ScrollView nestedScrollEnabled>
+                    {countries.map((c) => (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.bgSubtle }}
+                        onPress={() => { setSelectedCountry(c); setCountryPickerOpen(false); }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{c.name}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary }}>{c.tax_label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
               <Text style={styles.label}>NOME COMERCIAL</Text>
               <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Minha Empresa, Lda." placeholderTextColor="#D4D4D8" testID="input-ws-name" />
 
-              <Text style={styles.label}>NIF</Text>
-              <TextInput style={styles.input} value={nif} onChangeText={setNif} placeholder="PT500000000" placeholderTextColor="#D4D4D8" autoCapitalize="characters" testID="input-ws-nif" />
+              <Text style={styles.label}>{selectedCountry ? selectedCountry.tax_label : "TAX ID"}</Text>
+              <TextInput style={styles.input} value={taxId} onChangeText={setTaxId}
+                         placeholder={selectedCountry?.tax_label || "Tax ID"}
+                         placeholderTextColor="#D4D4D8" autoCapitalize="characters" testID="input-ws-taxid" />
 
               <Text style={styles.label}>EMAIL DE FATURAÇÃO</Text>
-              <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="fatura@empresa.pt" placeholderTextColor="#D4D4D8" autoCapitalize="none" keyboardType="email-address" testID="input-ws-email" />
+              <TextInput style={styles.input} value={billingEmail} onChangeText={setBillingEmail} placeholder="fatura@empresa.com" placeholderTextColor="#D4D4D8" autoCapitalize="none" keyboardType="email-address" testID="input-ws-billing-email" />
 
-              <Text style={styles.label}>PAÍS (ISO-2)</Text>
-              <TextInput style={styles.input} value={country} onChangeText={(v) => setCountry(v.toUpperCase().slice(0, 2))} placeholder="PT" placeholderTextColor="#D4D4D8" autoCapitalize="characters" maxLength={2} />
+              <Text style={styles.label}>NOME DO CONTACTO (opcional)</Text>
+              <TextInput style={styles.input} value={contactName} onChangeText={setContactName} placeholder="João Silva" placeholderTextColor="#D4D4D8" autoCapitalize="words" />
+
+              <Text style={styles.label}>EMAIL DE CONTACTO (opcional)</Text>
+              <TextInput style={styles.input} value={contactEmail} onChangeText={setContactEmail} placeholder="contacto@empresa.com" placeholderTextColor="#D4D4D8" autoCapitalize="none" keyboardType="email-address" />
 
               {createError && <Text style={styles.err}>{createError}</Text>}
 
