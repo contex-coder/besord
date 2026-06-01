@@ -19,11 +19,44 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 
 export default function CriarScreen() {
-  const { apiFetch } = useAuth();
+  const { apiFetch, user, refreshUser } = useAuth();
   const router = useRouter();
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [word, setWord] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const offerBoost = useCallback((newPostId: string) => {
+    const bw = Number(user?.bw_balance || 0);
+    const canAfford = bw >= 100;
+    Alert.alert(
+      "Post publicado! 🎉",
+      canAfford
+        ? `Queres dar BOOST a este post?\n\n100 BW · 24h · 300 pessoas da tua cidade.\n\nTens ${bw} BW disponíveis.`
+        : `Continua a votar para acumulares BW. Precisas de 100 BW (tens ${bw}) para promover um post.`,
+      canAfford
+        ? [
+            { text: "Mais tarde", style: "cancel", onPress: () => router.replace("/(tabs)/feed") },
+            {
+              text: "PROMOVER (100 BW)",
+              onPress: async () => {
+                const r = await apiFetch("/api/bw/personal-ad", {
+                  method: "POST",
+                  body: JSON.stringify({ tier_key: "mini", post_id: newPostId, target_country_code: null, target_city: null }),
+                });
+                if (r.ok) {
+                  await refreshUser();
+                  Alert.alert("Boost ativo! 🚀", "O teu post está promovido na tua cidade pelas próximas 24h.");
+                } else {
+                  const err = await r.json().catch(() => null);
+                  Alert.alert("Não foi possível", err?.detail || "Tenta de novo em /personal-ad");
+                }
+                router.replace("/(tabs)/feed");
+              },
+            },
+          ]
+        : [{ text: "OK", onPress: () => router.replace("/(tabs)/feed") }],
+    );
+  }, [apiFetch, user, router, refreshUser]);
 
   const pickImage = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -79,9 +112,14 @@ export default function CriarScreen() {
         body: JSON.stringify({ word, image_base64: imageBase64 }),
       });
       if (r.ok) {
+        const created = await r.json().catch(() => ({}));
         setImageBase64(null);
         setWord("");
-        router.replace("/(tabs)/feed");
+        if (created?.post_id) {
+          offerBoost(created.post_id);
+        } else {
+          router.replace("/(tabs)/feed");
+        }
       } else {
         const err = await r.json().catch(() => ({}));
         Alert.alert("Erro", err.detail || "Falha ao publicar.");
@@ -91,7 +129,7 @@ export default function CriarScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [imageBase64, word, apiFetch, router]);
+  }, [imageBase64, word, apiFetch, router, offerBoost]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

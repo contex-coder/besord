@@ -143,10 +143,38 @@ export default function PerfilScreen() {
               </View>
               <Text style={styles.bwExplain}>
                 Best Word — ganhas <Text style={{ fontWeight: "900" }}>1 BW por cada voto</Text> que dás.
-                Usa-os em anúncios pessoais (em breve). Não tem valor monetário.
+                Usa-os para promover os teus posts (100 BW → 300 pessoas na tua cidade durante 24h).
               </Text>
             </View>
 
+            {/* ──────────── ESPAÇO PESSOAL ──────────── */}
+            <Text style={styles.sectionHeader}>👤  ESPAÇO PESSOAL</Text>
+            {(() => {
+              const bw = Number(user.bw_balance || 0);
+              const canBoost = bw >= 100;
+              return (
+                <TouchableOpacity
+                  testID="btn-personal-ad"
+                  style={[styles.advertiseBtn, !canBoost && styles.advertiseBtnLocked]}
+                  onPress={() => router.push("/personal-ad")}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="megaphone" size={20} color={colors.text} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.advertiseTitle}>PROMOVER POST (BW)</Text>
+                    <Text style={styles.advertiseSub}>
+                      {canBoost
+                        ? `Tens ${bw} BW — promove um post teu`
+                        : `Precisas de ${100 - bw} BW para promover (vota mais!)`}
+                    </Text>
+                  </View>
+                  <Ionicons name={canBoost ? "chevron-forward" : "lock-closed"} size={20} color={colors.text} />
+                </TouchableOpacity>
+              );
+            })()}
+
+            {/* ──────────── ESPAÇO EMPRESA ──────────── */}
+            <Text style={styles.sectionHeader}>🏢  ESPAÇO EMPRESA</Text>
             <TouchableOpacity
               testID="btn-advertise"
               style={styles.advertiseBtn}
@@ -155,8 +183,8 @@ export default function PerfilScreen() {
             >
               <Ionicons name="rocket" size={20} color={colors.text} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.advertiseTitle}>{user.has_business ? "MINHAS CAMPANHAS" : "ANUNCIAR — BESORD INSIGHTS"}</Text>
-                <Text style={styles.advertiseSub}>{user.has_business ? "Gerenciar campanhas patrocinadas" : "Veredito do mercado por região"}</Text>
+                <Text style={styles.advertiseTitle}>{user.has_business ? "CAMPANHAS DA EMPRESA" : "ANUNCIAR COMO EMPRESA"}</Text>
+                <Text style={styles.advertiseSub}>{user.has_business ? "Gerir campanhas patrocinadas" : "Pagas com Stripe, fatura com NIF"}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </TouchableOpacity>
@@ -169,22 +197,8 @@ export default function PerfilScreen() {
             >
               <Ionicons name="business" size={20} color={colors.text} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.advertiseTitle}>WORKSPACES</Text>
-                <Text style={styles.advertiseSub}>Conta pessoal + empresas</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.text} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              testID="btn-personal-ad"
-              style={styles.advertiseBtn}
-              onPress={() => router.push("/personal-ad")}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="megaphone" size={20} color={colors.text} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.advertiseTitle}>ANÚNCIO PESSOAL (BW)</Text>
-                <Text style={styles.advertiseSub}>Gasta BW para promover um post teu</Text>
+                <Text style={styles.advertiseTitle}>MINHAS EMPRESAS</Text>
+                <Text style={styles.advertiseSub}>Adicionar / trocar empresa anunciante</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </TouchableOpacity>
@@ -302,6 +316,8 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.text, marginTop: 8 },
 
   advertiseBtn: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.neutral, padding: 14, ...brutalShadow },
+  advertiseBtnLocked: { opacity: 0.55, backgroundColor: colors.bg, borderStyle: "dashed" },
+  sectionHeader: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.textSecondary, marginTop: 16, marginBottom: 4 },
   advertiseTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 1, color: colors.text },
   advertiseSub: { fontSize: 11, fontWeight: "700", color: colors.text, marginTop: 2 },
 

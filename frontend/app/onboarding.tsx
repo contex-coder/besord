@@ -25,6 +25,12 @@ const SLIDES = [
     color: colors.aprovo,
   },
   {
+    icon: "wallet" as const,
+    title: "VOTAS, GANHAS\nBW",
+    sub: "Cada voto que dás vale +1 BW. Acumula 100 BW e podes promover um post teu — 300 pessoas da tua cidade durante 24h. BW é XP, não dinheiro.",
+    color: colors.bg,
+  },
+  {
     icon: "rocket" as const,
     title: "PROMOVE\nA TUA MARCA",
     sub: "Empresas: testem nomes, embalagens, ideias com pessoas reais. Recebem relatório por país, região e cidade.",
