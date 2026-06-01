@@ -19,6 +19,7 @@ from pricing import TIERS, get_tier, tiers_public
 from email_alerts import send_milestone_email, crossed_milestones
 from moderation import check_word as moderate_word
 from themes import THEMES, THEME_KEYS
+from bw_pricing import BW_TIERS_DEFAULTS, BW_TIER_KEYS
 from dataclasses import replace as dataclass_replace
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
@@ -2397,6 +2398,120 @@ async def campaign_invoice(campaign_id: str, authorization: Optional[str] = Head
         raise HTTPException(status_code=502, detail=f"Falha ao obter fatura: {str(e)[:120]}")
 
 
+# BW Personal Ad endpoints — paid in BW, no Stripe.
+
+async def get_bw_tiers() -> dict:
+    out = {k: dict(v) for k, v in BW_TIERS_DEFAULTS.items()}
+    try:
+        for ov in await db.bw_tier_overrides.find({}, {"_id": 0}).to_list(length=50):
+            k = ov.get("tier_key")
+            if k in out:
+                for f in ("bw_cost", "included_votes", "duration_days"):
+                    if isinstance(ov.get(f), int) and ov[f] > 0:
+                        out[k][f] = ov[f]
+    except Exception: pass
+    return out
+
+
+@api_router.get("/bw/tiers")
+async def list_bw_tiers():
+    return [{"key": k, **v} for k, v in (await get_bw_tiers()).items()]
+
+
+class BwTierUpdate(BaseModel):
+    tier_key: str; bw_cost: int; included_votes: int; duration_days: int
+
+
+@api_router.post("/admin/bw-tiers")
+async def admin_update_bw_tier(payload: BwTierUpdate, authorization: Optional[str] = Header(None)):
+    admin = await require_admin(authorization)
+    if payload.tier_key not in BW_TIER_KEYS: raise HTTPException(400, "Tier BW desconhecido")
+    if not (10 <= payload.bw_cost <= 1_000_000): raise HTTPException(400, "bw_cost 10-1.000.000")
+    if not (10 <= payload.included_votes <= 100_000): raise HTTPException(400, "votos 10-100.000")
+    if not (1 <= payload.duration_days <= 30): raise HTTPException(400, "duração 1-30 dias")
+    now = datetime.now(timezone.utc)
+    await db.bw_tier_overrides.update_one(
+        {"tier_key": payload.tier_key},
+        {"$set": {**payload.dict(), "updated_at": now, "updated_by_email": admin["email"]}},
+        upsert=True,
+    )
+    await db.admin_audit.insert_one({"event": "bw_tier_update", **payload.dict(),
+                                      "actor_email": admin["email"], "created_at": now})
+    return {"ok": True}
+
+
+@api_router.delete("/admin/bw-tiers/{tier_key}")
+async def admin_reset_bw_tier(tier_key: str, authorization: Optional[str] = Header(None)):
+    admin = await require_admin(authorization)
+    if tier_key not in BW_TIER_KEYS: raise HTTPException(404, "Tier BW desconhecido")
+    await db.bw_tier_overrides.delete_one({"tier_key": tier_key})
+    await db.admin_audit.insert_one({"event": "bw_tier_reset", "tier_key": tier_key,
+                                      "actor_email": admin["email"], "created_at": datetime.now(timezone.utc)})
+    return {"ok": True}
+
+
+class PersonalAdCreate(BaseModel):
+    tier_key: str; post_id: str
+    target_country_code: Optional[str] = None
+    target_region: Optional[str] = None
+    target_city: Optional[str] = None
+
+
+@api_router.post("/bw/personal-ad")
+async def create_personal_ad(payload: PersonalAdCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    tier = (await get_bw_tiers()).get(payload.tier_key)
+    if not tier: raise HTTPException(400, "Tier BW desconhecido")
+    cost = int(tier["bw_cost"])
+    if int(user.get("bw_balance", 0) or 0) < cost:
+        raise HTTPException(402, f"Saldo insuficiente. Precisas {cost} BW.")
+    post = await db.posts.find_one({"post_id": payload.post_id, "author_id": user["user_id"]}, {"_id": 0})
+    if not post: raise HTTPException(404, "Post não encontrado")
+    if post.get("is_sponsored"): raise HTTPException(400, "Post já patrocinado")
+    if tier["scope"] in ("country", "region", "city") and not payload.target_country_code:
+        raise HTTPException(400, "País obrigatório")
+    now = datetime.now(timezone.utc)
+    ends_at = now + timedelta(days=int(tier["duration_days"]))
+    ad_id = f"pad_{uuid.uuid4().hex[:12]}"
+    r = await db.users.update_one(
+        {"user_id": user["user_id"], "bw_balance": {"$gte": cost}},
+        {"$inc": {"bw_balance": -cost}},
+    )
+    if r.modified_count != 1: raise HTTPException(402, "Saldo insuficiente")
+    await db.bw_transactions.insert_one({
+        "tx_id": f"bw_{uuid.uuid4().hex[:12]}", "user_id": user["user_id"],
+        "delta": -cost, "reason": "personal_ad", "personal_ad_id": ad_id,
+        "post_id": payload.post_id, "created_at": now,
+    })
+    await db.posts.update_one({"post_id": payload.post_id},
+        {"$set": {"is_sponsored": True, "personal_ad_id": ad_id, "campaign_id": ad_id,
+                   "starts_at": now, "ends_at": ends_at}})
+    await db.personal_ads.insert_one({
+        "personal_ad_id": ad_id, "user_id": user["user_id"],
+        "tier_key": payload.tier_key, "tier_name": tier["name"], "scope": tier["scope"],
+        "duration_days": tier["duration_days"], "bw_cost": cost,
+        "included_votes": tier["included_votes"],
+        "target_country_code": (payload.target_country_code or "").upper() or None,
+        "target_region": payload.target_region, "target_city": payload.target_city,
+        "post_id": payload.post_id, "status": "active",
+        "starts_at": now, "ends_at": ends_at, "created_at": now,
+        "aprovo_count": 0, "desaprovo_count": 0, "votes_collected": 0,
+    })
+    return {"ok": True, "personal_ad_id": ad_id,
+            "new_balance": int(user.get("bw_balance", 0) or 0) - cost,
+            "ends_at": ends_at.isoformat()}
+
+
+@api_router.get("/bw/personal-ads")
+async def list_personal_ads(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    rows = await db.personal_ads.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(length=50)
+    for r in rows:
+        for k in ("starts_at", "ends_at", "created_at"):
+            if isinstance(r.get(k), datetime): r[k] = r[k].isoformat()
+    return rows
+
+
 app.include_router(api_router)
 
 
@@ -2434,6 +2549,11 @@ async def setup_indexes():
         await db.posts.create_index("post_id", unique=True)
         await db.posts.create_index([("created_at", -1)])
         await db.posts.create_index("word")
+        await db.bw_transactions.create_index([("user_id", 1), ("created_at", -1)])
+        await db.bw_transactions.create_index("tx_id", unique=True)
+        await db.personal_ads.create_index("personal_ad_id", unique=True)
+        await db.personal_ads.create_index([("user_id", 1), ("created_at", -1)])
+        await db.followed_styles.create_index([("user_id", 1), ("word", 1)], unique=True)
         await db.posts.create_index("is_sponsored")
         await db.posts.create_index("campaign_id", sparse=True)
         await db.votes.create_index([("post_id", 1), ("user_id", 1)], unique=True)
