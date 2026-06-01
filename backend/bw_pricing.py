@@ -5,6 +5,7 @@ Aqui apenas o equivalente para utilizadores pessoa física que gastam BW.
 """
 
 BW_TIERS_DEFAULTS = {
+    "mini":     {"name": "MINI",     "scope": "city",    "duration_days": 1, "bw_cost": 100,  "included_votes": 300},
     "local":    {"name": "LOCAL",    "scope": "city",    "duration_days": 3, "bw_cost": 200,  "included_votes": 100},
     "estado":   {"name": "ESTADO",   "scope": "region",  "duration_days": 5, "bw_cost": 600,  "included_votes": 300},
     "pais":     {"name": "PAÍS",     "scope": "country", "duration_days": 7, "bw_cost": 1200, "included_votes": 600},

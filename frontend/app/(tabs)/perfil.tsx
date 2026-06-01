@@ -161,6 +161,34 @@ export default function PerfilScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </TouchableOpacity>
 
+            <TouchableOpacity
+              testID="btn-workspaces"
+              style={styles.advertiseBtn}
+              onPress={() => router.push("/workspaces")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="business" size={20} color={colors.text} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.advertiseTitle}>WORKSPACES</Text>
+                <Text style={styles.advertiseSub}>Conta pessoal + empresas</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.text} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              testID="btn-personal-ad"
+              style={styles.advertiseBtn}
+              onPress={() => router.push("/personal-ad")}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="megaphone" size={20} color={colors.text} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.advertiseTitle}>ANÚNCIO PESSOAL (BW)</Text>
+                <Text style={styles.advertiseSub}>Gasta BW para promover um post teu</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.text} />
+            </TouchableOpacity>
+
             {user.is_admin && (
               <TouchableOpacity
                 testID="btn-admin-panel"

@@ -22,6 +22,7 @@ from themes import THEMES, THEME_KEYS
 from bw_pricing import BW_TIERS_DEFAULTS, BW_TIER_KEYS
 from dataclasses import replace as dataclass_replace
 import password_auth as _pwd_auth
+import workspaces as _ws_mod
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
 # Used by the admin "reset" endpoint to restore defaults — never mutated.
@@ -125,6 +126,7 @@ class CampaignCreate(BaseModel):
     target_city: Optional[str] = None
     promo_code: Optional[str] = None
     theme: Optional[str] = None  # one of THEME_KEYS, optional
+    workspace_id: Optional[str] = None  # if not provided, uses the user's first business workspace
 
 class CampaignOut(BaseModel):
     campaign_id: str
@@ -138,6 +140,7 @@ class CampaignOut(BaseModel):
     target_country_code: Optional[str] = None
     target_region: Optional[str] = None
     target_city: Optional[str] = None
+    workspace_id: Optional[str] = None
     theme: Optional[str] = None
     status: str  # pending_payment, active, completed, canceled
     amount_cents: int
@@ -262,6 +265,7 @@ def serialize_campaign(c: dict, checkout_url: Optional[str] = None) -> CampaignO
         target_region=c.get("target_region"),
         target_city=c.get("target_city"),
         theme=c.get("theme"),
+        workspace_id=c.get("workspace_id"),
         status=c["status"],
         amount_cents=int(c["amount_cents"]),
         included_votes=int(c["included_votes"]),
@@ -544,11 +548,18 @@ async def list_posts(
     geo_scope: Optional[Literal["world", "country", "city"]] = Query("world"),
     country_code: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
+    mine: bool = Query(False),
 ):
     user = await get_optional_user(authorization)
     current_user_id = user["user_id"] if user else None
 
     query: dict = {"hidden": {"$ne": True}, "is_sponsored": {"$ne": True}}
+    if mine:
+        if not current_user_id:
+            return []
+        query["author_id"] = current_user_id
+        # Allow sponsored posts in "mine" so user sees their already-boosted ones (we still filter the picker client-side)
+        query.pop("is_sponsored", None)
     if word:
         query["word"] = normalize_word(word)
     if theme and theme in THEME_KEYS:
@@ -953,6 +964,28 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
     if campaign_theme and campaign_theme not in THEME_KEYS:
         raise HTTPException(status_code=400, detail="Tema inválido.")
 
+    # Resolve workspace: use provided id (validate ownership + type=business) or auto-create one
+    ws_doc = None
+    if payload.workspace_id:
+        ws_doc = await db.workspaces.find_one({
+            "workspace_id": payload.workspace_id,
+            "owner_user_id": user["user_id"],
+            "deleted_at": {"$exists": False},
+        })
+        if not ws_doc:
+            raise HTTPException(status_code=404, detail="Workspace não encontrado.")
+        if ws_doc.get("type") != "business":
+            raise HTTPException(status_code=400, detail="Campanhas pagas só em workspace empresa.")
+    else:
+        # Use the first business workspace, or migrate from legacy business_profile, or create from billing
+        ws_doc = await db.workspaces.find_one({
+            "owner_user_id": user["user_id"], "type": "business",
+            "deleted_at": {"$exists": False},
+        })
+        if not ws_doc:
+            ws_doc = await _ws_mod.ensure_business_workspace_from_profile(db, user)
+    resolved_workspace_id = ws_doc["workspace_id"] if ws_doc else None
+
     campaign_id = f"camp_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
 
@@ -996,6 +1029,7 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
         "target_region": payload.target_region,
         "target_city": payload.target_city,
         "theme": campaign_theme,
+        "workspace_id": resolved_workspace_id,
         "status": "pending_payment",
         "votes_collected": 0,
         "aprovo_count": 0,
@@ -1632,11 +1666,12 @@ async def admin_advertisers(authorization: Optional[str] = Header(None)):
             {"$match": {"user_id": a["user_id"], "status": {"$in": ["active", "completed"]}}},
             {"$group": {"_id": None, "spent": {"$sum": "$amount_cents"}}},
         ]).to_list(length=1)
+        bp = a.get("business_profile") or {}
         out.append({
-            "user_id": a["user_id"], "email": a["email"], "name": a["name"],
-            "company_name": a["business_profile"].get("company_name"),
-            "country": a["business_profile"].get("country"),
-            "tax_id": a["business_profile"].get("tax_id"),
+            "user_id": a["user_id"], "email": a["email"], "name": a.get("name"),
+            "company_name": bp.get("company_name"),
+            "country": bp.get("country"),
+            "tax_id": bp.get("tax_id"),
             "campaigns": camp_count,
             "spent_cents": int(paid[0]["spent"]) if paid else 0,
         })
@@ -2480,6 +2515,15 @@ async def create_personal_ad(payload: PersonalAdCreate, authorization: Optional[
     post = await db.posts.find_one({"post_id": payload.post_id, "author_id": user["user_id"]}, {"_id": 0})
     if not post: raise HTTPException(404, "Post não encontrado")
     if post.get("is_sponsored"): raise HTTPException(400, "Post já patrocinado")
+    # Anti-abuse: only ONE active personal ad per user at a time
+    now = datetime.now(timezone.utc)
+    active_existing = await db.personal_ads.find_one({
+        "user_id": user["user_id"],
+        "status": "active",
+        "ends_at": {"$gt": now},
+    })
+    if active_existing:
+        raise HTTPException(400, "Já tens um anúncio pessoal ativo. Aguarda terminar.")
     if tier["scope"] in ("country", "region", "city") and not payload.target_country_code:
         raise HTTPException(400, "País obrigatório")
     now = datetime.now(timezone.utc)
@@ -2525,6 +2569,7 @@ async def list_personal_ads(authorization: Optional[str] = Header(None)):
 
 
 api_router.include_router(_pwd_auth.build_router(db, user_out))
+api_router.include_router(_ws_mod.build_router(db, get_current_user))
 app.include_router(api_router)
 
 
@@ -2577,6 +2622,7 @@ async def setup_indexes():
         await db.campaigns.create_index("user_id")
         await db.campaigns.create_index("status")
         await _pwd_auth.ensure_indexes(db)
+        await _ws_mod.ensure_indexes(db)
     except Exception as e:
         logger.warning(f"Index setup warning: {e}")
 
