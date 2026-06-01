@@ -59,6 +59,8 @@ class UserOut(BaseModel):
     is_admin: bool = False
     age_confirmed: bool = False
     birth_year: Optional[int] = None
+    bw_balance: int = 0
+    bw_total_earned: int = 0
 
 class AuthResponse(BaseModel):
     token: str
@@ -184,6 +186,8 @@ def user_out(user: dict) -> UserOut:
         is_admin=is_admin,
         age_confirmed=bool(user.get("age_confirmed_at")),
         birth_year=user.get("birth_year"),
+        bw_balance=int(user.get("bw_balance", 0) or 0),
+        bw_total_earned=int(user.get("bw_total_earned", 0) or 0),
     )
 
 
@@ -648,6 +652,26 @@ async def vote_post(post_id: str, payload: VoteRequest, request: Request, author
             "geo": geo, "created_at": datetime.now(timezone.utc),
         })
         await db.posts.update_one({"post_id": post_id}, {"$inc": {f"{new_vote}_count": 1}})
+
+        # BW reward — voter earns 1 BW per NEW vote cast (not on update or undo).
+        # BW is internal XP, never convertible to EUR. Empresas/B2B excluded.
+        # Anti-fraude: skip if voter is the post author OR a sponsored post's owner.
+        is_self_vote = (post.get("author_id") == user["user_id"])
+        if not is_self_vote:
+            now = datetime.now(timezone.utc)
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$inc": {"bw_balance": 1, "bw_total_earned": 1}},
+            )
+            await db.bw_transactions.insert_one({
+                "tx_id": f"bw_{uuid.uuid4().hex[:12]}",
+                "user_id": user["user_id"],
+                "delta": +1,
+                "reason": "vote_cast",
+                "post_id": post_id,
+                "created_at": now,
+            })
+
         if post.get("campaign_id"):
             await db.campaigns.update_one({"campaign_id": post["campaign_id"]},
                                            {"$inc": {f"{new_vote}_count": 1, "votes_collected": 1}})
@@ -2210,6 +2234,32 @@ _WEBSITE_ZIP_PATH = Path(__file__).parent / "static" / "besord-site.zip"
 @api_router.get("/themes")
 async def list_themes():
     return THEMES
+
+
+# ---------------------------------------------------------------------------
+# BW Wallet — Best Word internal XP. Empresas EXCLUÍDAS (só EUR para PJ).
+# 1 voto dado = +1 BW; gasto futuro em anúncios pessoais (PF only).
+# ---------------------------------------------------------------------------
+
+@api_router.get("/wallet/me")
+async def wallet_me(authorization: Optional[str] = Header(None),
+                    limit: int = Query(30, ge=1, le=200)):
+    user = await get_current_user(authorization)
+    bal = int(user.get("bw_balance", 0) or 0)
+    earned = int(user.get("bw_total_earned", 0) or 0)
+    spent = max(0, earned - bal)
+    txs = await db.bw_transactions.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(length=limit)
+    for t in txs:
+        if isinstance(t.get("created_at"), datetime):
+            t["created_at"] = t["created_at"].isoformat()
+    return {
+        "balance": bal,
+        "total_earned": earned,
+        "total_spent": spent,
+        "transactions": txs,
+    }
 
 
 # ---------------------------------------------------------------------------

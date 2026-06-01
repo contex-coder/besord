@@ -17,6 +17,8 @@ export type User = {
   is_admin?: boolean;
   age_confirmed?: boolean;
   birth_year?: number | null;
+  bw_balance?: number;
+  bw_total_earned?: number;
 };
 
 type AuthContextType = {

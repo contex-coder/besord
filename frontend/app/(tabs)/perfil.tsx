@@ -134,6 +134,19 @@ export default function PerfilScreen() {
               <StatBox label="DESAPROVO" value={totalDesaprovo} bg={colors.desaprovo} />
             </View>
 
+            <View style={styles.bwCard} testID="bw-wallet-card">
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={styles.bwBig}>{user.bw_balance || 0}</Text>
+                <Text style={styles.bwLabel}>BW</Text>
+                <View style={{ flex: 1 }} />
+                <Text style={styles.bwSub}>+{user.bw_total_earned || 0} TOTAL</Text>
+              </View>
+              <Text style={styles.bwExplain}>
+                Best Word — ganhas <Text style={{ fontWeight: "900" }}>1 BW por cada voto</Text> que dás.
+                Usa-os em anúncios pessoais (em breve). Não tem valor monetário.
+              </Text>
+            </View>
+
             <TouchableOpacity
               testID="btn-advertise"
               style={styles.advertiseBtn}
@@ -234,6 +247,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notifDotText: { fontSize: 9, fontWeight: "900", color: colors.text },
+  bwCard: {
+    borderWidth: 3, borderColor: colors.border,
+    backgroundColor: colors.neutral, padding: 14, marginTop: 14, gap: 6,
+  },
+  bwBig: { fontSize: 36, fontWeight: "900", color: colors.text, letterSpacing: -1.5 },
+  bwLabel: { fontSize: 18, fontWeight: "900", color: colors.text, letterSpacing: 1, paddingTop: 6 },
+  bwSub: { fontSize: 11, fontWeight: "900", color: colors.textSecondary, letterSpacing: 1 },
+  bwExplain: { fontSize: 11, fontWeight: "600", color: colors.text, lineHeight: 16 },
   identityBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.neutral, borderBottomWidth: 3, borderBottomColor: colors.border },
   identityText: { flex: 1, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, color: colors.text },
   listContent: { padding: 20, paddingBottom: 40, gap: 12 },

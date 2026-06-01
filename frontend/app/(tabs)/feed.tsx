@@ -18,7 +18,7 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 import PostCard, { PostItem } from "@/src/components/PostCard";
 
-type SortMode = "recent" | "trending";
+type SortMode = "recent" | "trending" | "styles";
 
 export default function FeedScreen() {
   const { apiFetch, user } = useAuth();
@@ -31,7 +31,10 @@ export default function FeedScreen() {
   const load = useCallback(
     async (mode: SortMode = sort) => {
       try {
-        const r = await apiFetch(`/api/posts?sort=${mode}`);
+        const qs = mode === "styles"
+          ? "source=styles&sort=recent"
+          : `sort=${mode}`;
+        const r = await apiFetch(`/api/posts?${qs}`);
         if (r.ok) {
           const data = await r.json();
           setPosts(data);
@@ -251,6 +254,20 @@ export default function FeedScreen() {
             />
             <Text style={[styles.sortText, sort === "trending" && styles.sortTextActive]}>
               EM ALTA
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="sort-styles"
+            style={[styles.sortBtn, sort === "styles" && styles.sortBtnActive]}
+            onPress={() => setSort("styles")}
+          >
+            <Ionicons
+              name="star"
+              size={12}
+              color={sort === "styles" ? colors.text : colors.textSecondary}
+            />
+            <Text style={[styles.sortText, sort === "styles" && styles.sortTextActive]}>
+              ESTILOS
             </Text>
           </TouchableOpacity>
         </View>

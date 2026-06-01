@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 13 backend validation — BW Wallet (Best Word XP) + Styles-filtered feed. 15/15 pytest cases passed. Wallet auth gate (401), shape correctness (balance/total_earned/total_spent/transactions), and the 4 voting rules all behave per spec: new vote awards +1 BW & inserts bw_transactions row with reason=vote_cast; vote update (aprovo→desaprovo) does NOT award BW; vote undo (same vote clicked again) does NOT award BW; self-vote (author voting on own post) does NOT award BW. /api/auth/me exposes bw_balance and bw_total_earned matching /api/wallet/me. Styles feed (GET /api/posts?source=styles) returns [] when unauth or with zero follows, and exactly matches followed words after a follow/unfollow cycle (verified with PIZZA). Regression smoke (themes 10, trends, follow status unauth, invoice auth gate, posts recent) all green. Frontend bundle compiles cleanly (HTTP 200 on landing, no bundling errors in expo logs).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Pre-existing deprecation warning at app boot ('shadow*' style props are deprecated. Use 'boxShadow'). Carried over from prior iterations — not introduced in iter13."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13.py",
+    "/app/test_reports/pytest/pytest_iter13_results.xml"
+  ],
+  "action_items": [
+    "Dormant bug from iter12 still present: /app/backend/server.py line ~1430 in renew_campaign references undefined `word` variable (NameError under real sk_test_ key). Patch to `original['word']`.",
+    "(Optional, low priority) Migrate React Native shadow* style props to boxShadow."
+  ],
+  "critical_code_review_comments": [
+    "BW Wallet logic is correct and self-contained inside the NEW-vote branch (server.py:656-673), so the four rules (award only on new vote, skip on update/undo/self-vote) are guaranteed by control flow — no race conditions or duplicate writes observed.",
+    "server.py now at 2453 lines — still exceeds the 700-line guideline. Recommend splitting into routers/ (wallet, themes, styles, trends, business, admin).",
+    "bw_transactions inserts but no DB index on (user_id, created_at desc); cheap to add for the wallet/me sort+limit query."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration13.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "bundle compile OK (not UI-tested per request)"},
+  "seed_data_creation": "Per-module voter_user fixture (user_voter_iter13_*) with own session token to vote on seeded_user's posts without overlapping the existing pytest user. All posts/votes/bw_transactions/follows cleaned up in finally blocks. voter_user/session/tx/votes torn down in fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "BW Wallet + styles feed are green. Future iterations can skip these. Two dormant items: (1) renew_campaign undefined `word` (carried since iter12, only triggers under real Stripe key), (2) RN shadow* deprecation warning. server.py file size keeps growing — split-up suggested. New collection bw_transactions could benefit from an index on (user_id, created_at desc).",
+  "rca_of_issue": "N/A — no failing tests."
+}
