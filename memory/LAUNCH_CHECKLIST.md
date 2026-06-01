@@ -32,9 +32,8 @@ Legenda: ✅ pronto • ⏳ pendente (acção tua) • ⚙️ pendente (acção 
 ## 2. Google Play Store 🤖
 
 ### 🔴 Bloqueadores
-- ⏳ **Conta Google Play Developer** ($25 único): https://play.google.com/console/signup — só tu podes
-  - Identidade verificada (passaporte/CC)
-  - Tempo estimado: 1-2 dias para Google aprovar
+- ✅ **Conta Google Play Developer** criada — Besord (ID `9218135675469585653`, conta pessoal, dono rodrigocontecunha@gmail.com)
+  - ⏳ Falta concluir configuração (banner azul "Para publicar apps, conclua a configuração da sua conta")
 - ✅ **Ícone 512×512** PNG → `/app/frontend/assets/images/icon.png`
 - ✅ **Adaptive icon** (Android 8+) → `/app/frontend/assets/images/adaptive-icon.png`
 - ✅ **Splash screen** 2048×2048 → `/app/frontend/assets/images/splash-image.png`
