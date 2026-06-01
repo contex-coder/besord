@@ -1,0 +1,58 @@
+{
+  "summary": "Iteration 9 review: 12/15 backend tests passed. CRITICAL backend bug detected: apply_tier_overrides() crashes with dataclasses.FrozenInstanceError because pricing.CampaignTier is @dataclass(frozen=True) but server.py mutates `t.amount_cents` / `t.included_votes` in-place. This breaks the entire admin tier override feature — POST /api/admin/tiers returns 500 after any successful DB write (because the post-write apply_tier_overrides() call crashes), DELETE /api/admin/tiers/{key} returns 500 once an override exists, and the public GET /api/business/tiers returns 500 whenever any override row exists. The features that DO work: auth session race fix (no 500 on duplicate/invalid session_id), zip download, GET /api/admin/tiers when no overrides exist, validation of tier_key/amount/votes bounds, frontend bundle compiles, landing page shows 'PT-EN-FR-DE-ZH' badge (no BETA), no MVP/'Modo TESTE'/'durante o MVP' promo strings remain. Secondary latent bug also identified in admin_reset_tier (DELETE) — even after fixing the frozen-dataclass issue, the reset path imports `pricing.TIERS as DEFAULTS` which is the SAME object as the in-module TIERS, so once overrides have mutated TIERS, the 'reset to defaults' is a no-op (still serves the previously-overridden values with is_overridden=false). Recommend snapshotting defaults at import time.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/admin/tiers, DELETE /api/admin/tiers/{key}, GET /api/business/tiers",
+        "issue": "apply_tier_overrides() (server.py:803-810) attempts `t.amount_cents = ov[...]` and `t.included_votes = ov[...]` on a frozen dataclass (pricing.py:5 `@dataclass(frozen=True)`). Raises dataclasses.FrozenInstanceError → 500. Fix: either remove `frozen=True` from CampaignTier OR build a runtime overrides dict instead of mutating TIERS objects.",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "DELETE /api/admin/tiers/{tier_key}",
+        "issue": "admin_reset_tier (server.py:1628-1631) does `from pricing import TIERS as DEFAULTS` then `TIERS[k].amount_cents = DEFAULTS[k].amount_cents`. DEFAULTS and TIERS are the same dict (same module-level object), so after a prior override mutated values in-place, resetting reads back the mutated values — NOT the original pricing.py defaults. After fixing the frozen bug, reset will incorrectly leave the override values in place while flipping is_overridden→false. Fix: snapshot defaults to an immutable copy at module load (e.g., `_DEFAULTS = {k: replace(v) for k,v in TIERS.items()}`) and reset from that snapshot, OR rebuild the tier instance via `dataclasses.replace`."
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Admin → Editar preços dos planos screen",
+        "issue": "Frontend screen /app/frontend/app/admin/tiers.tsx will hit 500 on save/reset due to the backend FrozenInstanceError bug above. Cannot be exercised end-to-end until backend is fixed.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9.py",
+    "/app/test_reports/pytest/pytest_iter9_results.xml"
+  ],
+  "action_items": [
+    "FIX (CRITICAL): Either remove `frozen=True` from CampaignTier in /app/backend/pricing.py:5, OR refactor apply_tier_overrides() in /app/backend/server.py:796-810 to replace entries via dataclasses.replace() (e.g. `TIERS[key] = replace(t, amount_cents=ov['amount_cents'], included_votes=ov['included_votes'])`). Recommend the latter — keeps frozen invariant.",
+    "FIX (CRITICAL companion): Snapshot pricing defaults before mutations. In pricing.py expose `DEFAULT_TIERS = {k: replace(v) for k,v in TIERS.items()}` (or copy.deepcopy), and have admin_reset_tier (server.py:1628) reset from that snapshot — current code resets from a self-referencing dict and so leaves the override values in place.",
+    "Re-run /app/backend/tests/test_iteration9.py after the fix; the 3 failing tests (TestAdminTiersUpdate, TestAdminTiersReset, TestPublicTiersHonorsOverrides) should then all pass.",
+    "Optional hardening: add a startup test in apply_tier_overrides() that catches FrozenInstanceError to avoid a 500 cascade if pricing.py changes shape in the future."
+  ],
+  "critical_code_review_comments": [
+    "server.py:796-810 apply_tier_overrides() mutates a frozen dataclass — guaranteed crash whenever any override row exists in db.tier_overrides. The function is fanned out to multiple hot paths (/api/business/tiers, POST /api/admin/tiers post-write apply, POST /api/business/campaigns pre-pricing apply, /api/business/campaigns/check-payment, etc.), so this single bug also breaks campaign creation/pricing once any override has been set.",
+    "server.py:1628-1631 admin_reset_tier — the `DEFAULTS` alias is the same object as TIERS. This is a no-op reset for in-memory state. It does correctly delete the override row, so the GET response will then have is_overridden=false, but it will continue to serve the previously-overridden numbers. Tests caught this via the amount_cents/included_votes assertions on reset.",
+    "Auth session race fix (server.py:~299) verified — invalid/duplicate session_ids return 401, never 500. Idempotent path is correct.",
+    "BETA/MVP/TESTE cleanup verified via grep: no occurrences in /app/frontend/app or /app/frontend/src outside the legitimate `stripe_mode === 'TEST'` check in admin.tsx (which is functional, not promotional copy).",
+    "campaigns.tsx (line 63-67) status-switch correctly handles canceled→ELIMINADA / pending_payment→AGUARDA PAGTO / active→ATIVA / completed→CONCLUÍDA / fallback→.toUpperCase(). Bug fix verified by code inspection.",
+    "AuthContext.tsx signOut hardening — code inspection only; not exercised in this run because OAuth login requires a real Google session (cannot be E2E-tested in a headless env without an authenticated browser).",
+    "Zip endpoint /api/download/besord-site.zip — 200, content-type application/zip, ~115KB. Verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9.py (new)",
+    "/app/test_reports/pytest/pytest_iter9_results.xml (new)"
+  ],
+  "success_rate": {"backend": "80% (12/15)", "frontend": "smoke_only_passed (bundle + landing + grep clean)"},
+  "seed_data_creation": "Inserted a test admin session pointing at the ADMIN_EMAIL user, plus a separate non-admin TEST_iter9_user session. Both cleaned up on module teardown. db.tier_overrides was wiped at fixture setup; db.admin_audit tier_price_update/reset rows are wiped on teardown.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-run /app/backend/tests/test_iteration9.py after the FrozenInstanceError fix and the DEFAULTS-snapshot fix. The 3 failing tests verify (a) override is written + reflected via GET, (b) reset restores pricing.py defaults (1900 cents / 380 votes for local), and (c) public /api/business/tiers honors overrides. All three test bodies assert exact post-state numbers, so they will fail if either bug remains. Tests already prove auth/validation/zip/regression work.",
+  "rca_of_issue": "Root cause: pricing.CampaignTier is declared `@dataclass(frozen=True)` (immutable). server.py's apply_tier_overrides() (added this iteration) mutates the in-memory TIERS dict entries directly with attribute assignment, which Python rejects on frozen dataclasses with FrozenInstanceError. Reproduction: 1) POST /api/admin/tiers {tier_key:'local', amount_cents:2500, included_votes:1500} as admin → 500 (DB write succeeds, but the post-write apply_tier_overrides call raises). 2) Once any row exists in db.tier_overrides, GET /api/business/tiers returns 500. Mitigation: replace mutation with dataclasses.replace() to rebuild the tier instance, and snapshot original defaults at import time so reset is genuine."
+}

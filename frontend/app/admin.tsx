@@ -155,7 +155,8 @@ export default function AdminDashboard() {
             <ToolBtn icon="server" label="Migrar backend" desc="Veja docs Vercel / Railway / AWS no PRD.md" />
             <ToolBtn icon="leaf" label="Migrar MongoDB → Atlas" desc="mongodump local → mongorestore Atlas" />
             <ToolBtn icon="card" label="Stripe Dashboard" desc="Gerir pagamentos reais" onPress={() => Linking.openURL("https://dashboard.stripe.com")} />
-            <ToolBtn icon="pricetag" label="Editar preços dos planos" desc="(Em breve via API: POST /api/admin/tiers)" />
+            <ToolBtn icon="pricetag" label="Editar preços dos planos" desc="Ajusta valor e votos incluídos de cada tier" onPress={() => router.push("/admin/tiers")} />
+            <ToolBtn icon="download" label="Site público besord.eu (ZIP)" desc="Baixar pacote pronto para upload via cPanel" onPress={() => Linking.openURL("/api/download/besord-site.zip")} />
           </>
         )}
       </ScrollView>

@@ -126,7 +126,7 @@ export default function BusinessOnboardScreen() {
           )}
         </TouchableOpacity>
 
-        <Text style={styles.disclaimer}>Pagamentos seguros via Stripe. Modo TESTE durante o MVP.</Text>
+        <Text style={styles.disclaimer}>Pagamentos seguros via Stripe (EUR).</Text>
       </ScrollView>
     </SafeAreaView>
   );

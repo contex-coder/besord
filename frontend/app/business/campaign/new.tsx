@@ -193,7 +193,7 @@ export default function NewCampaignScreen() {
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.disclaimer}>Pagamento seguro via Stripe • Modo TESTE: use cartão 4242 4242 4242 4242</Text>
+        <Text style={styles.disclaimer}>Pagamento seguro via Stripe • Valores em EUR</Text>
       </ScrollView>
     </SafeAreaView>
   );

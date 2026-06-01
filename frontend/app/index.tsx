@@ -50,7 +50,7 @@ export default function Landing() {
       <View style={styles.content}>
         <View style={styles.logoBlock}>
           <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>BETA</Text>
+            <Text style={styles.logoBadgeText}>PT-EN-FR-DE-ZH</Text>
           </View>
           <Text style={styles.brand}>{t("login_title")}</Text>
           <Text style={styles.tagline}>

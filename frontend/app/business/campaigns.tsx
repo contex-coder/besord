@@ -55,8 +55,17 @@ export default function CampaignsListScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const statusColor = item.status === "active" ? colors.aprovo : item.status === "completed" ? colors.neutral : colors.desaprovo;
-            const statusLabel = item.status === "active" ? "ATIVA" : item.status === "completed" ? "CONCLUÍDA" : "AGUARDA PAGTO";
+            const statusColor =
+              item.status === "active" ? colors.aprovo :
+              item.status === "completed" ? colors.neutral :
+              item.status === "canceled" ? colors.bgSubtle :
+              colors.desaprovo;
+            const statusLabel =
+              item.status === "active" ? "ATIVA" :
+              item.status === "completed" ? "CONCLUÍDA" :
+              item.status === "canceled" ? "ELIMINADA" :
+              item.status === "pending_payment" ? "AGUARDA PAGTO" :
+              item.status.toUpperCase();
             return (
               <TouchableOpacity testID={`campaign-${item.campaign_id}`} style={styles.card} onPress={() => router.push(`/business/campaign/${item.campaign_id}`)}>
                 <Image source={{ uri: item.image_base64 }} style={styles.thumb} />

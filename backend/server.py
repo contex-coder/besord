@@ -296,13 +296,19 @@ async def auth_session(payload: SessionRequest):
     # SECURITY: delete any prior session with the SAME token (regardless of user)
     # to prevent stale-token cross-user contamination.
     await db.user_sessions.delete_many({"session_token": session_token})
-    await db.user_sessions.insert_one({
-        "session_token": session_token,
-        "user_id": user["user_id"],
-        "email_snapshot": email,
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-        "created_at": datetime.now(timezone.utc),
-    })
+    try:
+        await db.user_sessions.insert_one({
+            "session_token": session_token,
+            "user_id": user["user_id"],
+            "email_snapshot": email,
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception as e:
+        # Duplicate-key races (rapid concurrent OAuth callbacks): the prior
+        # delete+insert may collide with another worker's insert. Idempotent
+        # behaviour — the token is already there and points to this user.
+        logger.warning(f"Auth session insert raced (ignored): {e}")
     return AuthResponse(token=session_token, user=user_out(user))
 
 
@@ -787,8 +793,26 @@ async def get_business_profile(authorization: Optional[str] = Header(None)):
 
 
 # ---------- Campaigns ----------
+async def apply_tier_overrides() -> None:
+    """Pull tier overrides from db.tier_overrides and apply to the in-memory TIERS dict.
+    Called by every endpoint that prices a campaign so admin changes take effect immediately."""
+    try:
+        overrides = await db.tier_overrides.find({}, {"_id": 0}).to_list(length=100)
+    except Exception:
+        overrides = []
+    for ov in overrides:
+        key = ov.get("tier_key")
+        if key in TIERS:
+            t = TIERS[key]
+            if "amount_cents" in ov and isinstance(ov["amount_cents"], int) and ov["amount_cents"] > 0:
+                t.amount_cents = ov["amount_cents"]
+            if "included_votes" in ov and isinstance(ov["included_votes"], int) and ov["included_votes"] > 0:
+                t.included_votes = ov["included_votes"]
+
+
 @api_router.get("/business/tiers")
 async def list_tiers():
+    await apply_tier_overrides()
     return tiers_public()
 
 
@@ -797,6 +821,8 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
     user = await get_current_user(authorization)
     if not user.get("business_profile"):
         raise HTTPException(status_code=400, detail="Crie o perfil empresarial primeiro.")
+    # Honour admin tier-price overrides before pricing the new campaign.
+    await apply_tier_overrides()
 
     word = payload.word.strip()
     if not WORD_RE.match(word):
@@ -1522,18 +1548,88 @@ async def admin_campaign_audit(campaign_id: str, authorization: Optional[str] = 
     return {"campaign_id": campaign_id, "current": camp, "audit_trail": rows}
 
 
+@api_router.get("/admin/tiers")
+async def admin_list_tiers(authorization: Optional[str] = Header(None)):
+    """Return tier defaults merged with any DB overrides — for the admin editor."""
+    await require_admin(authorization)
+    await apply_tier_overrides()
+    overrides = await db.tier_overrides.find({}, {"_id": 0}).to_list(length=100)
+    overrides_map = {o["tier_key"]: o for o in overrides}
+    out = []
+    for t in TIERS.values():
+        ov = overrides_map.get(t.key)
+        out.append({
+            "key": t.key,
+            "name": t.name,
+            "scope": t.scope,
+            "duration_days": t.duration_days,
+            "amount_cents": t.amount_cents,
+            "included_votes": t.included_votes,
+            "is_overridden": bool(ov),
+            "overridden_at": (ov.get("updated_at").isoformat() if ov and ov.get("updated_at") else None),
+        })
+    return out
+
+
 @api_router.post("/admin/tiers")
 async def admin_update_tier(payload: TierUpdate, authorization: Optional[str] = Header(None)):
-    await require_admin(authorization)
+    admin_user = await require_admin(authorization)
     if payload.tier_key not in TIERS:
         raise HTTPException(status_code=400, detail="Tier desconhecido")
-    # Persist override in DB; pricing module reads from DB if present
+    if payload.amount_cents < 100:
+        raise HTTPException(status_code=400, detail="Preço mínimo: 1,00 EUR (100 cêntimos)")
+    if payload.amount_cents > 10_000_00:
+        raise HTTPException(status_code=400, detail="Preço máximo: 10.000 EUR")
+    if payload.included_votes < 10 or payload.included_votes > 1_000_000:
+        raise HTTPException(status_code=400, detail="Votos incluídos entre 10 e 1.000.000")
+    now = datetime.now(timezone.utc)
+    # Persist override in DB; apply_tier_overrides() reads from DB at runtime
     await db.tier_overrides.update_one(
         {"tier_key": payload.tier_key},
-        {"$set": {"amount_cents": payload.amount_cents, "included_votes": payload.included_votes, "updated_at": datetime.now(timezone.utc)}},
+        {"$set": {
+            "tier_key": payload.tier_key,
+            "amount_cents": payload.amount_cents,
+            "included_votes": payload.included_votes,
+            "updated_at": now,
+            "updated_by": admin_user["user_id"],
+            "updated_by_email": admin_user["email"],
+        }},
         upsert=True,
     )
-    return {"ok": True}
+    await db.admin_audit.insert_one({
+        "event": "tier_price_update",
+        "tier_key": payload.tier_key,
+        "amount_cents": payload.amount_cents,
+        "included_votes": payload.included_votes,
+        "actor_user_id": admin_user["user_id"],
+        "actor_email": admin_user["email"],
+        "created_at": now,
+    })
+    await apply_tier_overrides()
+    return {"ok": True, "tier_key": payload.tier_key,
+            "amount_cents": payload.amount_cents,
+            "included_votes": payload.included_votes}
+
+
+@api_router.delete("/admin/tiers/{tier_key}")
+async def admin_reset_tier(tier_key: str, authorization: Optional[str] = Header(None)):
+    """Reset a tier to default values (deletes the override row)."""
+    admin_user = await require_admin(authorization)
+    if tier_key not in TIERS:
+        raise HTTPException(status_code=404, detail="Tier não encontrado")
+    await db.tier_overrides.delete_one({"tier_key": tier_key})
+    await db.admin_audit.insert_one({
+        "event": "tier_price_reset",
+        "tier_key": tier_key,
+        "actor_user_id": admin_user["user_id"],
+        "actor_email": admin_user["email"],
+        "created_at": datetime.now(timezone.utc),
+    })
+    from pricing import TIERS as DEFAULTS
+    if tier_key in DEFAULTS:
+        TIERS[tier_key].amount_cents = DEFAULTS[tier_key].amount_cents
+        TIERS[tier_key].included_votes = DEFAULTS[tier_key].included_votes
+    return {"ok": True, "tier_key": tier_key}
 
 
 class PromoCreate(BaseModel):
@@ -1712,6 +1808,29 @@ async def stripe_webhook(request: Request):
 
 
 app.include_router(api_router)
+
+
+# ---------------------------------------------------------------------------
+# Static download — Besord public website (besord.eu) packaged as ZIP.
+# Exposed under /api/* so it goes through the same ingress as the rest of the
+# backend. Not gated — the zip contains only public content (legal pages + landing).
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import FileResponse, Response
+from pathlib import Path
+
+_WEBSITE_ZIP_PATH = Path(__file__).parent / "static" / "besord-site.zip"
+
+
+@app.get("/api/download/besord-site.zip")
+async def download_besord_site_zip():
+    if not _WEBSITE_ZIP_PATH.exists():
+        return Response("Zip not found", status_code=404)
+    return FileResponse(
+        path=str(_WEBSITE_ZIP_PATH),
+        media_type="application/zip",
+        filename="besord-site.zip",
+    )
 
 app.add_middleware(
     CORSMiddleware,

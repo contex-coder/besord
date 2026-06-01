@@ -164,6 +164,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }
     await storage.secureRemove(TOKEN_KEY);
+    // Defensive: on web, SecureStore falls back to localStorage. Clear every
+    // possible place a stale token could survive between page reloads.
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(TOKEN_KEY);
+        // expo-secure-store-web prefixes localStorage keys — clean those too.
+        Object.keys(window.localStorage)
+          .filter((k) => k.includes(TOKEN_KEY) || k.toLowerCase().includes("besord"))
+          .forEach((k) => {
+            try { window.localStorage.removeItem(k); } catch {}
+          });
+        window.sessionStorage?.clear();
+      } catch {}
+    }
     setToken(null);
     setUser(null);
   }, [token]);
