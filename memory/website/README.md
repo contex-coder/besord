@@ -111,7 +111,7 @@ Para passar para produção:
 
 1. ⏳ **Upload do site** → mais 5 min e tens `www.besord.eu` online
 2. ⏳ **Verifica DNS Resend** → para emails saírem do sandbox
-3. ⏳ **Webhook Stripe** → cria em https://dashboard.stripe.com/test/webhooks com URL `https://api.besord.eu/api/stripe/webhook` (mas só depois de publicar o backend!) e manda-me o `whsec_...`
+3. ⏳ **Webhook Stripe** → cria em https://dashboard.stripe.com/test/webhooks com URL `https://api.besord.eu/api/stripe/webhook` (mas só depois de publicar o backend!) e manda-me o webhook signing secret
 4. ⏳ **Conta Google Play Developer** ($25) — só tu podes criar
 5. ⏳ **Publicar** o app via botão "Publish" do Emergent → gera o AAB para a Play Store
 

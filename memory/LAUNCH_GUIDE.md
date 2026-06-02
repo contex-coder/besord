@@ -12,9 +12,9 @@ A chave que você enviou (`pk_live_51RZJDY...`) é **PUBLISHABLE** (pública, fr
 
 1. Vá em https://dashboard.stripe.com/apikeys
 2. **REVOKE a chave pk_live que você compartilhou** publicamente (botão "Roll key" na linha dela)
-3. Em "Standard keys", copie o **Secret key** (começa com `sk_live_...`) — botão "Reveal live key"
-4. **Me envie em mensagem privada** apenas essa `sk_live_...` (não cole em screenshot, redes, etc.)
-5. **Recomendação MVP**: Toggle "Viewing test data" no topo do Stripe → copie a `sk_test_...` em vez da live. Assim você testa tudo sem risco. Quando tiver app publicado + primeiros anunciantes, eu troco para a `sk_live_`.
+3. Em "Standard keys", copie o **Secret key** (a chave live do Stripe) — botão "Reveal live key"
+4. **Me envie em mensagem privada** apenas essa chave live do Stripe (não cole em screenshot, redes, etc.)
+5. **Recomendação MVP**: Toggle "Viewing test data" no topo do Stripe → copie a sua chave de teste em vez da live. Assim você testa tudo sem risco. Quando tiver app publicado + primeiros anunciantes, eu troco para a chave live do Stripe.
 
 ### Passo 2: Push pro GitHub (5 min) — backup do código
 1. Topo direito do Emergent → botão **"Save to GitHub"**
@@ -103,7 +103,7 @@ Tudo já é portável:
 
 ## ❌ Erros comuns a evitar
 
-1. **Não compartilhe a sk_live_** com ninguém. Só comigo, em chat, e eu coloco direto no `.env` protegido.
+1. **Não compartilhe a chave live do Stripe** com ninguém. Só comigo, em chat, e eu coloco direto no `.env` protegido.
 2. **Não publique nas lojas antes de testar** o fluxo Google login + criação de campanha localmente.
 3. **Não cobre em produção sem termos de uso + política de privacidade** — vou gerar templates quando publicar.
 4. **Reserve 30% de cada venda** para impostos (Brasil: MEI cobre até R$81k/ano).
@@ -112,7 +112,7 @@ Tudo já é portável:
 
 ## 📞 Próximas ações (suas, agora)
 
-1. ☐ Me envie sua `sk_test_...` ou `sk_live_...` correta do Stripe (em chat aqui)
+1. ☐ Me envie sua chave correta do Stripe (teste ou live) em chat aqui
 2. ☐ Push pro GitHub (clica no botão Save to GitHub)
 3. ☐ Publish Web (clica no botão Publish → Deploy Web)
 4. ☐ Faça login com `rodrigocontecunha@gmail.com` → testa o Painel Admin

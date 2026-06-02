@@ -130,6 +130,29 @@ class TestEmailVerification:
         })
         assert r.json()["verified"] is False
 
+    def test_create_workspace_sends_verification_email(self, base_url, auth_headers, biz_clean, api_client, monkeypatch):
+        import sys
+        sys.path.insert(0, "/app/backend")
+        import email_alerts
+
+        called = {}
+        def fake_send(params):
+            called["params"] = params
+            return {"id": "fake-email-id"}
+
+        monkeypatch.setattr(email_alerts, "RESEND_API_KEY", "test", raising=False)
+        monkeypatch.setattr(email_alerts.resend, "api_key", "test", raising=False)
+        monkeypatch.setattr(email_alerts.resend.Emails, "send", fake_send)
+
+        r = api_client.post(_u(base_url, "/api/workspaces"), headers=auth_headers, json={
+            "type": "business", "name": "Empresa Email Test",
+            "tax_id": VALID_PT_NIPC, "billing_email": "fatura@send.pt", "country_code": "PT",
+        })
+        assert r.status_code == 200, r.text
+        assert called["params"]["to"] == ["fatura@send.pt"]
+        assert "Confirmar email" in called["params"]["html"]
+        assert "Empresa Email Test" in called["params"]["html"]
+
     def test_confirm_with_bad_token_fails(self, base_url, auth_headers, biz_clean, api_client):
         r = api_client.post(_u(base_url, "/api/workspaces"), headers=auth_headers, json={
             "type": "business", "name": "Confirm Test",

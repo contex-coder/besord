@@ -19,11 +19,11 @@ Legenda: ✅ pronto • ⏳ pendente (acção tua) • ⚙️ pendente (acção 
 - ⏳ **Activar conta Stripe real** (modo Live): https://dashboard.stripe.com → Activate
   - Requer NIF, dados da empresa Besord, IBAN PT
   - Tempo estimado: 30 min (preenchimento) + 1-3 dias úteis (validação Stripe)
-- ⏳ **Substituir `STRIPE_API_KEY`** no `.env` por `sk_live_*` depois da activação
+- ⏳ **Substituir `STRIPE_API_KEY`** no `.env` por sua chave Stripe live depois da ativação
 - ⏳ **Criar webhook em Live**: https://dashboard.stripe.com/webhooks → Add endpoint
   - URL: `https://api.besord.eu/api/stripe/webhook` (depois do deploy do backend) — ou usa o URL do Emergent enquanto não migras
   - Eventos: `checkout.session.completed`, `charge.refunded`, `checkout.session.expired`
-  - Copia o `whsec_...` e envia-me; eu coloco no `.env`
+  - Copia o webhook signing secret e envia-me; eu coloco no `.env`
 - 🟡 **Configurar branding na Stripe**: logo, cor, email de recibo (`support@besord.eu`)
 - 🟡 **Activar Stripe Tax** se faturação ≥ 10k€ (IVA automático)
 
@@ -142,4 +142,4 @@ Legenda: ✅ pronto • ⏳ pendente (acção tua) • ⚙️ pendente (acção 
 4. 💳 **Activar Stripe Live** → modo real para receber dinheiro
 5. 📱 **Conta Google Play Developer** → enquanto Stripe valida, prepara a loja
 
-Quando tiveres o `whsec_...` da Stripe Live e o domínio Resend verificado, manda-me que actualizo o `.env`.
+Quando tiveres o webhook signing secret da Stripe Live e o domínio Resend verificado, manda-me que actualizo o `.env`.

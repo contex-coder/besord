@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: besord-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+    startCommand: uvicorn backend.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        scope: service
+      - key: STRIPE_API_KEY
+        scope: service
+      - key: STRIPE_WEBHOOK_SECRET
+        scope: service
+      - key: RESEND_API_KEY
+        scope: service
+      - key: FRONTEND_BASE_URL
+        scope: service
+      - key: GOOGLE_CLIENT_ID
+        scope: service
+      - key: GOOGLE_CLIENT_SECRET
+        scope: service
+      - key: APPLE_CLIENT_ID
+        scope: service
+      - key: APPLE_CLIENT_SECRET
+        scope: service
+      - key: JWT_SECRET_KEY
+        scope: service
+      - key: LOG_LEVEL
+        value: info
+        scope: service
+    disk:
+      name: appdata
+      mountPath: /data
+      sizeGB: 1
+    buildFilter:
+      paths:
+        - backend/**

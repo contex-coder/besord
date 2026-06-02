@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Besord <onboarding@resend.dev>")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "https://besord.eu")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -28,6 +29,68 @@ MILESTONES = (50, 75, 100)
 
 def _is_configured() -> bool:
     return bool(RESEND_API_KEY)
+
+
+def _verification_subject(business_name: str) -> str:
+    return f"Confirma o email da tua empresa {business_name} — Besord"
+
+
+def _verification_html(business_name: str, verification_link: str) -> str:
+    return f"""<!doctype html>
+<html lang="pt">
+<head><meta charset="utf-8"><title>Confirma o email da tua empresa</title></head>
+<body style="margin:0;padding:0;background:#F5F5F4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#0A0A0A;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#F5F5F4;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="560" style="max-width:560px;background:#FFFFFF;border:4px solid #0A0A0A;box-shadow:6px 6px 0 #0A0A0A;">
+        <tr><td style="padding:24px 24px 8px 24px;">
+          <div style="display:inline-block;background:#FFD400;border:3px solid #0A0A0A;padding:4px 10px;font-weight:900;letter-spacing:2px;font-size:12px;">BESORD</div>
+        </td></tr>
+        <tr><td style="padding:8px 24px 0 24px;">
+          <h1 style="margin:0;font-size:34px;font-weight:900;letter-spacing:-1px;line-height:1.05;">Confirma o email da tua empresa</h1>
+          <p style="margin:8px 0 0 0;font-size:14px;font-weight:800;letter-spacing:1px;color:#5A5A5A;">{business_name}</p>
+        </td></tr>
+        <tr><td style="padding:20px 24px 0 24px;">
+          <p style="margin:0;font-size:15px;line-height:1.45;font-weight:600;">Obrigado por criar a empresa na Besord. Para poderes criar anúncios, confirma o email clicando no botão abaixo.</p>
+        </td></tr>
+        <tr><td style="padding:24px 24px 24px 24px;" align="center">
+          <a href="{verification_link}" style="display:inline-block;background:#0A0A0A;color:#FFFFFF;text-decoration:none;padding:14px 24px;font-weight:900;letter-spacing:2px;font-size:13px;border:4px solid #0A0A0A;box-shadow:4px 4px 0 #FFD400;">Confirmar email</a>
+        </td></tr>
+        <tr><td style="padding:0 24px 24px 24px;">
+          <p style="margin:0;font-size:11px;color:#888;line-height:1.4;text-align:center;">Se não consegues clicar no botão, copia e cola este link no navegador:<br><a href="{verification_link}" style="color:#0A0A0A;">{verification_link}</a></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
+def send_verification_email(*, to_email: str, workspace_id: str, business_name: str,
+                            verification_token: str, front_base_url: Optional[str] = None) -> Optional[str]:
+    """Send the workspace verification email via Resend."""
+    if not _is_configured():
+        logger.warning("Resend not configured (RESEND_API_KEY missing) — skipping verification email")
+        return None
+    if not to_email:
+        logger.warning("No recipient email — skipping verification email")
+        return None
+    front = front_base_url or FRONTEND_BASE_URL
+    link = f"{front}/verify-empresa?ws={workspace_id}&token={verification_token}"
+    try:
+        params = {
+            "from": EMAIL_FROM,
+            "to": [to_email],
+            "subject": _verification_subject(business_name or "a tua empresa"),
+            "html": _verification_html(business_name or "a tua empresa", link),
+        }
+        result = resend.Emails.send(params)
+        email_id = result.get("id") if isinstance(result, dict) else None
+        logger.info(f"Sent workspace verification email for {workspace_id} -> {to_email} (id={email_id})")
+        return email_id
+    except Exception as e:
+        logger.error(f"Resend verification email failed for workspace {workspace_id}: {e}")
+        return None
 
 
 def _milestone_subject(milestone: int, word: str) -> str:

@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel, Field, EmailStr
 
 import secrets as _secrets
+from email_alerts import send_verification_email
 from tax_validation import validate_tax_id
 from passlib.context import CryptContext
 
@@ -315,11 +316,17 @@ def build_router(db, get_current_user) -> APIRouter:
         await db.workspaces.insert_one(doc)
         if doc["type"] == "business":
             await mirror_to_business_profile(db, doc)
-            # Log verification link (Resend DNS pending — when ready, swap for real send)
             target = doc.get("billing_email") or doc.get("contact_email")
             front = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
             link = f"{front}/verify-empresa?ws={doc['workspace_id']}&token={ver_token_plain}"
             logger.info("[workspace-verify] %s → %s", target, link)
+            send_verification_email(
+                to_email=target,
+                workspace_id=doc["workspace_id"],
+                business_name=doc["name"],
+                verification_token=ver_token_plain,
+                front_base_url=front,
+            )
         return _serialize(doc)
 
     @router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
@@ -413,6 +420,13 @@ def build_router(db, get_current_user) -> APIRouter:
         front = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
         link = f"{front}/verify-empresa?ws={workspace_id}&token={plain}"
         logger.info("[workspace-verify-resend] %s → %s", target, link)
+        send_verification_email(
+            to_email=target,
+            workspace_id=workspace_id,
+            business_name=ws.get("name") or "a tua empresa",
+            verification_token=plain,
+            front_base_url=front,
+        )
         return {"ok": True, "message": "Email de verificação reenviado.", "sent_to": target}
 
     @router.post("/workspaces/{workspace_id}/verify-email/confirm")
