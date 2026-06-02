@@ -8,13 +8,21 @@ services:
     envVars:
       - key: MONGO_URL
         scope: service
+      - key: DB_NAME
+        scope: service
       - key: STRIPE_API_KEY
         scope: service
       - key: STRIPE_WEBHOOK_SECRET
         scope: service
       - key: RESEND_API_KEY
         scope: service
+      - key: EMAIL_FROM
+        scope: service
       - key: FRONTEND_BASE_URL
+        scope: service
+      - key: APP_BASE_URL
+        scope: service
+      - key: ADMIN_EMAIL
         scope: service
       - key: GOOGLE_CLIENT_ID
         scope: service
