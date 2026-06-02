@@ -25,6 +25,7 @@ type Workspace = {
   country_code?: string | null;
   country_name?: string | null;
   is_default?: boolean;
+  verified?: boolean;
 };
 
 type Country = { code: string; name: string; tax_label: string };
@@ -32,7 +33,7 @@ type Country = { code: string; name: string; tax_label: string };
 export default function WorkspacesScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ new?: string }>();
-  const { apiFetch } = useAuth();
+  const { apiFetch, refreshUser } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -135,7 +136,18 @@ export default function WorkspacesScreen() {
     }
     setName(""); setTaxId(""); setBillingEmail(""); setContactName(""); setContactEmail("");
     setShowCreate(false);
+    await refreshUser();  // critical: updates user.has_business so profile reflects new company
     load();
+  };
+
+  const onResendVerification = async (wsId: string, email: string) => {
+    const r = await apiFetch(`/api/workspaces/${wsId}/verify-email/send`, { method: "POST" });
+    if (r.ok) {
+      Alert.alert("Email enviado", `Verifica a caixa de entrada de ${email} para confirmar a empresa.`);
+    } else {
+      const body = await r.json().catch(() => null);
+      Alert.alert("Erro", errorMessage(body, "Falhou o reenvio."));
+    }
   };
 
   if (loading) {
@@ -152,7 +164,7 @@ export default function WorkspacesScreen() {
         <TouchableOpacity onPress={() => router.back()} testID="btn-back">
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>WORKSPACES</Text>
+        <Text style={styles.title}>MINHAS EMPRESAS</Text>
         <View style={{ width: 22 }} />
       </View>
 
@@ -161,7 +173,7 @@ export default function WorkspacesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
         <Text style={styles.intro}>
-          Um único login, vários contextos. Pessoal paga com BW. Cada empresa paga com Stripe usando o próprio NIF.
+          Adiciona aqui as empresas em nome das quais queres anunciar. Pessoal paga com BW. Cada empresa paga com Stripe usando o próprio ID fiscal.
         </Text>
 
         {workspaces.map((ws) => {
@@ -172,12 +184,36 @@ export default function WorkspacesScreen() {
                 <View style={[styles.badge, ws.type === "business" ? styles.badgeBiz : styles.badgePf]}>
                   <Text style={styles.badgeText}>{ws.type === "business" ? "EMPRESA" : "PESSOAL"}</Text>
                 </View>
+                {ws.type === "business" && (
+                  ws.verified
+                    ? <View style={[styles.badge, { backgroundColor: colors.aprovo }]}>
+                        <Text style={[styles.badgeText, { color: colors.text }]}>✓ VERIFICADA</Text>
+                      </View>
+                    : <View style={[styles.badge, { backgroundColor: colors.desaprovo }]}>
+                        <Text style={[styles.badgeText, { color: colors.bg }]}>! NÃO VERIFICADA</Text>
+                      </View>
+                )}
                 {isActive && <Text style={styles.activeLabel}>● ATIVO</Text>}
               </View>
               <Text style={styles.wsName}>{ws.name}</Text>
               {(ws.tax_id || ws.nif) ? <Text style={styles.wsMeta}>{(ws.tax_id_label || "ID")}: {ws.tax_id || ws.nif}</Text> : null}
               {ws.billing_email ? <Text style={styles.wsMeta}>{ws.billing_email}</Text> : null}
               {(ws.country_name || ws.country_code) ? <Text style={styles.wsMeta}>{ws.country_name || ws.country_code}</Text> : null}
+
+              {ws.type === "business" && !ws.verified && (
+                <View style={styles.warnBox}>
+                  <Text style={styles.warnText}>
+                    ⚠ Confirma o email <Text style={{ fontWeight: "900" }}>{ws.billing_email}</Text> para esta empresa poder anunciar.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.warnBtn}
+                    onPress={() => onResendVerification(ws.workspace_id, ws.billing_email || "")}
+                    testID={`btn-resend-${ws.workspace_id}`}
+                  >
+                    <Text style={styles.warnBtnText}>REENVIAR EMAIL</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <View style={styles.actionsRow}>
                 {!isActive && (
@@ -283,6 +319,10 @@ const styles = StyleSheet.create({
   wsName: { fontSize: 22, fontWeight: "900", color: colors.text, marginBottom: 4 },
   wsMeta: { fontSize: 12, fontWeight: "700", color: colors.textSecondary, marginTop: 2 },
   actionsRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  warnBox: { marginTop: 10, padding: 10, borderWidth: 2, borderColor: colors.desaprovo, backgroundColor: "#FFF8E1" },
+  warnText: { fontSize: 11, fontWeight: "700", color: colors.text, lineHeight: 15 },
+  warnBtn: { marginTop: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: colors.text, alignSelf: "flex-start", borderWidth: 2, borderColor: colors.border },
+  warnBtnText: { fontSize: 11, fontWeight: "900", letterSpacing: 1, color: colors.textInverse },
   actionBtn: { borderWidth: 3, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.bg },
   actionDanger: { borderColor: colors.desaprovo },
   actionBtnText: { fontSize: 12, fontWeight: "900", letterSpacing: 1, color: colors.text },

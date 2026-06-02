@@ -1050,6 +1050,11 @@ async def create_campaign(payload: CampaignCreate, request: Request, authorizati
         })
         if not ws_doc:
             ws_doc = await _ws_mod.ensure_business_workspace_from_profile(db, user)
+    if ws_doc and ws_doc.get("type") == "business" and not ws_doc.get("verified", False):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Empresa '{ws_doc.get('name')}' ainda não verificada. Confirma o email para anunciares.",
+        )
     resolved_workspace_id = ws_doc["workspace_id"] if ws_doc else None
 
     campaign_id = f"camp_{uuid.uuid4().hex[:12]}"

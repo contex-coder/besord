@@ -68,3 +68,17 @@ def api_client():
     s = requests.Session()
     s.headers.update({"Content-Type": "application/json"})
     return s
+
+
+@pytest.fixture(autouse=True)
+def _auto_verify_workspaces_pretest(request, mongo_db):
+    """Mark all business workspaces of the test user as verified before each test
+    (except iter18, which tests the verification flow itself)."""
+    if "iteration18" in request.node.nodeid:
+        yield
+        return
+    mongo_db.workspaces.update_many(
+        {"type": "business"},
+        {"$set": {"verified": True}},
+    )
+    yield

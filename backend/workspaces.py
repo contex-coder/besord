@@ -9,6 +9,7 @@ The workspace_id is what scopes B2B campaigns going forward. Existing campaigns
 keep their `user_id` reference; new ones also store `workspace_id` so dashboards
 can filter by business identity rather than by login identity.
 """
+import os
 import secrets
 import logging
 from datetime import datetime, timezone
@@ -16,6 +17,12 @@ from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel, Field, EmailStr
+
+import secrets as _secrets
+from tax_validation import validate_tax_id
+from passlib.context import CryptContext
+
+_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +106,9 @@ class WorkspaceOut(BaseModel):
     picture: Optional[str] = None
     created_at: str
     is_default: bool = False
+    # Verification
+    verified: bool = False
+    verified_at: Optional[str] = None
 
 
 # ---------- Helpers ----------
@@ -130,6 +140,9 @@ def _serialize(doc: dict, default_id: Optional[str] = None) -> WorkspaceOut:
         if not isinstance(doc.get("created_at"), str)
         else doc.get("created_at"),
         is_default=(default_id is not None and doc["workspace_id"] == default_id),
+        verified=bool(doc.get("verified", False)),
+        verified_at=(doc.get("verified_at").isoformat()
+                     if isinstance(doc.get("verified_at"), datetime) else doc.get("verified_at")),
     )
 
 
@@ -179,6 +192,8 @@ async def ensure_business_workspace_from_profile(db, user: dict) -> Optional[dic
         "billing_email": bp.get("billing_email") or bp.get("contact_email") or user.get("email"),
         "picture": bp.get("logo") or user.get("picture"),
         "created_at": _now(),
+        "verified": True,  # legacy business_profile users grandfathered as verified
+        "verified_at": _now(),
         "migrated_from_business_profile": True,
     }
     await db.workspaces.insert_one(doc)
@@ -263,19 +278,29 @@ def build_router(db, get_current_user) -> APIRouter:
                 raise HTTPException(409, "Já tens um workspace pessoal.")
 
         if payload.type == "business":
-            tax_id = (payload.tax_id or payload.nif or "").strip() or None
-            if not tax_id:
+            raw_tax_id = (payload.tax_id or payload.nif or "").strip()
+            if not raw_tax_id:
                 raise HTTPException(400, "ID fiscal obrigatório para empresa.")
+            ok, normalized = validate_tax_id(payload.country_code, raw_tax_id)
+            if not ok:
+                raise HTTPException(400, normalized)
             if not payload.billing_email and not payload.contact_email:
                 raise HTTPException(400, "Email de faturação obrigatório para empresa.")
 
         cc = (payload.country_code or "").upper() or None
+        # Generate email verification token (only for business workspaces)
+        ver_token_plain = None
+        ver_token_hash = None
+        if payload.type == "business":
+            ver_token_plain = _secrets.token_urlsafe(24)
+            ver_token_hash = _pwd_ctx.hash(ver_token_plain)
+
         doc = {
             "workspace_id": _ws_id("ws"),
             "owner_user_id": user["user_id"],
             "type": payload.type,
             "name": payload.name.strip(),
-            "tax_id": (payload.tax_id or payload.nif or "").strip() or None,
+            "tax_id": normalized if payload.type == "business" else None,
             "tax_id_label": payload.tax_id_label or tax_label_for(cc),
             "country_code": cc,
             "country_name": payload.country_name or country_name_for(cc),
@@ -284,10 +309,17 @@ def build_router(db, get_current_user) -> APIRouter:
             "billing_email": payload.billing_email or payload.contact_email,
             "picture": payload.picture,
             "created_at": _now(),
+            "verified": False,
+            "verification_token_hash": ver_token_hash,
         }
         await db.workspaces.insert_one(doc)
         if doc["type"] == "business":
             await mirror_to_business_profile(db, doc)
+            # Log verification link (Resend DNS pending — when ready, swap for real send)
+            target = doc.get("billing_email") or doc.get("contact_email")
+            front = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
+            link = f"{front}/verify-empresa?ws={doc['workspace_id']}&token={ver_token_plain}"
+            logger.info("[workspace-verify] %s → %s", target, link)
         return _serialize(doc)
 
     @router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
@@ -358,5 +390,55 @@ def build_router(db, get_current_user) -> APIRouter:
             {"$set": {"active_workspace_id": workspace_id}},
         )
         return {"ok": True, "active_workspace_id": workspace_id}
+
+    @router.post("/workspaces/{workspace_id}/verify-email/send")
+    async def resend_verification(workspace_id: str,
+                                   authorization: Optional[str] = Header(None)):
+        user = await get_current_user(authorization)
+        ws = await db.workspaces.find_one({"workspace_id": workspace_id,
+                                           "deleted_at": {"$exists": False}})
+        if not ws or ws["owner_user_id"] != user["user_id"]:
+            raise HTTPException(404, "Workspace não encontrado.")
+        if ws.get("type") != "business":
+            raise HTTPException(400, "Apenas empresas precisam de verificação.")
+        if ws.get("verified"):
+            return {"ok": True, "already_verified": True}
+        plain = _secrets.token_urlsafe(24)
+        await db.workspaces.update_one(
+            {"_id": ws["_id"]},
+            {"$set": {"verification_token_hash": _pwd_ctx.hash(plain),
+                       "verification_resent_at": _now()}},
+        )
+        target = ws.get("billing_email") or ws.get("contact_email")
+        front = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
+        link = f"{front}/verify-empresa?ws={workspace_id}&token={plain}"
+        logger.info("[workspace-verify-resend] %s → %s", target, link)
+        return {"ok": True, "message": "Email de verificação reenviado.", "sent_to": target}
+
+    @router.post("/workspaces/{workspace_id}/verify-email/confirm")
+    async def confirm_verification(workspace_id: str, payload: dict,
+                                    authorization: Optional[str] = Header(None)):
+        user = await get_current_user(authorization)
+        ws = await db.workspaces.find_one({"workspace_id": workspace_id,
+                                           "deleted_at": {"$exists": False}})
+        if not ws or ws["owner_user_id"] != user["user_id"]:
+            raise HTTPException(404, "Workspace não encontrado.")
+        if ws.get("verified"):
+            return {"ok": True, "already_verified": True}
+        token = (payload or {}).get("token") or ""
+        h = ws.get("verification_token_hash")
+        if not h or not _pwd_ctx.verify(token, h):
+            raise HTTPException(400, "Token inválido ou expirado.")
+        now = _now()
+        await db.workspaces.update_one(
+            {"_id": ws["_id"]},
+            {"$set": {"verified": True, "verified_at": now},
+             "$unset": {"verification_token_hash": ""}},
+        )
+        ws["verified"] = True
+        ws["verified_at"] = now
+        if ws.get("type") == "business":
+            await mirror_to_business_profile(db, ws)
+        return {"ok": True, "verified": True}
 
     return router

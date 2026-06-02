@@ -34,6 +34,18 @@ def business_user(mongo_db, seeded_user):
     mongo_db.campaigns.delete_many({"user_id": seeded_user["user_id"]})
 
 
+@pytest.fixture(autouse=True)
+def _auto_verify_workspaces(mongo_db, seeded_user):
+    """Auto-mark business workspaces of the test user as verified so legacy
+    campaign-creation tests in this file keep working (verification is tested
+    in iter18)."""
+    yield
+    mongo_db.workspaces.update_many(
+        {"owner_user_id": seeded_user["user_id"], "type": "business"},
+        {"$set": {"verified": True}},
+    )
+
+
 def _make_payload(theme=None, word="TESTE"):
     return {
         "word": word,

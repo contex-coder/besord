@@ -66,13 +66,13 @@ class TestWorkspaces:
 
     def test_create_business_ok(self, base_url, auth_headers, biz, api_client):
         r = api_client.post(_u(base_url, "/api/workspaces"), headers=auth_headers,
-                            json={"type": "business", "name": "Empresa Y", "nif": "PT777",
+                            json={"type": "business", "name": "Empresa Y", "tax_id": "509442013",
                                   "billing_email": "fatura@empresay.pt", "country_code": "pt"})
         assert r.status_code == 200, r.text
         ws = r.json()
         assert ws["type"] == "business"
         assert ws["country_code"] == "PT"
-        assert ws["nif"] == "PT777"
+        assert ws["tax_id"] == "509442013"
 
     def test_cannot_create_second_personal(self, base_url, auth_headers, biz, api_client):
         # Ensure list exists (creates personal)
