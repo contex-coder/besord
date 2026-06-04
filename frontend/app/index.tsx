@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -17,8 +18,9 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 import { t } from "@/src/i18n";
 
+// Mascot image hosted on Besord CDN
 const BEETLE_URL =
-  "https://customer-assets.emergentagent.com/job_image-feedback-app/artifacts/k8o964dp_image_e8c30e18-dee9-4061-a6d7-7a53ae2d2b32.png";
+  "https://besord.vercel.app/assets/mascot-beetle.png";
 
 export default function Landing() {
   const { user, loading, signIn, signInWithApple } = useAuth();
@@ -118,66 +120,95 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center" },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
     justifyContent: "space-between",
+    paddingVertical: 20,
   },
-
-  logoBlock: { alignItems: "flex-start" },
+  logoBlock: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
   logoBadge: {
-    backgroundColor: colors.neutral,
-    borderWidth: 3,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    marginBottom: 8,
-    ...brutalShadow,
+    backgroundColor: colors.aprovo,
+    borderRadius: 4,
   },
-  logoBadgeText: { fontWeight: "900", fontSize: 12, letterSpacing: 2, color: colors.text },
-  brand: { fontSize: 72, fontWeight: "900", letterSpacing: -2, color: colors.text, lineHeight: 72 },
-  tagline: {
-    fontSize: 22,
+  logoBadgeText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: colors.textInverse,
+    letterSpacing: 1,
+  },
+  brand: {
+    fontSize: 36,
     fontWeight: "900",
     color: colors.text,
-    marginTop: 12,
-    lineHeight: 26,
-    letterSpacing: -0.5,
+    lineHeight: 42,
   },
-
-  heroMascot: { alignItems: "center", justifyContent: "center", flex: 1, width: "100%" },
-  mascot: { width: "100%", height: undefined, aspectRatio: 1024 / 559, maxWidth: 720 },
-
-  actions: { gap: 12 },
+  tagline: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#666",
+    lineHeight: 20,
+  },
+  heroMascot: {
+    alignItems: "center",
+    justifyContent: "center",
+    height: 240,
+  },
+  mascot: {
+    width: 240,
+    height: 240,
+  },
+  actions: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
   googleBtn: {
-    backgroundColor: colors.bg,
-    borderWidth: 4,
-    borderColor: colors.border,
-    height: 64,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    ...brutalShadow,
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: colors.bg,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderRadius: 8,
   },
-  appleBtn: { backgroundColor: colors.text },
-  emailBtn: { backgroundColor: colors.neutral },
-  btnText: { fontSize: 16, fontWeight: "900", letterSpacing: 2, color: colors.text },
-  legal: {
-    fontSize: 10,
+  appleBtn: {
+    backgroundColor: colors.text,
+    borderColor: colors.text,
+  },
+  emailBtn: {
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
+  },
+  btnText: {
+    fontSize: 14,
     fontWeight: "700",
-    color: colors.textSecondary,
-    textAlign: "center",
-    letterSpacing: 1,
-    marginTop: 4,
+    color: colors.text,
+    letterSpacing: 0.5,
   },
-  legalLinks: { flexDirection: "row", justifyContent: "center", gap: 10, marginTop: 4 },
+  legal: {
+    fontSize: 11,
+    color: "#999",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  legalLinks: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    alignItems: "center",
+  },
   legalLink: {
     fontSize: 11,
-    fontWeight: "900",
+    fontWeight: "600",
     color: colors.text,
-    letterSpacing: 1,
-    textDecorationLine: "underline",
   },
-  legalDot: { color: colors.textSecondary, fontWeight: "900" },
+  legalDot: {
+    color: "#999",
+  },
 });

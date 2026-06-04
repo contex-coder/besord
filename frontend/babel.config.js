@@ -15,6 +15,15 @@ module.exports = function(api) {
           allowUndefined: true,
         },
       ],
+      // Modern Babel transform plugins (not proposals)
+      '@babel/plugin-transform-class-properties',
+      '@babel/plugin-transform-numeric-separator',
+      '@babel/plugin-transform-optional-chaining',
+      '@babel/plugin-transform-object-rest-spread',
+      '@babel/plugin-transform-optional-catch-binding',
+      '@babel/plugin-transform-async-generator-functions',
+      '@babel/plugin-transform-nullish-coalescing-operator',
+      '@babel/plugin-transform-logical-assignment-operators',
     ],
   };
 };

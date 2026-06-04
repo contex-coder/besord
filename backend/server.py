@@ -40,15 +40,35 @@ db = client[os.environ['DB_NAME']]
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "sk_test_emergent")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-APP_BASE_URL = os.environ.get("FRONTEND_URL", "http://localhost:8081")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+
 # This must match the authorized redirect URI in your Google Cloud console
-GOOGLE_REDIRECT_URI = f'{os.environ.get("BACKEND_URL", "http://localhost:8000")}/api/auth/google/callback'
+GOOGLE_REDIRECT_URI = f'{BACKEND_URL}/api/auth/google/callback'
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+# CORS Configuration - Allow frontend domain
+CORS_ORIGINS = [
+    FRONTEND_URL,
+    "http://localhost:3000",
+    "http://localhost:8081",
+    "http://localhost:5173",
+]
+if "vercel.app" in FRONTEND_URL or "render.com" in BACKEND_URL:
+    CORS_ORIGINS.append("*")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # ---------- Models ----------
 class SessionRequest(BaseModel):
@@ -376,7 +396,7 @@ async def auth_google_callback(request: Request, code: str, state: str, error: O
     })
     
     # Redirect to frontend with the token
-    redirect_url = f'{APP_BASE_URL}/auth/callback?token={session_token}'
+    redirect_url = f'{FRONTEND_URL}/auth/callback?token={session_token}'
     return RedirectResponse(url=redirect_url)
 
 
@@ -483,5 +503,6 @@ async def whoami(authorization: Optional[str] = Header(None)):
         "matches_admin": bool(ADMIN_EMAIL and user_email == ADMIN_EMAIL),
     }
 
-# ... (the rest of the file remains the same)
+# ... (rest of routes remain the same)
 
+app.include_router(api_router)
