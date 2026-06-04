@@ -14,7 +14,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 
-import { useAuth } from "@/src/contexts/AuthContext";
+import { useAuth, AuthError as AuthErrorType } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 import { t } from "@/src/i18n";
 
@@ -22,8 +22,19 @@ import { t } from "@/src/i18n";
 const BEETLE_URL =
   "https://besord.vercel.app/assets/mascot-beetle.png";
 
+const AuthError = ({ error, onClear }: { error: AuthErrorType, onClear: () => void }) => (
+  <View style={styles.errorContainer}>
+      <Ionicons name="alert-circle-outline" size={48} color={colors.reprovo} />
+      <Text style={styles.errorTitle}>Authentication Failed</Text>
+      <Text style={styles.errorMessage}>{error.message}</Text>
+      <TouchableOpacity style={styles.errorButton} onPress={onClear}>
+          <Text style={styles.errorButtonText}>Try Again</Text>
+      </TouchableOpacity>
+  </View>
+);
+
 export default function Landing() {
-  const { user, loading, signIn, signInWithApple } = useAuth();
+  const { user, loading, error, clearError, signIn, signInWithApple } = useAuth();
   const router = useRouter();
   const [appleAvailable, setAppleAvailable] = React.useState(false);
 
@@ -69,36 +80,42 @@ export default function Landing() {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity
-            testID="btn-login-google"
-            style={styles.googleBtn}
-            onPress={signIn}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="logo-google" size={22} color={colors.text} />
-            <Text style={styles.btnText}>{t("login_google")}</Text>
-          </TouchableOpacity>
-          {appleAvailable && (
-            <TouchableOpacity
-              testID="btn-login-apple"
-              style={[styles.googleBtn, styles.appleBtn]}
-              onPress={signInWithApple}
-            >
-              <Ionicons name="logo-apple" size={22} color={colors.textInverse} />
-              <Text style={[styles.btnText, { color: colors.textInverse }]}>
-                {t("login_apple")}
-              </Text>
-            </TouchableOpacity>
+          {error ? (
+            <AuthError error={error} onClear={clearError} />
+          ) : (
+            <>
+              <TouchableOpacity
+                testID="btn-login-google"
+                style={styles.googleBtn}
+                onPress={signIn}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="logo-google" size={22} color={colors.text} />
+                <Text style={styles.btnText}>{t("login_google")}</Text>
+              </TouchableOpacity>
+              {appleAvailable && (
+                <TouchableOpacity
+                  testID="btn-login-apple"
+                  style={[styles.googleBtn, styles.appleBtn]}
+                  onPress={signInWithApple}
+                >
+                  <Ionicons name="logo-apple" size={22} color={colors.textInverse} />
+                  <Text style={[styles.btnText, { color: colors.textInverse }]}>
+                    {t("login_apple")}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                testID="btn-login-email"
+                style={[styles.googleBtn, styles.emailBtn]}
+                onPress={() => router.push("/login-email")}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="mail-outline" size={22} color={colors.text} />
+                <Text style={styles.btnText}>EMAIL / PALAVRA-PASSE</Text>
+              </TouchableOpacity>
+            </>
           )}
-          <TouchableOpacity
-            testID="btn-login-email"
-            style={[styles.googleBtn, styles.emailBtn]}
-            onPress={() => router.push("/login-email")}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="mail-outline" size={22} color={colors.text} />
-            <Text style={styles.btnText}>EMAIL / PALAVRA-PASSE</Text>
-          </TouchableOpacity>
           <Text style={styles.legal}>{t("legal")}</Text>
           <View style={styles.legalLinks}>
             <TouchableOpacity onPress={() => router.push("/legal?doc=terms")}>
@@ -210,5 +227,35 @@ const styles = StyleSheet.create({
   },
   legalDot: {
     color: "#999",
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 10,
+    backgroundColor: colors.bg,
+    borderWidth: 2,
+    borderColor: colors.reprovo,
+    borderRadius: 8,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.reprovo,
+  },
+  errorMessage: {
+    textAlign: 'center',
+    color: colors.text,
+  },
+  errorButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: colors.reprovo,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: colors.textInverse,
+    fontWeight: 'bold',
   },
 });

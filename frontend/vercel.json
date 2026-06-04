@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "yarn install",
-  "buildCommand": "npm run build",
+  "buildCommand": "yarn build",
   "env": {
     "EXPO_PUBLIC_BACKEND_URL": "https://besord-backend.onrender.com",
     "EXPO_PUBLIC_FRONTEND_URL": "https://besord.vercel.app"
