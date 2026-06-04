@@ -1,5 +1,6 @@
 {
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "outputDirectory": "web-build"
+  "version": 2,
+  "node": "24.x",
+  "installCommand": "yarn install",
+  "buildCommand": "npm run build"
 }
