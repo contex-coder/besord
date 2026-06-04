@@ -1,27 +1,5 @@
 {
-  "buildCommand": "yarn build",
-  "installCommand": "yarn install --frozen-lockfile",
-  "framework": "expo",
-  "outputDirectory": ".next",
-  "env": {
-    "EXPO_PUBLIC_BACKEND_URL": {
-      "description": "Backend API URL (e.g., https://besord-backend.onrender.com)",
-      "required": true
-    },
-    "EXPO_PUBLIC_GOOGLE_CLIENT_ID": {
-      "description": "Google OAuth Client ID",
-      "required": false
-    },
-    "EXPO_PUBLIC_APPLE_CLIENT_ID": {
-      "description": "Apple OAuth Client ID",
-      "required": false
-    }
-  },
-  "regions": ["iad"],
-  "crons": [
-    {
-      "path": "/api/crons/cleanup",
-      "schedule": "0 2 * * *"
-    }
-  ]
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": "web-build"
 }
