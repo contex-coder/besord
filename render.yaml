@@ -4,7 +4,7 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: ./
-    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MONGO_URL
         scope: service
