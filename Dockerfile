@@ -12,7 +12,10 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY backend/ /app/
 
 # Create non-root user for security
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Ensure system CA certificates exist so TLS (MongoDB Atlas) works
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
