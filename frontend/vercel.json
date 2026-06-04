@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "node": "24.x",
   "installCommand": "yarn install",
   "buildCommand": "npm run build"
 }
