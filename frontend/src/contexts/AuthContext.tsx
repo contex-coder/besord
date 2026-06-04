@@ -185,29 +185,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = React.useCallback(async () => {
     setLoading(true);
     try {
-      let redirectUrl = "";
-      
-      if (Platform.OS === "web") {
-        // WEB: Use absolute URL with /auth/callback
-        redirectUrl = `${window.location.origin}/auth/callback`;
-      } else {
-        // NATIVE: Use deep link
-        redirectUrl = Linking.createURL("auth/callback");
-      }
+      // Simple approach: backend is configured with the correct FRONTEND_URL + BACKEND_URL
+      // So we just call /api/auth/google/login and let the backend handle redirects
+      const authUrl = `${BACKEND_URL}/api/auth/google/login`;
 
-      const authUrl = `${BACKEND_URL}/api/auth/google/login?redirect_uri=${encodeURIComponent(
-        redirectUrl
-      )}`;
-
-      console.log("🔐 Sign In - Auth URL:", authUrl);
-      console.log("🔐 Sign In - Redirect URL:", redirectUrl);
+      console.log("🔐 Sign In - Backend Auth URL:", authUrl);
 
       if (Platform.OS === "web") {
         // WEB: Full page navigation
+        // Google will redirect back to FRONTEND_URL/auth/callback?token=...
         window.location.href = authUrl;
         // Code after this won't execute due to page reload
       } else {
         // NATIVE: Use WebBrowser for OAuth flow
+        // Need a redirect URL for the native side
+        const redirectUrl = Linking.createURL("auth/callback");
         const res = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
         if (res.type === "success" && res.url) {
           const tokenFromUrl = parseTokenFromUrl(res.url);
