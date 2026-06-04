@@ -4,3 +4,5 @@
 
 ---
 Triggering deploy to apply new environment variables.
+
+**Verification commit: The connection to GitHub is working.**
