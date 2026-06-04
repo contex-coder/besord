@@ -15,6 +15,9 @@
   "engines": {
     "node": "24.x"
   },
+  "resolutions": {
+    "ws": "8.17.0"
+  },
   "dependencies": {
     "@expo/metro-runtime": "6.1.2",
     "@expo/ngrok": "4.1.3",
