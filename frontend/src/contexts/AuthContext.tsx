@@ -4,8 +4,9 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { storage } from "@/src/utils/storage";
+import { EXPO_PUBLIC_BACKEND_URL } from "@env";
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL as string;
+const BACKEND_URL = EXPO_PUBLIC_BACKEND_URL as string;
 const TOKEN_KEY = "besord_token";
 
 export type User = {
@@ -25,7 +26,7 @@ type AuthContextType = {
   user: User | null;
   token: string | null;
   loading: boolean;
-  signIn: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   registerWithPassword: (email: string, password: string, name?: string) => Promise<{ ok: boolean; error?: string }>;
@@ -43,27 +44,22 @@ export function useAuth() {
   return ctx;
 }
 
-async function exchangeSessionId(sessionId: string): Promise<{ token: string; user: User } | null> {
+async function fetchUserFromToken(token: string): Promise<User | null> {
   try {
-    const r = await fetch(`${BACKEND_URL}/api/auth/session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId }),
+    const r = await fetch(`${BACKEND_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch (e) {
-    console.warn("exchangeSessionId failed", e);
+    if (r.ok) return await r.json();
+    return null;
+  } catch {
     return null;
   }
 }
 
-function parseSessionIdFromUrl(url: string | null): string | null {
+function parseTokenFromUrl(url: string | null): string | null {
   if (!url) return null;
-  // Support both hash and query
-  const hashMatch = url.match(/[#&?]session_id=([^&]+)/);
-  if (hashMatch) return decodeURIComponent(hashMatch[1]);
-  return null;
+  const match = url.match(/[#&?]token=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -71,93 +67,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const restoreSession = useCallback(async () => {
-    const stored = await storage.secureGet<string>(TOKEN_KEY, "");
-    if (!stored) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${stored}` },
-      });
-      if (r.ok) {
-        const u = await r.json();
-        setUser(u);
-        setToken(stored);
-      } else {
-        await storage.secureRemove(TOKEN_KEY);
-      }
-    } catch {
-      await storage.secureRemove(TOKEN_KEY);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const handleSessionId = useCallback(async (sessionId: string) => {
+  const setSession = useCallback(async (t: string) => {
     setLoading(true);
-    const result = await exchangeSessionId(sessionId);
-    if (result) {
-      await storage.secureSet(TOKEN_KEY, result.token);
-      setToken(result.token);
-      setUser(result.user);
+    const u = await fetchUserFromToken(t);
+    if (u) {
+      await storage.secureSet(TOKEN_KEY, t);
+      setToken(t);
+      setUser(u);
+    } else {
+      await storage.secureRemove(TOKEN_KEY);
+      setToken(null);
+      setUser(null);
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    (async () => {
-      // Cold start deep link
-      const initialUrl = await Linking.getInitialURL();
-      const sessionId = parseSessionIdFromUrl(initialUrl);
-      if (sessionId) {
-        await handleSessionId(sessionId);
-        return;
+    const restoreSession = async () => {
+      const storedToken = await storage.secureGet<string>(TOKEN_KEY, "");
+      if (storedToken) {
+        await setSession(storedToken);
+      } else {
+        setLoading(false);
       }
-      await restoreSession();
+    };
+
+    (async () => {
+      const initialUrl = await Linking.getInitialURL();
+      const urlToken = parseTokenFromUrl(initialUrl);
+      if (urlToken) {
+        await setSession(urlToken);
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          // Clean up the URL
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, "", newUrl);
+        }
+      } else {
+        await restoreSession();
+      }
     })();
 
     const sub = Linking.addEventListener("url", ({ url }) => {
-      const sid = parseSessionIdFromUrl(url);
-      if (sid) handleSessionId(sid);
+      const urlToken = parseTokenFromUrl(url);
+      if (urlToken) setSession(urlToken);
     });
     return () => sub.remove();
-  }, [handleSessionId, restoreSession]);
+  }, [setSession]);
 
-  const signIn = useCallback(async () => {
-    // CRITICAL: Clear any stale session/token before opening OAuth.
-    // This prevents the Emergent OAuth provider from auto-reusing a cached
-    // login from a previously-authenticated Google account.
-    try {
-      await storage.secureRemove(TOKEN_KEY);
-      setToken(null);
-      setUser(null);
-    } catch {}
-
-    const redirectUrl =
-      Platform.OS === "web"
-        ? (typeof window !== "undefined" ? window.location.origin + "/" : "")
-        : Linking.createURL("auth");
-    // Add a cache-buster + prompt hint so the provider does NOT auto-reuse a stale session
-    const nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}&prompt=select_account&nonce=${nonce}`;
-
+  const signInWithGoogle = useCallback(async () => {
+    setLoading(true);
+    const authUrl = `${BACKEND_URL}/api/auth/google/login`;
+    
     if (Platform.OS === "web") {
-      if (typeof window !== "undefined") window.location.href = authUrl;
+      if (typeof window !== "undefined") {
+        window.location.href = authUrl;
+      }
       return;
     }
 
     try {
-      const res = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-      if (res.type === "success" && res.url) {
-        const sid = parseSessionIdFromUrl(res.url);
-        if (sid) await handleSessionId(sid);
+      const redirectUrl = Linking.createURL("auth/callback");
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
+      if (result.type === "success" && result.url) {
+        const urlToken = parseTokenFromUrl(result.url);
+        if (urlToken) {
+          await setSession(urlToken);
+        }
       }
     } catch (e) {
-      console.warn("signIn failed", e);
+      console.warn("Google sign-in failed", e);
+    } finally {
+      setLoading(false);
     }
-  }, [handleSessionId]);
+  }, [setSession]);
 
   const signOut = useCallback(async () => {
     if (token) {
@@ -169,12 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }
     await storage.secureRemove(TOKEN_KEY);
-    // Defensive: on web, SecureStore falls back to localStorage. Clear every
-    // possible place a stale token could survive between page reloads.
     if (Platform.OS === "web" && typeof window !== "undefined") {
       try {
         window.localStorage.removeItem(TOKEN_KEY);
-        // expo-secure-store-web prefixes localStorage keys — clean those too.
         Object.keys(window.localStorage)
           .filter((k) => k.includes(TOKEN_KEY) || k.toLowerCase().includes("besord"))
           .forEach((k) => {
@@ -209,35 +188,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (r.ok) {
         const data = await r.json();
-        await storage.secureSet(TOKEN_KEY, data.token);
-        setToken(data.token);
-        setUser(data.user);
+        await setSession(data.token);
       }
     } catch (e: any) {
       if (e?.code !== "ERR_REQUEST_CANCELED") {
         console.warn("Apple sign-in failed", e);
       }
     }
-  }, []);
+  }, [setSession]);
 
   const finishPasswordAuth = useCallback(async (data: { token: string; user_id: string; email: string; name?: string }) => {
-    await storage.secureSet(TOKEN_KEY, data.token);
-    setToken(data.token);
-    // Fetch the full user object (with bw_balance, is_admin, etc.)
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${data.token}` },
-      });
-      if (r.ok) {
-        const u = await r.json();
-        setUser(u);
-      } else {
-        setUser({ user_id: data.user_id, email: data.email, name: data.name || data.email });
-      }
-    } catch {
-      setUser({ user_id: data.user_id, email: data.email, name: data.name || data.email });
-    }
-  }, []);
+    await setSession(data.token);
+  }, [setSession]);
 
   const signInWithPassword = useCallback(
     async (email: string, password: string) => {
@@ -336,7 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signInWithApple, signInWithPassword, registerWithPassword, requestPasswordReset, signOut, refreshUser, apiFetch }}>
+    <AuthContext.Provider value={{ user, token, loading, signInWithGoogle, signInWithApple, signInWithPassword, registerWithPassword, requestPasswordReset, signOut, refreshUser, apiFetch }}>
       {children}
     </AuthContext.Provider>
   );
