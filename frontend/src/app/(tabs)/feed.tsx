@@ -14,9 +14,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 
-import { useAuth } from "@/s../../contexts/AuthContext";
+import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
-import PostCard, { PostItem } from "@/s../../components/PostCard";
+import PostCard, { PostItem } from "@/src/components/PostCard";
 
 type SortMode = "recent" | "trending" | "styles";
 

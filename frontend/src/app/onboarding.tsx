@@ -4,8 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { storage } from "@/s../../utils/storage";
-import { onboardingState } from "@/s../../utils/onboardingState";
+import { storage } from "@/src/utils/storage";
+import { onboardingState } from "@/src/utils/onboardingState";
 import { colors, brutalShadow } from "@/src/theme";
 
 const { width: SCREEN_W } = Dimensions.get("window");

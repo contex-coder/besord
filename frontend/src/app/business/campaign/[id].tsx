@@ -5,9 +5,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
-import { useAuth } from "@/s../../contexts/AuthContext";
+import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
-import HeatMap, { GeoPoint } from "@/s../../components/HeatMap";
+import HeatMap, { GeoPoint } from "@/src/components/HeatMap";
 
 type Campaign = {
   campaign_id: string; post_id: string | null; word: string; image_base64: string;
@@ -250,7 +250,7 @@ export default function CampaignDetailScreen() {
                 )}
 
                 <TouchableOpacity testID="btn-export-csv" style={styles.exportBtn} onPress={async () => {
-                  const token = (await import("@/s../../utils/storage")).storage;
+                  const token = (await import("@/src/utils/storage")).storage;
                   const t = await token.secureGet<string>("besord_token", "");
                   const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.csv`;
                   if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -269,7 +269,7 @@ export default function CampaignDetailScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity testID="btn-export-pdf" style={[styles.exportBtn, { backgroundColor: colors.desaprovo, marginTop: 10 }]} onPress={async () => {
-                  const token = (await import("@/s../../utils/storage")).storage;
+                  const token = (await import("@/src/utils/storage")).storage;
                   const t = await token.secureGet<string>("besord_token", "");
                   const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.pdf`;
                   if (Platform.OS === "web" && typeof window !== "undefined") {

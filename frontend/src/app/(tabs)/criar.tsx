@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 
-import { useAuth } from "@/s../../contexts/AuthContext";
+import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 
 export default function CriarScreen() {

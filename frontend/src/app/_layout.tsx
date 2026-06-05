@@ -4,8 +4,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
-import { useIconFonts } from "@/s../../hooks/use-icon-fonts";
-import { AuthProvider } from "@/s../../contexts/AuthContext";
+import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { AuthProvider } from "@/src/contexts/AuthContext";
 
 // Mantém a tela de carregamento (splash screen) visível até as fontes carregarem
 SplashScreen.preventAutoHideAsync();

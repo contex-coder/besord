@@ -7,9 +7,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useAuth } from "@/s../../contexts/AuthContext";
+import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
-import { errorMessage } from "@/s../../utils/errorMessage";
+import { errorMessage } from "@/src/utils/errorMessage";
 
 type Workspace = {
   workspace_id: string;

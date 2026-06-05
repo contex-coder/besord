@@ -6,9 +6,9 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as WebBrowser from "expo-web-browser";
 
-import { useAuth } from "@/s../../contexts/AuthContext";
+import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
-import { errorMessage } from "@/s../../utils/errorMessage";
+import { errorMessage } from "@/src/utils/errorMessage";
 
 type Tier = { key: string; name: string; scope: string; duration_days: number; amount_cents: number; amount_usd: number; included_votes: number };
 type Theme = { key: string; name: string; emoji: string; covers: string };
