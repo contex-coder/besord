@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 
-import { useAuth } from "@/src/contexts/AuthContext";
+import { useAuth } from "@/s../../contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 
 type Overview = {

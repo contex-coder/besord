@@ -1,4 +1,4 @@
-import { useAuth } from "@/src/contexts/AuthContext";
+import { useAuth } from "@/s../../contexts/AuthContext";
 import { Redirect } from "expo-router";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
