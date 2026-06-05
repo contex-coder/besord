@@ -3,14 +3,16 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-
-import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { Platform } from "react-native";
 import { AuthProvider } from "@/src/contexts/AuthContext";
 
-// Mantém a tela de carregamento (splash screen) visível até as fontes carregarem
-SplashScreen.preventAutoHideAsync();
+// Oculta a Splash automaticamente na Web para evitar bloqueios de renderização
+if (Platform.OS === 'web') {
+  SplashScreen.hideAsync();
+} else {
+  SplashScreen.preventAutoHideAsync();
+}
 
-// RootNavigator agora está totalmente livre e limpo, sem redirecionamentos forçados
 function RootNavigator() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FFFFFF" } }} />
@@ -18,16 +20,9 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  const [loaded, error] = useIconFonts();
-
-  useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded, error]);
-
-  if (!loaded && !error) return null;
-
+  // Na Web, ignoramos o carregamento de fontes CDN para não travar a renderização estática
+  // O Expo Web lida com fontes nativas do sistema ou CSS de forma diferente
+  
   return (
     <SafeAreaProvider>
       <AuthProvider>
