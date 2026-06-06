@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
+import EventMap from "@/src/components/EventMap";
 
 type EventType = "private" | "public";
 
@@ -305,7 +306,7 @@ export default function CriarEventoScreen() {
           </View>
         </View>
 
-        {/* ─── Localização ─── */}
+        {/* ─── Localização com Mapa Interativo ─── */}
         <View style={styles.fieldBlock}>
           <Text style={styles.label}>LOCALIZAÇÃO</Text>
           <TextInput
@@ -333,25 +334,14 @@ export default function CriarEventoScreen() {
               maxLength={2}
             />
           </View>
-          <Text style={styles.hint}>OU insere coordenadas manualmente:</Text>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Latitude"
-              placeholderTextColor="#A1A1AA"
-              value={lat}
-              onChangeText={setLat}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Longitude"
-              placeholderTextColor="#A1A1AA"
-              value={lon}
-              onChangeText={setLon}
-              keyboardType="numeric"
-            />
-          </View>
+          <EventMap
+            editable={true}
+            onLocationSelect={(newLat, newLon) => {
+              setLat(newLat.toFixed(6));
+              setLon(newLon.toFixed(6));
+            }}
+            address={address}
+          />
         </View>
 
         {/* ─── Raio ─── */}

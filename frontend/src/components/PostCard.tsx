@@ -39,6 +39,8 @@ export type PostItem = {
   top_comments: CommentItem[];
   is_sponsored?: boolean;
   campaign_id?: string | null;
+  // Event badge — posts within an event context
+  event_badge?: { event_id: string; event_title: string } | null;
 };
 
 type Props = {
@@ -124,11 +126,24 @@ export default function PostCard({
 
   return (
     <View style={styles.card} testID={`post-card-${post.post_id}`}>
+      {/* ─── Sponsored Badge ─── */}
       {post.is_sponsored && (
         <View style={styles.sponsoredBadge} testID="sponsored-badge">
           <Ionicons name="megaphone" size={12} color={colors.text} />
           <Text style={styles.sponsoredText}>PATROCINADO</Text>
         </View>
+      )}
+
+      {/* ─── Event Badge ─── */}
+      {post.event_badge && (
+        <TouchableOpacity
+          style={styles.eventBadge}
+          onPress={() => onWordPress(post.event_badge!.event_id)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="location" size={12} color={colors.text} />
+          <Text style={styles.eventBadgeText}>🎪 {post.event_badge.event_title.toUpperCase()}</Text>
+        </TouchableOpacity>
       )}
 
       <View style={styles.authorRow}>
@@ -334,6 +349,19 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   sponsoredText: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
+  eventBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.aprovo,
+    borderWidth: 3,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  eventBadgeText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.text },
   authorRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: { width: 36, height: 36, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.bgSubtle },
   avatarFallback: { alignItems: "center", justifyContent: "center" },

@@ -75,6 +75,47 @@ export default function RelatorioScreen() {
     load();
   };
 
+  const downloadCSV = useCallback(() => {
+    if (!report) return;
+
+    // Construir CSV
+    const rows: string[] = [];
+    rows.push("Métrica,Valor");
+    rows.push(`Post,#${report.word}`);
+    rows.push(`Evento,${report.event_title || "—"}`);
+    rows.push(`Votos Totais,${report.total_votes}`);
+    rows.push(`APROVO,${report.aprovo_count}`);
+    rows.push(`DESAPROVO,${report.desaprovo_count}`);
+    rows.push(`Comentários,${report.total_comments}`);
+    rows.push(`Check-ins Evento,${report.total_checkins_event}`);
+    rows.push(`Empresas Evento,${report.total_exhibitors_event}`);
+    rows.push(`Prémio,${report.prize || "—"}`);
+    rows.push(`Prémio Sorteado,${report.prize_drawn ? "Sim" : "Não"}`);
+    rows.push(``);
+    rows.push(`--- Top Palavras ---`);
+    report.top_comment_words.forEach((w) => rows.push(`${w.word},${w.count}`));
+    rows.push(``);
+    rows.push(`--- Por País ---`);
+    report.by_country.forEach((c) => rows.push(`${c.country_code},${c.count}`));
+    rows.push(``);
+    rows.push(`--- Por Cidade ---`);
+    report.by_city.forEach((c) => rows.push(`${c.city},${c.count}`));
+    rows.push(``);
+    rows.push(`--- Por Faixa Etária ---`);
+    report.by_age_group.forEach((g) => rows.push(`${g.age_group},${g.count}`));
+
+    const csv = rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `relatorio_${report.word}_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [report]);
+
   const handleDrawPrize = async () => {
     if (!report?.prize) {
       Alert.alert("Sem prémio", "Este post não tem prémio definido.");
@@ -143,7 +184,12 @@ export default function RelatorioScreen() {
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>📊 RELATÓRIO</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={downloadCSV}
+          style={styles.csvBtn}
+        >
+          <Ionicons name="download" size={18} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -352,6 +398,12 @@ export default function RelatorioScreen() {
             )}
           </View>
         )}
+
+        {/* ─── Download CSV (mobile fallback) ─── */}
+        <TouchableOpacity style={styles.downloadBtn} onPress={downloadCSV} activeOpacity={0.8}>
+          <Ionicons name="download" size={18} color={colors.text} />
+          <Text style={styles.downloadBtnText}>DOWNLOAD CSV</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -534,4 +586,26 @@ const styles = StyleSheet.create({
     ...brutalShadow,
   },
   drawBtnText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
+
+  csvBtn: {
+    width: 40,
+    height: 40,
+    borderWidth: 3,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.neutral,
+  },
+  downloadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 48,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.neutral,
+    ...brutalShadow,
+  },
+  downloadBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
 });
