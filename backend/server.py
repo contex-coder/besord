@@ -564,6 +564,12 @@ async def whoami(authorization: Optional[str] = Header(None)):
 # POSTS ROUTES
 # ==============================
 
+# ---------- LIST THEMES ----------
+@api_router.get("/themes")
+async def list_themes():
+    """Return all available themes."""
+    return THEMES
+
 # ---------- LIST POSTS ----------
 @api_router.get("/posts")
 async def list_posts(
@@ -1199,3 +1205,4 @@ async def admin_list_campaigns(authorization: Optional[str] = Header(None)):
 # These are handled by mounted sub-routers in password_auth.py and workspaces.py
 
 app.include_router(api_router)
+
