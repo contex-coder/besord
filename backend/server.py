@@ -1,5 +1,5 @@
 import sys
-from fastapi.middleware.proxy_headers import ProxyHeadersMiddleware
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import RedirectResponse
