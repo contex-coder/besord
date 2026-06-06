@@ -527,6 +527,21 @@ async def auth_logout(authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+@api_router.get("/geo/me")
+async def geo_me(request: Request, authorization: Optional[str] = Header(None)):
+    """Return the detected country and city for the current user based on IP."""
+    user = await get_optional_user(authorization)
+    client_ip = get_client_ip(request.headers)
+    geo = await geo_lookup(client_ip) if client_ip else {"country": None, "country_code": None, "city": None, "region": None}
+    return {
+        "ip": client_ip,
+        "country": geo.get("country"),
+        "country_code": geo.get("country_code"),  # ISO 3166-1 alpha-2
+        "city": geo.get("city"),
+        "region": geo.get("region"),
+    }
+
+
 @api_router.get("/auth/whoami")
 async def whoami(authorization: Optional[str] = Header(None)):
     user = await get_optional_user(authorization)
@@ -555,12 +570,18 @@ async def list_posts(
     sort: Literal["recent", "trending"] = Query("recent"),
     source: Optional[str] = Query(None),
     theme: Optional[str] = Query(None),
+    scope: Literal["world", "country", "city"] = Query("world"),
+    country_code: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
     authorization: Optional[str] = Header(None),
 ):
     user = await get_optional_user(authorization)
     current_user_id = user["user_id"] if user else None
 
-    # Se source=styles, filtra por followed_styles
+    # Base match — never show hidden posts
+    match: dict = {"hidden": {"$ne": True}}
+
+    # Source filter: followed styles
     if source == "styles":
         if not current_user_id:
             return []
@@ -570,14 +591,33 @@ async def list_posts(
         words = [r["word"] for r in followed]
         if not words:
             return []
-        match: dict = {"word": {"$in": words}, "hidden": {"$ne": True}}
-    else:
-        match: dict = {"hidden": {"$ne": True}}
+        match["word"] = {"$in": words}
 
+    # Theme filter
     if theme and theme in THEME_KEYS:
         match["theme"] = theme
 
-    sort_order = [("created_at", -1)] if sort == "recent" else [("aprovo_count", -1), ("created_at", -1)]
+    # Scope filter (geo-based) — uses geo data from votes to determine where posts are trending
+    # We join with votes to find posts that have votes from the given scope
+    if scope == "country" and country_code:
+        # Find post_ids that have votes from this country
+        vote_posts = await db.votes.distinct("post_id", {"geo.country_code": country_code.upper()})
+        if vote_posts:
+            match["post_id"] = {"$in": vote_posts}
+        else:
+            # Fallback: show all if no geo data yet
+            pass
+    elif scope == "city" and city:
+        vote_posts = await db.votes.distinct("post_id", {"geo.city": city})
+        if vote_posts:
+            match["post_id"] = {"$in": vote_posts}
+
+    # Sort
+    if sort == "trending":
+        sort_order = [("aprovo_count", -1), ("created_at", -1)]
+    else:
+        sort_order = [("created_at", -1)]
+
     cursor = db.posts.find(match, {"_id": 0}).sort(sort_order)
     docs = await cursor.to_list(length=200)
 
