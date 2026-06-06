@@ -1,4 +1,3 @@
-import { env } from "expo/virtual/env";
 import * as React from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
@@ -8,7 +7,7 @@ import { storage } from "@/src/utils/storage";
 
 // --- CONSTANTS ---
 
-const BACKEND_URL = env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const TOKEN_KEY = "besord_token";
 const AUTH_TIMEOUT_MS = 15000; // 15 seconds
 
