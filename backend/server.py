@@ -1107,9 +1107,40 @@ async def stripe_webhook(request: Request):
                         f"🎪 Evento \"{event['title']}\" está no ar!",
                         f"O teu evento está visível no feed por 7 dias. Boa sorte! 🚀",
                     )
+
+        # --- Event exhibitor (empresa paga para postar no evento) ---
+        elif event_type == "event_exhibitor":
+            event_id = metadata.get("event_id")
+            post_id = metadata.get("post_id")
+            exhibitor_id = metadata.get("exhibitor_id")
+            if event_id and post_id:
+                now = datetime.now(timezone.utc)
+                # Ativar post
+                await db.posts.update_one(
+                    {"post_id": post_id},
+                    {"$set": {
+                        "status": "active",
+                        "paid_at": now,
+                    }}
+    )
+                # Atualizar status do expositor no evento
+                await db.events.update_one(
+                    {"event_id": event_id, "exhibitors.exhibitor_id": exhibitor_id},
+                    {"$set": {
+                        "exhibitors.$.status": "active",
+                        "exhibitors.$.paid_at": now,
+                    }}
+    )
+                # Notificar organizador
+                org_event = await db.events.find_one({"event_id": event_id}, {"_id": 0, "company_id": 1, "title": 1})
+                if org_event:
+                    await notify_user(
+                        org_event["company_id"],
+                        f"🏢 Nova empresa no evento \"{org_event['title']}\"!",
+                        f"Uma empresa acabou de publicar um anúncio no teu evento.",
+                    )
+
     return {"ok": True}
-
-
 # ==============================
 # NOTIFICATIONS
 # ==============================
@@ -1262,6 +1293,8 @@ class EventCreate(BaseModel):
     prize: Optional[str] = None
     max_participants: Optional[int] = None
     bw_reward: int = 50
+    event_type: Literal["private", "public"] = "private"
+    radius_km: float = 1.0
 
 class EventOut(BaseModel):
     event_id: str
@@ -1283,6 +1316,11 @@ class EventOut(BaseModel):
     raffle_winner_id: Optional[str] = None
     is_participant: bool = False
     is_owner: bool = False
+    event_type: str = "private"
+    radius_km: float = 1.0
+    checkins_count: int = 0
+    exhibitors_count: int = 0
+    distance_km: Optional[float] = None
 
 class PushTokenRequest(BaseModel):
     token: str
@@ -1367,6 +1405,11 @@ def serialize_event(event: dict, current_user_id: Optional[str] = None) -> Event
         raffle_winner_id=event.get("raffle_winner_id"),
         is_participant=current_user_id in participants if current_user_id else False,
         is_owner=event["company_id"] == current_user_id if current_user_id else False,
+        event_type=event.get("event_type", "private"),
+        radius_km=event.get("radius_km", 1.0),
+        checkins_count=len(event.get("checkins", [])),
+        exhibitors_count=len(event.get("exhibitors", [])),
+        distance_km=event.get("distance_km"),
     )
 
 
@@ -1425,10 +1468,14 @@ async def create_event(payload: EventCreate, authorization: Optional[str] = Head
         "prize": (payload.prize or "").strip() or None,
         "max_participants": payload.max_participants,
         "bw_reward": max(1, payload.bw_reward),
+        "event_type": payload.event_type,
+        "radius_km": max(0.1, min(10.0, payload.radius_km)),
         "participants": [],
+        "checkins": [],
+        "exhibitors": [],
         "created_at": now,
         "expires_at": expires_at,
-        "status": "pending_payment",
+        "status": "pending_approval" if payload.event_type == "public" else "pending_payment",
     }
 
     # Salvar temporariamente como pending_payment
@@ -1550,6 +1597,7 @@ async def join_event(event_id: str, authorization: Optional[str] = Header(None))
     if not user.get("age_confirmed_at"):
         raise HTTPException(status_code=403, detail="Precisas de confirmar a idade primeiro.")
 
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado.")
 
@@ -1627,6 +1675,7 @@ async def join_event(event_id: str, authorization: Optional[str] = Header(None))
 async def raffle_event(event_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
 
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado.")
     if event["company_id"] != user["user_id"]:
@@ -1684,6 +1733,416 @@ async def register_device(payload: PushTokenRequest, authorization: Optional[str
 
 
 # ==============================
+
+# ---------- NEARBY EVENTS ----------
+@api_router.get("/events/nearby")
+async def get_events_nearby(
+    lat: float = Query(...),
+    lon: float = Query(...),
+    radius_km: float = Query(1.0, description="Raio em km para busca"),
+    authorization: Optional[str] = Header(None),
+):
+    """Retorna eventos ativos num raio da localização do user."""
+    user = await get_optional_user(authorization)
+    current_user_id = user["user_id"] if user else None
+
+    now = datetime.now(timezone.utc)
+    eventos = await db.events.find({
+        "status": "active",
+        "expires_at": {"$gt": now},
+    }, {"_id": 0}).to_list(length=100)
+
+    nearby = []
+    for event in eventos:
+        loc = event.get("location", {})
+        e_lat = loc.get("lat")
+        e_lon = loc.get("lon")
+        if e_lat is None or e_lon is None:
+            continue
+
+        from math import radians, sin, cos, sqrt, atan2
+
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371  # km
+            dlat = radians(lat2 - lat1)
+            dlon = radians(lon2 - lon1)
+            a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+            c = 2 * atan2(sqrt(a), sqrt(1-a))
+            return R * c
+
+        dist = haversine(lat, lon, e_lat, e_lon)
+        event_radius = event.get("radius_km", 1.0)
+        if dist <= event_radius:
+            event["distance_km"] = round(dist, 2)
+            nearby.append(serialize_event(event, current_user_id))
+
+    return sorted(nearby, key=lambda e: e.distance_km if e.distance_km else 0)
+
+
+# ---------- CHECK-IN (manual) ----------
+@api_router.post("/events/{event_id}/checkin")
+async def checkin_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event["status"] not in ("active", "full"):
+        raise HTTPException(status_code=400, detail="Evento não está ativo.")
+
+    checkins = event.get("checkins", [])
+    if user["user_id"] in checkins:
+        return {"ok": True, "already_checked_in": True}
+
+    await db.events.update_one(
+        {"event_id": event_id},
+        {"$push": {"checkins": user["user_id"]}}
+    )
+
+    # Notificar organizador
+    await notify_user(
+        event["company_id"],
+        f"👤 Novo check-in no evento \"{event['title']}\"!",
+        f"{user.get('name', 'Alguém')} fez check-in. Total: {len(checkins) + 1}",
+    )
+
+    return {"ok": True, "already_checked_in": False}
+
+
+# ---------- APPROVE EVENT (admin) ----------
+@api_router.post("/events/{event_id}/approve")
+async def approve_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores podem aprovar eventos.")
+
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event.get("event_type") != "public":
+        raise HTTPException(status_code=400, detail="Apenas eventos públicos precisam de aprovação.")
+    if event.get("status") != "pending_approval":
+        raise HTTPException(status_code=400, detail=f"Evento está em estado \"{event.get('status')}\", não pode ser aprovado.")
+
+    await db.events.update_one(
+        {"event_id": event_id},
+        {"$set": {"status": "active", "approved_at": datetime.now(timezone.utc), "approved_by": user["user_id"]}}
+    )
+
+    await notify_user(
+        event["company_id"],
+        f"✅ Evento \"{event['title']}\" aprovado!",
+        "O teu evento público foi aprovado. Já podes convidar empresas para participar! 🚀",
+    )
+
+    return {"ok": True}
+
+
+# ---------- INVITE (gerar link de convite) ----------
+@api_router.post("/events/{event_id}/invite")
+async def invite_exhibitor(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event["company_id"] != user["user_id"] and not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Só o organizador pode convidar.")
+
+    # Gerar ou retornar código de convite existente
+    invite_code = event.get("invite_code")
+    if not invite_code:
+        import hashlib
+        invite_code = hashlib.sha256(f"{event_id}:{uuid.uuid4().hex}".encode()).hex()[:12]
+        await db.events.update_one(
+            {"event_id": event_id},
+            {"$set": {"invite_code": invite_code}}
+        )
+
+    invite_url = f"{FRONTEND_URL}/evento/{event_id}/participar?codigo={invite_code}"
+    return {"invite_code": invite_code, "invite_url": invite_url}
+
+
+# ---------- JOIN AS EXHIBITOR (empresa aceita convite e paga) ----------
+class ExhibitorJoinRequest(BaseModel):
+    invite_code: str
+    word: str
+    image_base64: str
+    prize: Optional[str] = None
+
+@api_router.post("/events/{event_id}/join-as-exhibitor")
+async def join_as_exhibitor(event_id: str, payload: ExhibitorJoinRequest, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    # Requer perfil de empresa
+    if not user.get("business_profile"):
+        raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa primeiro.")
+
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event.get("status") not in ("active", "full"):
+        raise HTTPException(status_code=400, detail="Evento não está ativo.")
+    if event.get("event_type") != "public":
+        raise HTTPException(status_code=400, detail="Apenas eventos públicos aceitam múltiplas empresas.")
+
+    # Validar código de convite
+    if event.get("invite_code") != payload.invite_code:
+        raise HTTPException(status_code=403, detail="Código de convite inválido.")
+
+    # Validar word
+    word = normalize_word(payload.word)
+    if not WORD_RE.match(word):
+        raise HTTPException(status_code=400, detail="Palavra inválida. Apenas letras e números, 1 a 20 caracteres.")
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    # Validar imagem
+    if not payload.image_base64 or len(payload.image_base64) < 50:
+        raise HTTPException(status_code=400, detail="Imagem inválida.")
+
+    # Verificar limite de empresas
+    exhibitors = event.get("exhibitors", [])
+    if len(exhibitors) >= 100:
+        raise HTTPException(status_code=400, detail="Evento atingiu o limite máximo de empresas expositoras.")
+
+    # Verificar se já é expositor
+    for ex in exhibitors:
+        if ex.get("user_id") == user["user_id"]:
+            raise HTTPException(status_code=400, detail="Já és expositor neste evento.")
+
+    # Criar o post do anúncio
+    post_id = f"post_{uuid.uuid4().hex[:12]}"
+    exhibitor_id = f"exh_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+
+    # Stripe Checkout Session (€9,99)
+    try:
+        checkout = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {
+                        "name": f"Anúncio no evento: {event['title']}",
+                        "description": f"1 palavra + 1 imagem — {word}",
+                    },
+                    "unit_amount": 999,
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            client_reference_id=user["user_id"],
+            metadata={
+                "type": "event_exhibitor",
+                "event_id": event_id,
+                "post_id": post_id,
+                "exhibitor_id": exhibitor_id,
+                "word": word,
+            },
+            success_url=f"{FRONTEND_URL}/evento/{event_id}?anuncio=sucesso",
+            cancel_url=f"{FRONTEND_URL}/evento/{event_id}/participar?codigo={payload.invite_code}&cancelado=1",
+        )
+
+        # Guardar post como pending_payment
+        post_doc = {
+            "post_id": post_id,
+            "word": word,
+            "image_base64": payload.image_base64,
+            "author_id": user["user_id"],
+            "author_name": user.get("business_profile", {}).get("company_name", user.get("name", "")),
+            "author_picture": user.get("picture"),
+            "created_at": now,
+            "aprovo_count": 0,
+            "desaprovo_count": 0,
+            "comments_count": 0,
+            "is_sponsored": True,
+            "is_event_post": True,
+            "event_id": event_id,
+            "exhibitor_id": exhibitor_id,
+            "exhibitor_name": user.get("business_profile", {}).get("company_name", user.get("name", "")),
+            "prize": (payload.prize or "").strip() or None,
+            "prize_drawn": False,
+            "hidden": False,
+            "status": "pending_payment",
+            "stripe_session_id": checkout.id,
+        }
+        await db.posts.insert_one(post_doc)
+
+        # Registar expositor no evento
+        await db.events.update_one(
+            {"event_id": event_id},
+            {"$push": {"exhibitors": {
+                "exhibitor_id": exhibitor_id,
+                "user_id": user["user_id"],
+                "post_id": post_id,
+                "word": word,
+                "company_name": user.get("business_profile", {}).get("company_name", user.get("name", "")),
+                "status": "pending_payment",
+            }}}
+        )
+
+        return {
+            "ok": True,
+            "checkout_url": checkout.url,
+            "post_id": post_id,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao processar pagamento: {str(e)}")
+
+
+# ---------- POST REPORT (relatório do anúncio no evento) ----------
+class PostReportOut(BaseModel):
+    post_id: str
+    word: str
+    event_id: Optional[str] = None
+    event_title: Optional[str] = None
+    total_votes: int
+    aprovo_count: int
+    desaprovo_count: int
+    total_comments: int
+    top_comment_words: List[dict] = []
+    by_country: List[dict] = []
+    by_city: List[dict] = []
+    by_age_group: List[dict] = []
+    total_checkins_event: int = 0
+    total_exhibitors_event: int = 0
+    prize: Optional[str] = None
+    prize_drawn: bool = False
+    created_at: str
+
+@api_router.get("/posts/{post_id}/report")
+async def get_post_report(post_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    post = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    if post["author_id"] != user["user_id"] and not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Só o autor do post pode ver o relatório.")
+
+    # Votos com geo
+    votes_cursor = db.votes.find({"post_id": post_id}, {"_id": 0, "vote": 1, "geo": 1, "user_id": 1})
+    votes = await votes_cursor.to_list(length=1000)
+
+    aprovo_count = sum(1 for v in votes if v["vote"] == "aprovo")
+    desaprovo_count = sum(1 for v in votes if v["vote"] == "desaprovo")
+
+    # Comentários
+    comments_cursor = db.comments.find({"post_id": post_id}, {"_id": 0, "word": 1})
+    comments = await comments_cursor.to_list(length=1000)
+    total_comments = len(comments)
+
+    # Palavras mais usadas nos comentários
+    word_counts = {}
+    for c in comments:
+        w = c.get("word", "").upper()
+        if w:
+            word_counts[w] = word_counts.get(w, 0) + 1
+    top_words = sorted(word_counts.items(), key=lambda x: -x[1])[:10]
+    top_comment_words = [{"word": w, "count": c} for w, c in top_words]
+
+    # Breakdown por país
+    country_counts = {}
+    for v in votes:
+        cc = v.get("geo", {}).get("country_code")
+        if cc:
+            country_counts[cc] = country_counts.get(cc, 0) + 1
+    by_country = [{"label": k, "value": v} for k, v in sorted(country_counts.items(), key=lambda x: -x[1])]
+
+    # Breakdown por cidade
+    city_counts = {}
+    for v in votes:
+        c = v.get("geo", {}).get("city")
+        if c:
+            city_counts[c] = city_counts.get(c, 0) + 1
+    by_city = [{"label": k, "value": v} for k, v in sorted(city_counts.items(), key=lambda x: -x[1])]
+
+    # Breakdown por idade (dos users que votaram)
+    age_groups = {"13-17": 0, "18-24": 0, "25-34": 0, "35-44": 0, "45+": 0}
+    for v in votes:
+        voter = await db.users.find_one({"user_id": v.get("user_id", "")}, {"_id": 0, "birth_year": 1})
+        if voter and voter.get("birth_year"):
+            age = datetime.now(timezone.utc).year - voter["birth_year"]
+            if age < 18: age_groups["13-17"] += 1
+            elif age < 25: age_groups["18-24"] += 1
+            elif age < 35: age_groups["25-34"] += 1
+            elif age < 45: age_groups["35-44"] += 1
+            else: age_groups["45+"] += 1
+    by_age_group = [{"label": k, "value": v} for k, v in age_groups.items() if v > 0]
+
+    # Dados do evento (se for post de evento)
+    event_info = {}
+    if post.get("is_event_post") and post.get("event_id"):
+        event = await db.events.find_one({"event_id": post["event_id"]}, {"_id": 0, "title": 1, "checkins": 1, "exhibitors": 1})
+        if event:
+            event_info = {
+                "event_id": post["event_id"],
+                "event_title": event.get("title"),
+                "total_checkins_event": len(event.get("checkins", [])),
+                "total_exhibitors_event": len(event.get("exhibitors", [])),
+            }
+
+    return PostReportOut(
+        post_id=post_id,
+        word=post["word"],
+        event_id=post.get("event_id"),
+        event_title=event_info.get("event_title"),
+        total_votes=len(votes),
+        aprovo_count=aprovo_count,
+        desaprovo_count=desaprovo_count,
+        total_comments=total_comments,
+        top_comment_words=top_comment_words,
+        by_country=by_country,
+        by_city=by_city,
+        by_age_group=by_age_group,
+        total_checkins_event=event_info.get("total_checkins_event", 0),
+        total_exhibitors_event=event_info.get("total_exhibitors_event", 0),
+        prize=post.get("prize"),
+        prize_drawn=bool(post.get("prize_drawn")),
+        created_at=post["created_at"].isoformat() if isinstance(post["created_at"], datetime) else str(post["created_at"]),
+    )
+
+
+# ---------- DRAW PRIZE (sorteio do post) ----------
+@api_router.post("/posts/{post_id}/draw-prize")
+async def draw_post_prize(post_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    post = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    if post["author_id"] != user["user_id"] and not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Só o autor do post pode sortear.")
+    if not post.get("prize"):
+        raise HTTPException(status_code=400, detail="Este post não tem prémio configurado.")
+    if post.get("prize_drawn"):
+        raise HTTPException(status_code=409, detail="Sorteio já foi realizado.")
+
+    # Quem votou APROVO concorre
+    votes = await db.votes.find({"post_id": post_id, "vote": "aprovo"}, {"_id": 0, "user_id": 1}).to_list(length=1000)
+    if len(votes) < 1:
+        raise HTTPException(status_code=400, detail="Ninguém votou APROVO ainda. Não há participantes no sorteio.")
+
+    winner_id = random.choice([v["user_id"] for v in votes])
+
+    await db.posts.update_one(
+        {"post_id": post_id},
+        {"$set": {"prize_drawn": True, "prize_winner_id": winner_id, "prize_drawn_at": datetime.now(timezone.utc)}}
+    )
+
+    # Notificar vencedor
+    winner_user = await db.users.find_one({"user_id": winner_id}, {"_id": 0, "name": 1})
+    winner_name = winner_user.get("name", "Participante") if winner_user else "Participante"
+    await notify_user(
+        winner_id,
+        f"🎉 Ganhaste o sorteio!",
+        f"Parabéns! Ganhaste \"{post['prize']}\" do post \"{post['word']}\"! Entra em contacto com o organizador.",
+    )
+
+    return {"ok": True, "winner_id": winner_id, "winner_name": winner_name}
 # END — EVENTOS PRESENCIAIS
 # ==============================
 
