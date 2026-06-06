@@ -1277,6 +1277,85 @@ async def admin_list_campaigns(authorization: Optional[str] = Header(None)):
 # These are handled by mounted sub-routers in password_auth.py and workspaces.py
 
 # ==============================
+
+# ==============================
+# EVENTOS PRESENCIAIS (FASE 2)
+# ==============================
+
+class EventCreate(BaseModel):
+    title: str
+    description: str
+    image_base64: str
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country_code: Optional[str] = None
+    date: str  # ISO datetime string
+    prize: Optional[str] = None
+    max_participants: Optional[int] = None
+    bw_reward: int = 50
+    event_type: Literal["private", "public"] = "private"
+    radius_km: float = 1.0
+
+
+class EventOut(BaseModel):
+    event_id: str
+    company_id: str
+    company_name: str
+    title: str
+    description: str
+    image_base64: str
+    location: dict
+    date: str
+    prize: Optional[str] = None
+    max_participants: Optional[int] = None
+    participants_count: int
+    bw_reward: int
+    created_at: str
+    expires_at: str
+    status: str  # active | full | expired | raffle_done
+    raffle_done: bool = False
+    raffle_winner_id: Optional[str] = None
+    is_participant: bool = False
+    is_owner: bool = False
+    event_type: str = "private"
+    radius_km: float = 1.0
+    checkins_count: int = 0
+    exhibitors_count: int = 0
+    distance_km: Optional[float] = None
+
+
+class PushTokenRequest(BaseModel):
+    token: str
+
+
+class ExhibitorJoinRequest(BaseModel):
+    invite_code: str
+    word: str
+    image_base64: str
+    prize: Optional[str] = None
+
+
+class PostReportOut(BaseModel):
+    post_id: str
+    word: str
+    event_id: Optional[str] = None
+    event_title: Optional[str] = None
+    total_votes: int
+    aprovo_count: int
+    desaprovo_count: int
+    total_comments: int
+    top_comment_words: List[dict] = []
+    by_country: List[dict] = []
+    by_city: List[dict] = []
+    by_age_group: List[dict] = []
+    total_checkins_event: int = 0
+    total_exhibitors_event: int = 0
+    prize: Optional[str] = None
+    prize_drawn: bool = False
+    created_at: str
+
 @api_router.get("/events/nearby")
 async def get_events_nearby(
     lat: float = Query(...),
@@ -1528,24 +1607,9 @@ async def join_as_exhibitor(event_id: str, payload: ExhibitorJoinRequest, author
 
 
 # ---------- POST REPORT (relatório do anúncio no evento) ----------
-class PostReportOut(BaseModel):
-    post_id: str
-    word: str
-    event_id: Optional[str] = None
-    event_title: Optional[str] = None
-    total_votes: int
-    aprovo_count: int
-    desaprovo_count: int
-    total_comments: int
-    top_comment_words: List[dict] = []
-    by_country: List[dict] = []
-    by_city: List[dict] = []
-    by_age_group: List[dict] = []
-    total_checkins_event: int = 0
-    total_exhibitors_event: int = 0
-    prize: Optional[str] = None
-    prize_drawn: bool = False
-    created_at: str
+
+
+
 
 @api_router.post("/events/{event_id}/raffle")
 async def raffle_event(event_id: str, authorization: Optional[str] = Header(None)):
@@ -1681,11 +1745,6 @@ async def invite_exhibitor(event_id: str, authorization: Optional[str] = Header(
 
 
 # ---------- JOIN AS EXHIBITOR (empresa aceita convite e paga) ----------
-class ExhibitorJoinRequest(BaseModel):
-    invite_code: str
-    word: str
-    image_base64: str
-    prize: Optional[str] = None
 
 @api_router.post("/notifications/register-device")
 async def register_device(payload: PushTokenRequest, authorization: Optional[str] = Header(None)):
