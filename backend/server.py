@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import re
+import json
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
@@ -543,5 +544,618 @@ async def whoami(authorization: Optional[str] = Header(None)):
     }
 
 # ... (rest of routes remain the same)
+
+# ==============================
+# POSTS ROUTES
+# ==============================
+
+# ---------- LIST POSTS ----------
+@api_router.get("/posts")
+async def list_posts(
+    sort: Literal["recent", "trending"] = Query("recent"),
+    source: Optional[str] = Query(None),
+    theme: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    user = await get_optional_user(authorization)
+    current_user_id = user["user_id"] if user else None
+
+    # Se source=styles, filtra por followed_styles
+    if source == "styles":
+        if not current_user_id:
+            return []
+        followed = await db.followed_styles.find(
+            {"user_id": current_user_id}, {"_id": 0, "word": 1}
+        ).to_list(length=500)
+        words = [r["word"] for r in followed]
+        if not words:
+            return []
+        match: dict = {"word": {"$in": words}, "hidden": {"$ne": True}}
+    else:
+        match: dict = {"hidden": {"$ne": True}}
+
+    if theme and theme in THEME_KEYS:
+        match["theme"] = theme
+
+    sort_order = [("created_at", -1)] if sort == "recent" else [("aprovo_count", -1), ("created_at", -1)]
+    cursor = db.posts.find(match, {"_id": 0}).sort(sort_order)
+    docs = await cursor.to_list(length=200)
+
+    results = []
+    for doc in docs:
+        results.append(await serialize_post(doc, current_user_id))
+
+    return results
+
+
+# ---------- CREATE POST ----------
+@api_router.post("/posts")
+async def create_post(payload: PostCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    # Validate age confirmed
+    if not user.get("age_confirmed_at"):
+        raise HTTPException(status_code=403, detail="Precisas de confirmar a idade primeiro.")
+
+    word = normalize_word(payload.word)
+    if not WORD_RE.match(word):
+        raise HTTPException(status_code=400, detail="Palavra inválida. Apenas letras e números, 1 a 20 caracteres.")
+
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    image = payload.image_base64
+    if not image or len(image) < 50:
+        raise HTTPException(status_code=400, detail="Imagem inválida ou demasiado pequena.")
+
+    post_id = f"post_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+
+    doc = {
+        "post_id": post_id,
+        "word": word,
+        "image_base64": image,
+        "author_id": user["user_id"],
+        "author_name": user.get("name", ""),
+        "author_picture": user.get("picture"),
+        "created_at": now,
+        "aprovo_count": 0,
+        "desaprovo_count": 0,
+        "comments_count": 0,
+        "is_sponsored": False,
+        "theme": payload.theme if payload.theme in THEME_KEYS else None,
+        "hidden": False,
+    }
+    await db.posts.insert_one(doc)
+    return await serialize_post(doc, user["user_id"])
+
+
+# ---------- GET SINGLE POST ----------
+@api_router.get("/posts/{post_id}")
+async def get_post(post_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_optional_user(authorization)
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    return await serialize_post(doc, user["user_id"] if user else None)
+
+
+# ---------- DELETE POST ----------
+@api_router.delete("/posts/{post_id}")
+async def delete_post(post_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    if doc["author_id"] != user["user_id"] and not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Não podes eliminar um post de outro utilizador.")
+    await db.posts.delete_one({"post_id": post_id})
+    await db.votes.delete_many({"post_id": post_id})
+    await db.comments.delete_many({"post_id": post_id})
+    return {"ok": True}
+
+
+# ---------- VOTE ----------
+@api_router.post("/posts/{post_id}/vote")
+async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    if doc["hidden"]:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+
+    existing = await db.votes.find_one({"post_id": post_id, "user_id": user["user_id"]}, {"_id": 0})
+    now = datetime.now(timezone.utc)
+
+    if existing:
+        if existing["vote"] == payload.vote:
+            # Toggle off
+            await db.votes.delete_one({"post_id": post_id, "user_id": user["user_id"]})
+            field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
+            await db.posts.update_one({"post_id": post_id}, {"$inc": {field: -1}})
+        else:
+            # Switch vote
+            await db.votes.update_one(
+                {"post_id": post_id, "user_id": user["user_id"]},
+                {"$set": {"vote": payload.vote, "created_at": now}},
+            )
+            old_field = "aprovo_count" if existing["vote"] == "aprovo" else "desaprovo_count"
+            new_field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
+            await db.posts.update_one({"post_id": post_id}, {"$inc": {old_field: -1, new_field: 1}})
+            # Award BW for the new vote
+            await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
+    else:
+        # New vote
+        await db.votes.insert_one({
+            "post_id": post_id,
+            "user_id": user["user_id"],
+            "vote": payload.vote,
+            "created_at": now,
+            "geo": {"country_code": None, "city": None},
+        })
+        field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
+        await db.posts.update_one({"post_id": post_id}, {"$inc": {field: 1}})
+        # Award BW
+        await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
+
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    return await serialize_post(doc, user["user_id"])
+
+
+# ---------- COMMENT ----------
+@api_router.post("/posts/{post_id}/comment")
+async def create_comment(post_id: str, payload: CommentCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+
+    word = normalize_word(payload.word)
+    if not WORD_RE.match(word):
+        raise HTTPException(status_code=400, detail="Palavra inválida.")
+
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    comment_id = f"cmt_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    await db.comments.insert_one({
+        "comment_id": comment_id,
+        "post_id": post_id,
+        "user_id": user["user_id"],
+        "user_name": user.get("name", ""),
+        "user_picture": user.get("picture"),
+        "word": word,
+        "created_at": now,
+    })
+    await db.posts.update_one({"post_id": post_id}, {"$inc": {"comments_count": 1}})
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    return await serialize_post(doc, user["user_id"])
+
+
+# ---------- DELETE COMMENT ----------
+@api_router.delete("/posts/{post_id}/comment")
+async def delete_comment(post_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    comment = await db.comments.find_one({"post_id": post_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comentário não encontrado.")
+    await db.comments.delete_one({"post_id": post_id, "user_id": user["user_id"]})
+    await db.posts.update_one({"post_id": post_id}, {"$inc": {"comments_count": -1}})
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    return await serialize_post(doc, user["user_id"])
+
+
+# ---------- REPORT ----------
+@api_router.post("/posts/{post_id}/report")
+async def report_post(post_id: str, payload: ReportCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+
+    report_id = f"rpt_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    await db.reports.insert_one({
+        "report_id": report_id,
+        "post_id": post_id,
+        "user_id": user["user_id"],
+        "reason": payload.reason or "No reason",
+        "created_at": now,
+    })
+
+    # Count reports — hide after 3
+    report_count = await db.reports.count_documents({"post_id": post_id})
+    hidden = False
+    if report_count >= 3:
+        await db.posts.update_one({"post_id": post_id}, {"$set": {"hidden": True}})
+        hidden = True
+
+    return {"ok": True, "hidden": hidden}
+
+
+# ==============================
+# BUSINESS & CAMPAIGN ROUTES
+# ==============================
+
+# ---------- CREATE BUSINESS PROFILE ----------
+@api_router.post("/business/profile")
+async def create_business_profile(payload: BusinessProfileCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if user.get("business_profile"):
+        raise HTTPException(status_code=400, detail="Já tens um perfil de empresa.")
+    profile = {
+        "company_name": payload.company_name,
+        "country": payload.country,
+        "country_code": payload.country_code.upper(),
+        "tax_id": payload.tax_id,
+        "contact_email": payload.contact_email,
+        "contact_name": payload.contact_name,
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"business_profile": profile}})
+    return {"ok": True, "profile": profile}
+
+
+# ---------- GET BUSINESS PROFILE ----------
+@api_router.get("/business/profile")
+async def get_business_profile(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    profile = user.get("business_profile")
+    if not profile:
+        raise HTTPException(status_code=404, detail="Perfil de empresa não encontrado.")
+    return {"profile": profile}
+
+
+# ---------- UPDATE BUSINESS PROFILE ----------
+@api_router.put("/business/profile")
+async def update_business_profile(payload: BusinessProfileCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user.get("business_profile"):
+        raise HTTPException(status_code=404, detail="Perfil de empresa não encontrado.")
+    profile = {
+        "company_name": payload.company_name,
+        "country": payload.country,
+        "country_code": payload.country_code.upper(),
+        "tax_id": payload.tax_id,
+        "contact_email": payload.contact_email,
+        "contact_name": payload.contact_name,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"business_profile": profile}})
+    return {"ok": True, "profile": profile}
+
+
+# ---------- LIST CAMPAIGNS ----------
+@api_router.get("/campaigns")
+async def list_campaigns(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    cursor = db.campaigns.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1)
+    docs = await cursor.to_list(length=100)
+    return [serialize_campaign(c) for c in docs]
+
+
+# ---------- GET SINGLE CAMPAIGN ----------
+@api_router.get("/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    doc = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada.")
+    return serialize_campaign(doc)
+
+
+# ---------- CREATE CAMPAIGN ----------
+@api_router.post("/campaigns")
+async def create_campaign(payload: CampaignCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user.get("business_profile"):
+        raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa primeiro.")
+
+    word = normalize_word(payload.word)
+    if not WORD_RE.match(word):
+        raise HTTPException(status_code=400, detail="Palavra inválida.")
+
+    ok, reason = moderate_word(word)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    image = payload.image_base64
+    if not image or len(image) < 50:
+        raise HTTPException(status_code=400, detail="Imagem inválida.")
+
+    if payload.tier_key not in TIERS:
+        raise HTTPException(status_code=400, detail="Tier inválido.")
+
+    tier = TIERS[payload.tier_key]
+
+    # Validate geo requirements based on tier scope
+    if tier.scope == "national" and not payload.target_country_code:
+        raise HTTPException(status_code=400, detail="Campanha nacional precisa de um país alvo.")
+    if tier.scope == "regional" and not payload.target_region:
+        raise HTTPException(status_code=400, detail="Campanha regional precisa de uma região alvo.")
+    if tier.scope == "local" and not payload.target_city:
+        raise HTTPException(status_code=400, detail="Campanha local precisa de uma cidade alvo.")
+
+    campaign_id = f"camp_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+
+    # Create the post first
+    post_id = f"post_{uuid.uuid4().hex[:12]}"
+    post_doc = {
+        "post_id": post_id,
+        "word": word,
+        "image_base64": image,
+        "author_id": user["user_id"],
+        "author_name": user.get("name", ""),
+        "author_picture": user.get("picture"),
+        "created_at": now,
+        "aprovo_count": 0,
+        "desaprovo_count": 0,
+        "comments_count": 0,
+        "is_sponsored": True,
+        "campaign_id": campaign_id,
+        "theme": payload.theme if payload.theme in THEME_KEYS else None,
+        "hidden": False,
+    }
+    await db.posts.insert_one(post_doc)
+
+    # Create Stripe checkout session
+    try:
+        checkout = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {
+                        "name": f"Campanha {tier.name} — '{word}'",
+                        "description": f"{tier.description} | {tier.scope} | {tier.duration_days} dias",
+                    },
+                    "unit_amount": tier.price_cents,
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=f"{FRONTEND_URL}/business/campaign/{campaign_id}?success=1",
+            cancel_url=f"{FRONTEND_URL}/business/campaign/{campaign_id}?canceled=1",
+            metadata={"campaign_id": campaign_id, "user_id": user["user_id"]},
+        )
+        checkout_url = checkout.url
+    except Exception as e:
+        # If Stripe fails, still create but without checkout URL
+        checkout_url = None
+
+    # Handle promo code discount
+    amount_cents = tier.price_cents
+    promo_code = payload.promo_code
+    if promo_code:
+        promo = await db.promo_codes.find_one({"code": promo_code.upper(), "active": True})
+        if promo:
+            discount_pct = promo.get("discount_pct", 0)
+            amount_cents = int(amount_cents * (100 - discount_pct) / 100)
+
+    campaign_doc = {
+        "campaign_id": campaign_id,
+        "post_id": post_id,
+        "user_id": user["user_id"],
+        "word": word,
+        "image_base64": image,
+        "tier_key": payload.tier_key,
+        "scope": tier.scope,
+        "duration_days": tier.duration_days,
+        "target_country_code": payload.target_country_code.upper() if payload.target_country_code else None,
+        "target_region": payload.target_region,
+        "target_city": payload.target_city,
+        "workspace_id": payload.workspace_id,
+        "theme": payload.theme if payload.theme in THEME_KEYS else None,
+        "status": "pending_payment",
+        "amount_cents": amount_cents,
+        "included_votes": tier.included_votes,
+        "votes_collected": 0,
+        "aprovo_count": 0,
+        "desaprovo_count": 0,
+        "created_at": now,
+        "checkout_url": checkout_url,
+    }
+    await db.campaigns.insert_one(campaign_doc)
+
+    return serialize_campaign(campaign_doc, checkout_url=checkout_url)
+
+
+# ---------- CANCEL CAMPAIGN ----------
+@api_router.post("/campaigns/{campaign_id}/cancel")
+async def cancel_campaign(campaign_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    doc = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada.")
+    if doc["status"] not in ("pending_payment", "active"):
+        raise HTTPException(status_code=400, detail="Campanha não pode ser cancelada.")
+    await db.campaigns.update_one({"campaign_id": campaign_id}, {"$set": {"status": "canceled"}})
+    return {"ok": True}
+
+
+# ==============================
+# STRIPE WEBHOOK
+# ==============================
+@api_router.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload_body = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    if STRIPE_WEBHOOK_SECRET:
+        try:
+            event = stripe.Webhook.construct_event(payload_body, sig_header, STRIPE_WEBHOOK_SECRET)
+        except stripe.error.SignatureVerificationError:
+            raise HTTPException(status_code=400, detail="Invalid signature")
+    else:
+        data = json.loads(payload_body)
+        event = {"type": data.get("type", ""), "data": data.get("data", {})}
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        campaign_id = session.get("metadata", {}).get("campaign_id")
+        if campaign_id:
+            now = datetime.now(timezone.utc)
+            await db.campaigns.update_one(
+                {"campaign_id": campaign_id},
+                {"$set": {
+                    "status": "active",
+                    "payment_intent": session.get("payment_intent"),
+                    "paid_at": now,
+                    "starts_at": now,
+                    "ends_at": now + timedelta(days=30),  # Will be updated with actual duration
+                }}
+            )
+            # Update campaign duration based on tier
+            campaign = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+            if campaign:
+                tier = TIERS.get(campaign.get("tier_key"))
+                if tier:
+                    await db.campaigns.update_one(
+                        {"campaign_id": campaign_id},
+                        {"$set": {"ends_at": now + timedelta(days=tier.duration_days)}}
+                    )
+
+    return {"ok": True}
+
+
+# ==============================
+# NOTIFICATIONS
+# ==============================
+@api_router.get("/notifications")
+async def list_notifications(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    cursor = db.notifications.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).limit(50)
+    docs = await cursor.to_list(length=50)
+    for d in docs:
+        if isinstance(d.get("created_at"), datetime):
+            d["created_at"] = d["created_at"].isoformat()
+    return docs
+
+
+@api_router.get("/notifications/unread-count")
+async def unread_count(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    count = await db.notifications.count_documents({"user_id": user["user_id"], "read": {"$ne": True}})
+    return {"unread_count": count}
+
+
+@api_router.post("/notifications/read-all")
+async def mark_all_read(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    await db.notifications.update_many(
+        {"user_id": user["user_id"], "read": {"$ne": True}},
+        {"$set": {"read": True}}
+    )
+    return {"ok": True}
+
+
+# ==============================
+# BW (BEST WORD) PERSONAL AD
+# ==============================
+@api_router.post("/bw/personal-ad")
+async def create_bw_personal_ad(payload: dict, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    post_id = payload.get("post_id")
+    if not post_id:
+        raise HTTPException(status_code=400, detail="post_id é obrigatório.")
+
+    post = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    if post["author_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Só podes promover os teus próprios posts.")
+
+    bw_cost = 100
+    bw_balance = int(user.get("bw_balance", 0) or 0)
+    if bw_balance < bw_cost:
+        raise HTTPException(status_code=400, detail=f"Precisas de {bw_cost} BW (tens {bw_balance}).")
+
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": -bw_cost}})
+    # Mark post as sponsored for 24h
+    await db.posts.update_one({"post_id": post_id}, {"$set": {"is_sponsored": True, "sponsored_until": datetime.now(timezone.utc) + timedelta(hours=24)}})
+
+    # Record transaction
+    await db.bw_transactions.insert_one({
+        "user_id": user["user_id"],
+        "type": "spend",
+        "amount": bw_cost,
+        "description": f"Personal ad boost — {post['word']}",
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    return {"ok": True, "post_id": post_id, "bw_spent": bw_cost, "bw_remaining": bw_balance - bw_cost}
+
+
+# ==============================
+# ADMIN ROUTES
+# ==============================
+@api_router.get("/admin/users")
+async def admin_list_users(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    cursor = db.users.find({}, {"_id": 0}).sort("created_at", -1).limit(100)
+    users = await cursor.to_list(length=100)
+    return [user_out(u) for u in users]
+
+
+@api_router.get("/admin/tiers")
+async def admin_get_tiers(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    return tiers_public()
+
+
+@api_router.put("/admin/tiers")
+async def admin_update_tiers(payload: dict, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    # Update tiers in database
+    for key, values in payload.items():
+        if key in TIERS:
+            tier = TIERS[key]
+            if "price_cents" in values:
+                tier.price_cents = int(values["price_cents"])
+            if "included_votes" in values:
+                tier.included_votes = int(values["included_votes"])
+            if "name" in values:
+                tier.name = values["name"]
+    return tiers_public()
+
+
+@api_router.post("/admin/tiers/reset")
+async def admin_reset_tiers(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    global TIERS
+    TIERS.clear()
+    TIERS.update({k: dataclass_replace(v) for k, v in _ORIGINAL_TIERS.items()})
+    return tiers_public()
+
+
+@api_router.get("/admin/campaigns")
+async def admin_list_campaigns(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    cursor = db.campaigns.find({}, {"_id": 0}).sort("created_at", -1).limit(100)
+    docs = await cursor.to_list(length=100)
+    return [serialize_campaign(c) for c in docs]
+
+
+# ==============================
+# WORKS AND PASSWORD AUTH ROUTES
+# ==============================
+# These are handled by mounted sub-routers in password_auth.py and workspaces.py
 
 app.include_router(api_router)
