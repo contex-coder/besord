@@ -49,6 +49,13 @@ export default function PerfilScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Redirect to age-gate if not confirmed (e.g. existing sessions before fix)
+  useEffect(() => {
+    if (user && !user.age_confirmed) {
+      router.replace("/age-gate");
+    }
+  }, [user, router]);
+
   const handleSignOut = () => {
     const doLogout = async () => {
       await signOut();
