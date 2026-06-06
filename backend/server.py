@@ -979,6 +979,8 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
                 "quantity": 1,
             }],
             mode="payment",
+            automatic_tax={"enabled": True},
+            customer_creation="always",
             success_url=f"{FRONTEND_URL}/business/campaign/{campaign_id}?success=1",
             cancel_url=f"{FRONTEND_URL}/business/campaign/{campaign_id}?canceled=1",
             metadata={"campaign_id": campaign_id, "user_id": user["user_id"]},
@@ -1139,6 +1141,24 @@ async def stripe_webhook(request: Request):
                         f"🏢 Nova empresa no evento \"{org_event['title']}\"!",
                         f"Uma empresa acabou de publicar um anúncio no teu evento.",
                     )
+
+    # --- Save invoice (all types) ---
+    if session.get("payment_intent"):
+        amount_total = session.get("amount_total", 0) or session.get("amount_subtotal", 0)
+        invoice_doc = {
+            "invoice_id": secrets.token_hex(16),
+            "stripe_session_id": session.get("id"),
+            "payment_intent": session.get("payment_intent"),
+            "amount_cents": amount_total,
+            "currency": session.get("currency", "eur"),
+            "customer_email": session.get("customer_details", {}).get("email", ""),
+            "customer_name": session.get("customer_details", {}).get("name", ""),
+            "metadata": metadata,
+            "taxes": session.get("total_details", {}).get("breakdown", {}).get("taxes", []),
+            "status": "paid",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.invoices.insert_one(invoice_doc)
 
     return {"ok": True}
 # ==============================
@@ -1546,6 +1566,8 @@ async def join_as_exhibitor(event_id: str, payload: ExhibitorJoinRequest, author
                 "quantity": 1,
             }],
             mode="payment",
+            automatic_tax={"enabled": True},
+            customer_creation="always",
             client_reference_id=user["user_id"],
             metadata={
                 "type": "event_exhibitor",
@@ -1973,6 +1995,8 @@ async def create_event(payload: EventCreate, authorization: Optional[str] = Head
                 "quantity": 1,
             }],
             mode="payment",
+            automatic_tax={"enabled": True},
+            customer_creation="always",
             client_reference_id=user["user_id"],
             metadata={
                 "type": "event",
@@ -2069,4 +2093,80 @@ async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
 # ==============================
 
 app.include_router(api_router)
+
+
+# ==============================
+# GDPR / DATA EXPORT & DELETE
+# ==============================
+@api_router.get("/me/export")
+async def export_my_data(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    uid = user["user_id"]
+
+    # Collect all user data
+    data = {
+        "profile": user,
+        "posts": await db.posts.find({"author_id": uid}, {"_id": 0}).to_list(length=1000),
+        "votes": await db.votes.find({"user_id": uid}, {"_id": 0}).to_list(length=1000),
+        "comments": await db.comments.find({"user_id": uid}, {"_id": 0}).to_list(length=1000),
+        "workspaces": await db.workspaces.find({"owner_user_id": uid}, {"_id": 0}).to_list(length=100),
+        "campaigns": await db.campaigns.find({"user_id": uid}, {"_id": 0}).to_list(length=100),
+        "notifications": await db.notifications.find({"user_id": uid}, {"_id": 0}).to_list(length=500),
+        "events_created": await db.events.find({"company_id": uid}, {"_id": 0}).to_list(length=100),
+        "invoices": await db.invoices.find({"metadata.user_id": uid}, {"_id": 0}).to_list(length=100),
+    }
+    # Serialize dates
+    for category, items in data.items():
+        if isinstance(items, list):
+            for item in items:
+                for key, val in item.items():
+                    if isinstance(val, datetime):
+                        item[key] = val.isoformat()
+        elif isinstance(items, dict):
+            for key, val in items.items():
+                if isinstance(val, datetime):
+                    items[key] = val.isoformat()
+
+    return data
+
+@api_router.post("/me/delete")
+async def delete_my_account(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    uid = user["user_id"]
+
+    # Anonymise posts (keep content but remove author reference)
+    await db.posts.update_many(
+        {"author_id": uid},
+        {"$set": {
+            "author_id": "deleted_user",
+            "author_name": "[apagado]",
+            "author_picture": None,
+        }}
+    )
+    # Anonymise comments
+    await db.comments.update_many(
+        {"user_id": uid},
+        {"$set": {
+            "user_id": "deleted_user",
+            "user_name": "[apagado]",
+            "user_picture": None,
+        }}
+    )
+    # Remove votes (vote privacy)
+    await db.votes.delete_many({"user_id": uid})
+    # Remove sessions
+    await db.user_sessions.delete_many({"user_id": uid})
+    # Remove notifications
+    await db.notifications.delete_many({"user_id": uid})
+    # Remove password auth if exists
+    await db.password_auth.delete_one({"user_id": uid})
+    # Archive workspaces
+    await db.workspaces.update_many(
+        {"owner_user_id": uid},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat(), "name": "[apagado]"}}
+    )
+    # Remove user record
+    await db.users.delete_one({"user_id": uid})
+
+    return {"ok": True, "message": "Conta apagada. Os teus posts e comentários permanecem anonimizados."}
 
