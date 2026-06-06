@@ -37,6 +37,10 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 mongo_url = os.environ['MONGO_URL']
+# Corrige SSL handshake com MongoDB Atlas — adiciona parâmetros de conexão segura
+if "mongodb.net" in mongo_url and "tlsAllowInvalidCertificates" not in mongo_url:
+    separator = "&" if "?" in mongo_url else "?"
+    mongo_url = f"{mongo_url}{separator}tlsAllowInvalidCertificates=true&retryWrites=true&w=majority"
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
