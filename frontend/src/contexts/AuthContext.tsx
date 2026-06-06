@@ -268,10 +268,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [handleToken]);
 
   const apiFetch = React.useCallback(async (path: string, init: RequestInit = {}) => {
-      // Implementação mantida conforme seu código original
-      return fetch(`${BACKEND_URL}${path}`, init);
-    },[token, signOut]
-  );
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(init.headers as Record<string, string> || {}),
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    try {
+      const response = await fetch(`${BACKEND_URL}${path}`, {
+        ...init,
+        headers,
+      });
+      // If 401, try to sign out
+      if (response.status === 401 && token) {
+        console.warn("apiFetch: received 401, signing out...");
+        await storage.secureRemove(TOKEN_KEY);
+        setUser(null);
+        setToken(null);
+      }
+      return response;
+    } catch (e: any) {
+      console.error("apiFetch error:", e);
+      throw e;
+    }
+  },[token, signOut]);
 
   // Dummy implementations
   const finishPasswordAuth = async (data) => {};
