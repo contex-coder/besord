@@ -35,7 +35,13 @@ export default function Landing() {
   const [appleAvailable, setAppleAvailable] = React.useState(false);
 
   useEffect(() => {
-    if (!loading && user) router.replace("/(tabs)/feed");
+    if (!loading && user) {
+      if (!user.age_confirmed) {
+        router.replace("/age-gate");
+      } else {
+        router.replace("/(tabs)/feed");
+      }
+    }
   }, [user, loading, router]);
 
   useEffect(() => {

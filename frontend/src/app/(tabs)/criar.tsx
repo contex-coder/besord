@@ -59,6 +59,25 @@ export default function CriarScreen() {
   }, [apiFetch, user, router, refreshUser]);
 
   const pickImage = useCallback(async () => {
+    if (Platform.OS === "web") {
+      // Web: use file input directly
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        // Convert to base64
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          setImageBase64(result);
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       if (!perm.canAskAgain) {
@@ -85,7 +104,17 @@ export default function CriarScreen() {
         const mime = a.mimeType || "image/jpeg";
         setImageBase64(`data:${mime};base64,${a.base64}`);
       } else if (a.uri) {
-        setImageBase64(a.uri);
+
+        // Fallback: fetch and convert to base64
+        try {
+          const resp = await fetch(a.uri);
+          const blob = await resp.blob();
+          const reader = new FileReader();
+          reader.onload = () => setImageBase64(reader.result as string);
+          reader.readAsDataURL(blob);
+        } catch {
+          setImageBase64(a.uri);
+        }
       }
     }
   }, []);
