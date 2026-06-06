@@ -83,3 +83,5 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
+# Lock files
+package-lock.json

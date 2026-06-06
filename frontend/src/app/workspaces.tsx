@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl,
@@ -52,6 +52,7 @@ export default function WorkspacesScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  const countryInitRef = React.useRef(false);
   const load = useCallback(async () => {
     try {
       const [wsRes, ctyRes] = await Promise.all([
@@ -67,7 +68,8 @@ export default function WorkspacesScreen() {
         const cd = await ctyRes.json();
         const list: Country[] = cd.countries || [];
         setCountries(list);
-        if (!selectedCountry) {
+        if (!countryInitRef.current) {
+          countryInitRef.current = true;
           setSelectedCountry(list.find((c) => c.code === "PT") || list[0] || null);
         }
       }
@@ -75,7 +77,7 @@ export default function WorkspacesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [apiFetch, selectedCountry]);
+  }, [apiFetch]);
 
   useEffect(() => { load(); }, [load]);
 

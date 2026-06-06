@@ -111,6 +111,24 @@ class WorkspaceOut(BaseModel):
     verified: bool = False
     verified_at: Optional[str] = None
 
+class MemberOut(BaseModel):
+    member_id: str
+    workspace_id: str
+    user_id: str
+    user_name: str
+    user_email: str
+    role: str = "member"  # owner | admin | member
+    status: str = "active"  # invited | active | declined
+    created_at: str = ""
+
+class InviteCreate(BaseModel):
+    email: str = Field(..., description="Email do convidado")
+    role: str = "member"
+
+class MemberUpdate(BaseModel):
+    role: str | None = None
+
+
 
 # ---------- Helpers ----------
 def _now():
