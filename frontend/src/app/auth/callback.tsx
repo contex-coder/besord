@@ -1,22 +1,36 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { colors } from '@/src/theme';
 
 export default function AuthCallback() {
-  const { loading, user } = useAuth();
+  const { loading, user, handleToken } = useAuth();
+  const { token } = useLocalSearchParams<{ token: string }>();
+  const router = useRouter();
 
-  // Se o AuthContext já processou o token e temos um usuário,
+  useEffect(() => {
+    if (token) {
+      console.log("AuthCallback: Token detectado na URL, processando...", token);
+      handleToken(token).then(() => {
+        // Após processar, limpa a URL para evitar re-processamento
+        router.replace('/(tabs)/feed');
+      });
+    }
+  }, [token, handleToken]);
+
+  // Se o AuthContext já tem um usuário (ou terminou de processar),
   // redirecionamos para o feed.
   if (user) {
     return <Redirect href="/(tabs)/feed" />;
   }
 
-  // Enquanto o AuthContext estiver em estado de carregamento (processando o token da URL),
-  // exibimos um indicador de atividade. Se o login falhar, o próprio
-  // AuthContext irá limpar o estado e o layout principal redirecionará para a home.
+  // Se não tem token e não está carregando, algo deu errado (voltar para home)
+  if (!token && !loading) {
+    return <Redirect href="/" />;
+  }
+
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color={colors.text} />

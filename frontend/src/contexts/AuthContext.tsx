@@ -39,6 +39,7 @@ type AuthState = {
   refreshUser: () => Promise<void>;
   apiFetch: (path: string, init?: RequestInit) => Promise<Response>;
   clearError: () => void;
+  handleToken: (tok: string) => Promise<void>;
   finishPasswordAuth: (data: {
     token: string;
     user_id: string;
@@ -291,6 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshUser: restoreSession,
         apiFetch,
         clearError,
+        handleToken,
         finishPasswordAuth,
         signInWithPassword,
         registerWithPassword,

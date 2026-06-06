@@ -53,7 +53,14 @@ GOOGLE_REDIRECT_URI = f'{BACKEND_URL}/api/auth/google/callback'
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", "uma-chave-secreta-provisoria-aqui"))
+# CORREÇÃO: O SessionMiddleware deve vir antes de outros middlewares e garantir o uso da secret_key
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.environ.get("SESSION_SECRET", "uma-chave-secreta-muito-segura-e-longa-para-sessao-besord"),
+    session_cookie="besord_session",
+    same_site="lax",  # Importante para redirecionamentos OAuth entre domínios
+    https_only=False  # Mude para True se o seu Render estiver forçando HTTPS (recomendado)
+)
 
 # CORS Configuration - Allow frontend domain
 CORS_ORIGINS = [
