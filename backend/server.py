@@ -3,6 +3,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -51,6 +52,8 @@ GOOGLE_REDIRECT_URI = f'{BACKEND_URL}/api/auth/google/callback'
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", "uma-chave-secreta-provisoria-aqui"))
 
 # CORS Configuration - Allow frontend domain
 CORS_ORIGINS = [

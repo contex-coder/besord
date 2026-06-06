@@ -1,22 +1,34 @@
-import { useAuth } from "@/src/contexts/AuthContext";
-import { Redirect } from "expo-router";
-import { useEffect } from "react";
-import { Text, View } from "react-native";
+
+import React from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Redirect } from 'expo-router';
+import { useAuth } from '@/src/contexts/AuthContext';
+import { colors } from '@/src/theme';
 
 export default function AuthCallback() {
-  const { token } = useAuth();
+  const { loading, user } = useAuth();
 
-  useEffect(() => {
-    // The AuthProvider will handle the token from the URL and redirect.
-  }, []);
-
-  if (token) {
-    return <Redirect href="/" />;
+  // Se o AuthContext já processou o token e temos um usuário,
+  // redirecionamos para o feed.
+  if (user) {
+    return <Redirect href="/(tabs)/feed" />;
   }
 
+  // Enquanto o AuthContext estiver em estado de carregamento (processando o token da URL),
+  // exibimos um indicador de atividade. Se o login falhar, o próprio
+  // AuthContext irá limpar o estado e o layout principal redirecionará para a home.
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <Text>Finalizando login...</Text>
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color={colors.text} />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
