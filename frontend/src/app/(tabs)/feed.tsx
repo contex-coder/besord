@@ -20,7 +20,10 @@ import { useFocusEffect, useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
+
+
 import PostCard, { PostItem } from "@/src/components/PostCard";
+import EventCard, { EventItem } from "@/src/components/EventCard";
 import BeetleMascot from "@/src/components/BeetleMascot";
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -44,6 +47,8 @@ export default function FeedScreen() {
   const { apiFetch, user } = useAuth();
   const router = useRouter();
   const [posts, setPosts] = useState<PostItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [checkedInEventIds, setCheckedInEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sort, setSort] = useState<SortMode>("recent");
@@ -51,13 +56,12 @@ export default function FeedScreen() {
   const [scopeCountry, setScopeCountry] = useState<string | null>(null);
   const [scopeCity, setScopeCity] = useState<string | null>(null);
   const [themes, setThemes] = useState<Theme[]>([]);
-
   const [activeTheme, setActiveTheme] = useState<string | null>(null);
   const [mascotTapCount, setMascotTapCount] = useState(0);
-  const [showMascot, setShowMascot] = useState(true);
+  const [userLat, setUserLat] = useState<number | null>(null);
+  const [userLon, setUserLon] = useState<number | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Mascot phrases cycle based on taps
   const mascotPhrases = [
     "BESORD!",
     "VOTA! ✅",
@@ -81,6 +85,8 @@ export default function FeedScreen() {
           const data = await r.json();
           if (data.country_code) setScopeCountry(data.country_code);
           if (data.city) setScopeCity(data.city);
+          if (data.lat) setUserLat(data.lat);
+          if (data.lon) setUserLon(data.lon);
         }
       } catch {}
     })();
@@ -95,6 +101,21 @@ export default function FeedScreen() {
       } catch {}
     })();
   }, [apiFetch]);
+
+  // Load nearby events
+  useEffect(() => {
+    if (userLat != null && userLon != null) {
+      (async () => {
+        try {
+          const r = await apiFetch(`/api/events/nearby?lat=${userLat}&lon=${userLon}&radius_km=10`);
+          if (r.ok) {
+            const data = await r.json();
+            setEvents(data);
+          }
+        } catch {}
+      })();
+    }
+  }, [apiFetch, userLat, userLon]);
 
   const buildQueryString = useCallback(
     (mode: SortMode, sc: ScopeMode, th: string | null) => {
@@ -301,6 +322,31 @@ export default function FeedScreen() {
     [router]
   );
 
+  const onEventCheckin = useCallback(
+    async (eventId: string) => {
+      try {
+        const r = await apiFetch(`/api/events/${eventId}/checkin`, { method: "POST" });
+        if (r.ok) {
+          setCheckedInEventIds((prev) => [...prev, eventId]);
+          Alert.alert("✅ CHECK-IN FEITO!", "Agora vais ver os posts deste evento no teu feed.");
+        } else {
+          const err = await r.json().catch(() => ({}));
+          Alert.alert("Erro", err.detail || "Não foi possível fazer check-in.");
+        }
+      } catch (e: any) {
+        Alert.alert("Erro", e?.message || "Falha ao fazer check-in.");
+      }
+    },
+    [apiFetch]
+  );
+
+  const onEventPress = useCallback(
+    (eventId: string) => {
+      router.push(`/evento/${eventId}`);
+    },
+    [router]
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -398,12 +444,85 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </View>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <FlatList
         data={posts}
         keyExtractor={(item) => item.post_id}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.text} />
+        }
+        ListHeaderComponent={
+
+
+
+
+
+
+
+
+          <View>
+            {/* ─── Event Bar (horizontal scroll) ─── */}
+            {events.length > 0 && (
+              <View style={styles.eventBar}>
+                <View style={styles.eventBarHeader}>
+                  <Ionicons name="location" size={14} color={colors.text} />
+                  <Text style={styles.eventBarTitle}>EVENTOS PRÓXIMOS</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 12, paddingHorizontal: 16, paddingBottom: 12 }}
+                >
+                  {events.map((ev) => (
+                    <View key={ev.event_id} style={{ width: 280 }}>
+                      <EventCard
+                        event={ev}
+                        currentUserId={user?.user_id || null}
+                        onCheckin={onEventCheckin}
+                        onPress={onEventPress}
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* ─── Indicador Feed Misto ─── */}
+            {checkedInEventIds.length > 0 && (
+              <View style={styles.feedEventHeader}>
+                <Ionicons name="location" size={16} color={colors.text} />
+                <Text style={styles.feedEventHeaderText}>
+                  INCLUINDO POSTS DE {checkedInEventIds.length} EVENTO{checkedInEventIds.length > 1 ? "S" : ""}
+                </Text>
+              </View>
+            )}
+          </View>
         }
         ListEmptyComponent={
           <View style={styles.empty} testID="feed-empty">
@@ -518,6 +637,45 @@ const styles = StyleSheet.create({
   sortText: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2, color: colors.textSecondary },
   sortTextActive: { color: colors.text },
 
+  // ─── Event Bar ───
+  eventBar: {
+    marginBottom: 16,
+    borderBottomWidth: 4,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.bgSubtle,
+    paddingTop: 12,
+  },
+  eventBarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  eventBarTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+    color: colors.text,
+  },
+  // ─── Feed Misto ───
+  feedEventHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.neutral,
+    borderWidth: 3,
+    borderColor: colors.border,
+  },
+  feedEventHeaderText: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    color: colors.text,
+  },
   listContent: { padding: IS_SMALL ? 12 : 20, paddingBottom: 40, gap: IS_SMALL ? 20 : 32 },
   empty: { paddingTop: 80, alignItems: "center", gap: 8 },
   emptyTitle: { fontSize: 28, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
