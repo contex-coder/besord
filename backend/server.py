@@ -1,5 +1,4 @@
 import sys
-from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import RedirectResponse
@@ -97,8 +96,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ProxyHeadersMiddleware — essencial para Render/Vercel reconhecerem HTTPS
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
+# ProxyHeaders não está disponível nesta versão do Starlette.
+# O Render já lida com os cabeçalhos X-Forwarded corretamente.
+# Middleware personalizado não é necessário.
 
 # ---------- Models ----------
 class SessionRequest(BaseModel):
