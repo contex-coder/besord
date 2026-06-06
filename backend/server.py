@@ -101,6 +101,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Inicializar índices MongoDB no startup
+@app.on_event("startup")
+async def startup():
+    try:
+        # TTL index para eventos expirados (auto-delete após 7 dias)
+        await db.events.create_index("expires_at", expireAfterSeconds=0)
+        # Índice para geolocalização de eventos
+        await db.events.create_index([("location.lat", 1), ("location.lon", 1)])
+        await db.events.create_index("status")
+        # Índice para push tokens
+        await db.push_tokens.create_index("user_id")
+    except Exception:
+        pass  # Índices já existem
+
 # ProxyHeaders não está disponível nesta versão do Starlette.
 # O Render já lida com os cabeçalhos X-Forwarded corretamente.
 # Middleware personalizado não é necessário.
@@ -1043,7 +1057,12 @@ async def stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        campaign_id = session.get("metadata", {}).get("campaign_id")
+        metadata = session.get("metadata", {})
+        event_type = metadata.get("type")
+
+        # --- Campaign payment ---
+        if event_type == "campaign":
+            campaign_id = metadata.get("campaign_id")
         if campaign_id:
             now = datetime.now(timezone.utc)
             await db.campaigns.update_one(
@@ -1053,10 +1072,9 @@ async def stripe_webhook(request: Request):
                     "payment_intent": session.get("payment_intent"),
                     "paid_at": now,
                     "starts_at": now,
-                    "ends_at": now + timedelta(days=30),  # Will be updated with actual duration
+                        "ends_at": now + timedelta(days=30),
                 }}
             )
-            # Update campaign duration based on tier
             campaign = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
             if campaign:
                 tier = TIERS.get(campaign.get("tier_key"))
@@ -1065,7 +1083,30 @@ async def stripe_webhook(request: Request):
                         {"campaign_id": campaign_id},
                         {"$set": {"ends_at": now + timedelta(days=tier.duration_days)}}
                     )
-
+        # --- Event payment ---
+        elif event_type == "event":
+            event_id = metadata.get("event_id")
+            if event_id:
+                now = datetime.now(timezone.utc)
+                expires_at = now + timedelta(days=7)
+                await db.events.update_one(
+                    {"event_id": event_id},
+                    {"$set": {
+                        "status": "active",
+                        "paid_at": now,
+                        "expires_at": expires_at,
+                        "stripe_session_id": session.get("id"),
+                        "payment_intent": session.get("payment_intent"),
+                    }}
+                    )
+                # Notificar empresa que o evento está no ar
+                event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+                if event:
+                    await notify_user(
+                        event["company_id"],
+                        f"🎪 Evento \"{event['title']}\" está no ar!",
+                        f"O teu evento está visível no feed por 7 dias. Boa sorte! 🚀",
+                    )
     return {"ok": True}
 
 
@@ -1203,6 +1244,448 @@ async def admin_list_campaigns(authorization: Optional[str] = Header(None)):
 # WORKS AND PASSWORD AUTH ROUTES
 # ==============================
 # These are handled by mounted sub-routers in password_auth.py and workspaces.py
+
+# ==============================
+# EVENTOS PRESENCIAIS (FASE 2)
+# ==============================
+
+class EventCreate(BaseModel):
+    title: str
+    description: str
+    image_base64: str
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country_code: Optional[str] = None
+    date: str  # ISO datetime string
+    prize: Optional[str] = None
+    max_participants: Optional[int] = None
+    bw_reward: int = 50
+
+class EventOut(BaseModel):
+    event_id: str
+    company_id: str
+    company_name: str
+    title: str
+    description: str
+    image_base64: str
+    location: dict
+    date: str
+    prize: Optional[str] = None
+    max_participants: Optional[int] = None
+    participants_count: int
+    bw_reward: int
+    created_at: str
+    expires_at: str
+    status: str  # active | full | expired | raffle_done
+    raffle_done: bool = False
+    raffle_winner_id: Optional[str] = None
+    is_participant: bool = False
+    is_owner: bool = False
+
+class PushTokenRequest(BaseModel):
+    token: str
+
+
+async def geocode_address(address: str) -> Optional[dict]:
+    """Converte endereço em coordenadas usando Nominatim (OpenStreetMap, gratuito)."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            r = await http.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": address, "format": "json", "limit": 1},
+                headers={"User-Agent": "Besord/1.0"},
+            )
+            if r.status_code == 200 and r.json():
+                data = r.json()[0]
+                return {
+                    "lat": float(data["lat"]),
+                    "lon": float(data["lon"]),
+                    "display_name": data["display_name"],
+                }
+    except Exception:
+        return None
+    return None
+
+
+async def send_expo_push(token: str, title: str, body: str, data: dict = {}):
+    """Envia notificação push via Expo Push API."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            await http.post(
+                "https://exp.host/--/api/v2/push/send",
+                json={
+                    "to": token,
+                    "title": title,
+                    "body": body,
+                    "data": data,
+                    "sound": "default",
+                },
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+            )
+    except Exception:
+        pass  # Token expirado ou inválido, ignorar
+
+
+async def notify_user(user_id: str, title: str, body: str = "", data: dict = {}):
+    """Cria notificação no MongoDB e tenta enviar push."""
+    now = datetime.now(timezone.utc)
+    await db.notifications.insert_one({
+        "user_id": user_id,
+        "title": title,
+        "body": body,
+        "data": data,
+        "read": False,
+        "created_at": now,
+    })
+    # Enviar push se tiver token registado
+    tokens = await db.push_tokens.find({"user_id": user_id}).to_list(length=10)
+    for t in tokens:
+        await send_expo_push(t["token"], title, body, data)
+
+
+def serialize_event(event: dict, current_user_id: Optional[str] = None) -> EventOut:
+    participants = event.get("participants", [])
+    return EventOut(
+        event_id=event["event_id"],
+        company_id=event["company_id"],
+        company_name=event.get("company_name", ""),
+        title=event["title"],
+        description=event["description"],
+        image_base64=event["image_base64"],
+        location=event.get("location", {}),
+        date=event["date"].isoformat() if isinstance(event["date"], datetime) else str(event["date"]),
+        prize=event.get("prize"),
+        max_participants=event.get("max_participants"),
+        participants_count=len(participants),
+        bw_reward=event.get("bw_reward", 50),
+        created_at=event["created_at"].isoformat() if isinstance(event["created_at"], datetime) else str(event["created_at"]),
+        expires_at=event["expires_at"].isoformat() if isinstance(event["expires_at"], datetime) else str(event["expires_at"]),
+        status=event.get("status", "active"),
+        raffle_done=bool(event.get("raffle_done")),
+        raffle_winner_id=event.get("raffle_winner_id"),
+        is_participant=current_user_id in participants if current_user_id else False,
+        is_owner=event["company_id"] == current_user_id if current_user_id else False,
+    )
+
+
+# ---------- CREATE EVENT (via Stripe Checkout) ----------
+@api_router.post("/events")
+async def create_event(payload: EventCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    # Requer perfil de empresa
+    if not user.get("business_profile"):
+        raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa primeiro.")
+
+    # Validar imagem
+    if not payload.image_base64 or len(payload.image_base64) < 50:
+        raise HTTPException(status_code=400, detail="Imagem inválida.")
+
+    # Validar título
+    title = (payload.title or "").strip()
+    if not title or len(title) < 3:
+        raise HTTPException(status_code=400, detail="Título deve ter pelo menos 3 caracteres.")
+
+    # Validar data
+    try:
+        event_date = datetime.fromisoformat(payload.date)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Data inválida. Use formato ISO (ex: 2026-07-15T20:00:00).")
+
+    # Processar localização
+    location = {}
+    if payload.lat is not None and payload.lon is not None:
+        location = {"lat": payload.lat, "lon": payload.lon, "address": payload.address or "", "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
+    elif payload.address:
+        # Tentar geocoding automático
+        geo = await geocode_address(payload.address)
+        if geo:
+            location = {"lat": geo["lat"], "lon": geo["lon"], "address": payload.address, "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
+        else:
+            location = {"lat": None, "lon": None, "address": payload.address, "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
+    else:
+        raise HTTPException(status_code=400, detail="Fornece localização (lat/lon ou endereço).")
+
+    event_id = f"event_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=7)
+
+    # Preparar dados do evento para criar após pagamento
+    event_data = {
+        "event_id": event_id,
+        "company_id": user["user_id"],
+        "company_name": user.get("business_profile", {}).get("company_name", user.get("name", "")),
+        "title": title,
+        "description": (payload.description or "").strip(),
+        "image_base64": payload.image_base64,
+        "location": location,
+        "date": event_date,
+        "prize": (payload.prize or "").strip() or None,
+        "max_participants": payload.max_participants,
+        "bw_reward": max(1, payload.bw_reward),
+        "participants": [],
+        "created_at": now,
+        "expires_at": expires_at,
+        "status": "pending_payment",
+    }
+
+    # Salvar temporariamente como pending_payment
+    await db.events.insert_one(event_data)
+
+    # Criar Stripe Checkout Session (€9,99)
+    try:
+        checkout = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {
+                        "name": f"Evento: {title}",
+                        "description": f"Criação de evento presencial — 7 dias de visibilidade no Besord",
+                    },
+                    "unit_amount": 999,  # €9,99
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            client_reference_id=user["user_id"],
+            metadata={
+                "type": "event",
+                "event_id": event_id,
+            },
+            success_url=f"{FRONTEND_URL}/eventos/sucesso?event_id={event_id}",
+            cancel_url=f"{FRONTEND_URL}/business/eventos/novo?cancelado=1",
+        )
+        # Atualizar com checkout_url
+        await db.events.update_one(
+            {"event_id": event_id},
+            {"$set": {"checkout_url": checkout.url, "stripe_session_id": checkout.id}}
+        )
+        return {"event_id": event_id, "checkout_url": checkout.url, "status": "pending_payment"}
+    except Exception as e:
+        # Se Stripe falhar, remover evento pendente
+        await db.events.delete_one({"event_id": event_id})
+        raise HTTPException(status_code=502, detail=f"Erro ao processar pagamento: {str(e)}")
+
+
+# ---------- LIST EVENTS ----------
+@api_router.get("/events")
+async def list_events(
+    scope: Literal["world", "country", "city"] = Query("world"),
+    country_code: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_km: Optional[float] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    user = await get_optional_user(authorization)
+    current_user_id = user["user_id"] if user else None
+
+    now = datetime.now(timezone.utc)
+    match: dict = {
+        "status": {"$in": ["active", "full"]},
+        "expires_at": {"$gt": now},
+    }
+
+    # Scope filter
+    if scope == "country" and country_code:
+        match["location.country_code"] = country_code.upper()
+    elif scope == "city" and city:
+        match["location.city"] = {"$regex": re.escape(city), "$options": "i"}
+
+    cursor = db.events.find(match, {"_id": 0}).sort("created_at", -1)
+    docs = await cursor.to_list(length=100)
+
+    results = []
+    for doc in docs:
+        results.append(serialize_event(doc, current_user_id))
+
+    # Se tem lat/lon, ordenar por proximidade
+    if lat is not None and lon is not None:
+        from math import radians, sin, cos, sqrt, atan2
+
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371  # km
+            dlat = radians(lat2 - lat1)
+            dlon = radians(lon2 - lon1)
+            a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+            c = 2 * atan2(sqrt(a), sqrt(1-a))
+            return R * c
+
+        for r in results:
+            loc = r.location
+            if loc.get("lat") and loc.get("lon"):
+                r.distance_km = round(haversine(lat, lon, loc["lat"], loc["lon"]), 1)
+            else:
+                r.distance_km = None
+
+        # Filtrar por raio se especificado
+        if radius_km:
+            results = [r for r in results if r.distance_km is not None and r.distance_km <= radius_km]
+
+        results.sort(key=lambda r: r.distance_km if r.distance_km is not None else float("inf"))
+
+    return results
+
+
+# ---------- GET SINGLE EVENT ----------
+@api_router.get("/events/{event_id}")
+async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_optional_user(authorization)
+    doc = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    return serialize_event(doc, user["user_id"] if user else None)
+
+
+# ---------- JOIN EVENT ----------
+@api_router.post("/events/{event_id}/join")
+async def join_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    # Verificar idade confirmada
+    if not user.get("age_confirmed_at"):
+        raise HTTPException(status_code=403, detail="Precisas de confirmar a idade primeiro.")
+
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+
+    if event["status"] not in ("active", "full"):
+        raise HTTPException(status_code=400, detail="Evento não está ativo.")
+
+    if event["company_id"] == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Não podes participar no teu próprio evento.")
+
+    participants = event.get("participants", [])
+    if user["user_id"] in participants:
+        raise HTTPException(status_code=400, detail="Já participas neste evento.")
+
+    # Adicionar participante
+    await db.events.update_one(
+        {"event_id": event_id},
+        {"$push": {"participants": user["user_id"]}}
+    )
+
+    # Creditar BW de recompensa
+    bw_reward = event.get("bw_reward", 50)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$inc": {"bw_balance": bw_reward, "bw_total_earned": bw_reward}}
+    )
+
+    # Verificar se atingiu max_participants → sorteio automático
+    max_p = event.get("max_participants")
+    if max_p and len(participants) + 1 >= max_p:
+        await db.events.update_one(
+            {"event_id": event_id},
+            {"$set": {"status": "full"}}
+        )
+        # Sorteio automático se houver prémio
+        if event.get("prize"):
+            all_participants = participants + [user["user_id"]]
+            winner_id = random.choice(all_participants)
+            await db.events.update_one(
+                {"event_id": event_id},
+                {"$set": {
+                    "raffle_done": True,
+                    "raffle_at": datetime.now(timezone.utc),
+                    "raffle_winner_id": winner_id,
+                    "status": "raffle_done",
+                }}
+            )
+            # Notificar vencedor
+            await notify_user(
+                winner_id,
+                f"🎉 Ganhaste o sorteio do evento {event['title']}!",
+                f"Parabéns! O prémio \"{event['prize']}\" é teu! Entra em contacto com a empresa.",
+            )
+            # Notificar empresa
+            await notify_user(
+                event["company_id"],
+                f"🎉 Sorteio automático realizado!",
+                f"O vencedor do evento \"{event['title']}\" foi sorteado automaticamente.",
+            )
+
+    # Notificar empresa que alguém entrou
+    await notify_user(
+        event["company_id"],
+        f"👥 Novo participante no evento \"{event['title']}\"!",
+        f"{user.get('name', 'Alguém')} entrou no teu evento. ({len(participants) + 1}/{max_p or '∞'})",
+    )
+
+    return serialize_event(
+        await db.events.find_one({"event_id": event_id}, {"_id": 0}),
+        user["user_id"]
+    )
+
+
+# ---------- RAFFLE (Sorteio manual pelo dono) ----------
+@api_router.post("/events/{event_id}/raffle")
+async def raffle_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event["company_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Só o dono do evento pode sortear.")
+    if event.get("raffle_done"):
+        raise HTTPException(status_code=409, detail="Sorteio já foi realizado.")
+
+    participants = event.get("participants", [])
+    if len(participants) < 1:
+        raise HTTPException(status_code=400, detail="Precisa de pelo menos 1 participante para sortear.")
+    if not event.get("prize"):
+        raise HTTPException(status_code=400, detail="Evento não tem prémio configurado.")
+
+    winner_id = random.choice(participants)
+
+    await db.events.update_one(
+        {"event_id": event_id},
+        {"$set": {
+            "raffle_done": True,
+            "raffle_at": datetime.now(timezone.utc),
+            "raffle_winner_id": winner_id,
+            "status": "raffle_done",
+        }}
+    )
+
+    # Notificar vencedor
+    await notify_user(
+        winner_id,
+        f"🎉 Ganhaste o sorteio do evento {event['title']}!",
+        f"Parabéns! O prémio \"{event['prize']}\" é teu! Entra em contacto com a empresa organizadora.",
+    )
+
+    # Notificar empresa
+    winner_user = await db.users.find_one({"user_id": winner_id}, {"_id": 0, "name": 1})
+    winner_name = winner_user.get("name", "Participante") if winner_user else "Participante"
+    await notify_user(
+        event["company_id"],
+        f"🎉 Sorteio realizado!",
+        f"O vencedor foi {winner_name}! Notifica-o para combinar a entrega do prémio.",
+    )
+
+    return {"ok": True, "winner_id": winner_id, "winner_name": winner_name}
+
+
+# ---------- NOTIFICATIONS PUSH: REGISTAR DEVICE ----------
+@api_router.post("/notifications/register-device")
+async def register_device(payload: PushTokenRequest, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    await db.push_tokens.update_one(
+        {"user_id": user["user_id"], "token": payload.token},
+        {"$set": {"updated_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+# ==============================
+# END — EVENTOS PRESENCIAIS
+# ==============================
 
 app.include_router(api_router)
 
