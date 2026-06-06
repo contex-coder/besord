@@ -16,6 +16,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
+import { ScrollView } from "react-native";
 import { colors, brutalShadow } from "@/src/theme";
 
 export default function CriarScreen() {
@@ -23,6 +24,8 @@ export default function CriarScreen() {
   const router = useRouter();
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [word, setWord] = useState("");
+  const [themes, setThemes] = useState<{ key: string; name: string; emoji: string }[]>([]);
+  const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const offerBoost = useCallback((newPostId: string) => {
@@ -57,6 +60,16 @@ export default function CriarScreen() {
         : [{ text: "OK", onPress: () => router.replace("/(tabs)/feed") }],
     );
   }, [apiFetch, user, router, refreshUser]);
+
+  // Load themes on mount
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const r = await apiFetch("/api/themes");
+        if (r.ok) setThemes(await r.json());
+      } catch {}
+    })();
+  }, [apiFetch]);
 
   const pickImage = useCallback(async () => {
     if (Platform.OS === "web") {

@@ -197,11 +197,15 @@ export default function PostCard({
             styles.voteBtn,
             { backgroundColor: colors.aprovo },
             post.user_vote === "aprovo" && styles.voteBtnActive,
+            post.user_vote === "aprovo" && styles.voteBtnVoted,
           ]}
           onPress={() => onVote(post.post_id, "aprovo")}
           activeOpacity={0.8}
         >
           <Ionicons name="thumbs-up" size={20} color={colors.text} />
+          {post.user_vote === "aprovo" && (
+            <Ionicons name="checkmark-circle" size={16} color={colors.text} style={{ position: "absolute", top: -6, right: -6 }} />
+          )}
           <Text style={styles.voteBtnText}>APROVO</Text>
           <Text style={styles.voteCount}>{post.aprovo_count}</Text>
         </TouchableOpacity>
@@ -211,11 +215,15 @@ export default function PostCard({
             styles.voteBtn,
             { backgroundColor: colors.desaprovo },
             post.user_vote === "desaprovo" && styles.voteBtnActive,
+            post.user_vote === "desaprovo" && styles.voteBtnVoted,
           ]}
           onPress={() => onVote(post.post_id, "desaprovo")}
           activeOpacity={0.8}
         >
           <Ionicons name="thumbs-down" size={20} color={colors.text} />
+          {post.user_vote === "desaprovo" && (
+            <Ionicons name="checkmark-circle" size={16} color={colors.text} style={{ position: "absolute", top: -6, right: -6 }} />
+          )}
           <Text style={styles.voteBtnText}>DESAPROVO</Text>
           <Text style={styles.voteCount}>{post.desaprovo_count}</Text>
         </TouchableOpacity>
@@ -335,7 +343,7 @@ export default function PostCard({
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 10 },
+  card: { gap: 6 },
   sponsoredBadge: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -378,7 +386,7 @@ const styles = StyleSheet.create({
   },
 
   imageWrap: { borderWidth: 4, borderColor: colors.border, ...brutalShadow, backgroundColor: colors.bgSubtle },
-  postImage: { width: "100%", aspectRatio: 4 / 5 },
+  postImage: { width: "100%", aspectRatio: 3 / 4 },
   wordOverlay: {
     position: "absolute",
     bottom: -16,
@@ -405,6 +413,7 @@ const styles = StyleSheet.create({
     ...brutalShadow,
   },
   voteBtnActive: { transform: [{ translateY: 2 }, { translateX: 2 }], shadowOpacity: 0, elevation: 0 },
+  voteBtnVoted: { position: "relative", overflow: "visible" },
   voteBtnText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
   voteCount: { fontSize: 15, fontWeight: "900", color: colors.text, marginLeft: 4 },
 

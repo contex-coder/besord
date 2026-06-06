@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from "react";
+import { Dimensions, ScrollView } from "react-native";
 import {
   View,
   Text,
@@ -12,11 +13,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { VideoView, useVideoPlayer } from "expo-video";
+import { useAssets } from "expo-asset";
 import * as AppleAuthentication from "expo-apple-authentication";
 
 import { useAuth, AuthError as AuthErrorType } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 import { t } from "@/src/i18n";
+
+const { width: SCREEN_W } = Dimensions.get("window");
+const IS_SMALL = SCREEN_W < 380;
+const MASCOT_SIZE = Math.min(SCREEN_W * 0.7, 320);
 
 const AuthError = ({ error, onClear }: { error: AuthErrorType, onClear: () => void }) => (
   <View style={styles.errorContainer}>
@@ -52,6 +59,13 @@ export default function Landing() {
     }
   }, []);
 
+  const videoAsset = require("@/assets/images/besord_v.mp4");
+  const player = useVideoPlayer(videoAsset, (p) => {
+    p.play();
+    p.loop = true;
+    p.volume = 0;
+  });
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -62,23 +76,39 @@ export default function Landing() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
       <View style={styles.content}>
-        <View style={styles.logoBlock}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>PT-EN-FR-DE-ZH</Text>
-          </View>
-          <Text style={styles.brand}>{t("login_title")}</Text>
+        <View style={styles.heroSection}>
+          <VideoView
+            player={player}
+            style={[styles.mascot, { width: MASCOT_SIZE, height: MASCOT_SIZE }]}
+            contentFit="contain"
+            nativeControls={false}
+          />
+          <Text style={styles.brand}>BESORD</Text>
           <Text style={styles.tagline}>
             {t("tagline_1")}
-            {"\n"}
-            {t("tagline_2")}
-            {"\n"}
-            {t("tagline_3")}
           </Text>
         </View>
 
-        <View style={styles.heroMascot}>
-          <Image source={require("@/assets/images/icon.png")} style={styles.mascot} resizeMode="contain" />
+        <View style={styles.midSection}>
+          <View style={styles.langRow}>
+            {["PT", "EN", "FR", "DE", "ZH"].map((l) => (
+              <View key={l} style={styles.langBadge}>
+                <Text style={styles.langBadgeText}>{l}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.description}>
+            {t("tagline_2")}
+          </Text>
+          <Text style={styles.description}>
+            {t("tagline_3")}
+          </Text>
         </View>
 
         <View style={styles.actions}>
@@ -130,6 +160,7 @@ export default function Landing() {
           </View>
         </View>
       </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -137,64 +168,91 @@ export default function Landing() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: "center", justifyContent: "center" },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+    paddingVertical: 24,
+  },
   content: {
     flex: 1,
     justifyContent: "space-between",
-    paddingVertical: 20,
   },
-  logoBlock: {
-    paddingHorizontal: 20,
-    gap: 12,
+
+  // Hero com mascote enorme
+  heroSection: {
+    alignItems: "center",
+    paddingTop: Platform.OS === "web" ? 60 : 30,
+    paddingHorizontal: 12,
+    gap: 6,
   },
-  logoBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: colors.aprovo,
-    borderRadius: 4,
-  },
-  logoBadgeText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: colors.textInverse,
-    letterSpacing: 1,
-  },
+  mascot: {},
   brand: {
-    fontSize: 36,
+    fontSize: IS_SMALL ? 40 : 52,
     fontWeight: "900",
     color: colors.text,
-    lineHeight: 42,
+    letterSpacing: -1,
+    marginTop: 2,
   },
   tagline: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#666",
-    lineHeight: 20,
+    fontSize: IS_SMALL ? 18 : 22,
+    fontWeight: "800",
+    color: colors.text,
+    textAlign: "center",
+    letterSpacing: 0,
+    marginTop: 2,
   },
-  heroMascot: {
+
+  // Meio
+  midSection: {
+    paddingHorizontal: 30,
     alignItems: "center",
+    gap: 10,
+    paddingVertical: 20,
+  },
+  langRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
     justifyContent: "center",
-    height: 240,
   },
-  mascot: {
-    width: 240,
-    height: 240,
+  langBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: colors.neutral,
+    borderWidth: 2,
+    borderColor: colors.border,
   },
+  langBadgeText: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    color: colors.text,
+  },
+  description: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+
+  // Botoes
   actions: {
-    paddingHorizontal: 20,
-    gap: 12,
+    paddingHorizontal: 24,
+    gap: 10,
+    paddingBottom: 10,
   },
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     backgroundColor: colors.bg,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.border,
-    borderRadius: 8,
+    ...brutalShadow,
   },
   appleBtn: {
     backgroundColor: colors.text,
@@ -202,13 +260,12 @@ const styles = StyleSheet.create({
   },
   emailBtn: {
     backgroundColor: colors.bg,
-    borderColor: colors.border,
   },
   btnText: {
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "900",
     color: colors.text,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   legal: {
     fontSize: 11,
@@ -237,13 +294,12 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: colors.bg,
     borderWidth: 2,
-    borderColor: colors.reprovo,
-    borderRadius: 8,
+    borderColor: colors.border,
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: colors.reprovo,
+    color: colors.text,
   },
   errorMessage: {
     textAlign: 'center',
@@ -253,8 +309,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    backgroundColor: colors.reprovo,
-    borderRadius: 8,
+    backgroundColor: colors.text,
   },
   errorButtonText: {
     color: colors.textInverse,
