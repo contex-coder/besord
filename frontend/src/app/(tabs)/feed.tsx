@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,6 +11,8 @@ import {
   Alert,
   Platform,
   ScrollView,
+  Animated,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,6 +21,10 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 import PostCard, { PostItem } from "@/src/components/PostCard";
+import BeetleMascot from "@/src/components/BeetleMascot";
+
+const { width: SCREEN_W } = Dimensions.get("window");
+const IS_SMALL = SCREEN_W < 380;
 
 type SortMode = "recent" | "trending" | "styles";
 type ScopeMode = "world" | "country" | "city";
@@ -25,9 +32,12 @@ type ScopeMode = "world" | "country" | "city";
 type Theme = { key: string; name: string; emoji: string; covers: string };
 
 const SCOPES = [
-  { key: "world" as ScopeMode, label: "🌍 MUNDO" },
-  { key: "country" as ScopeMode, label: "🇵🇹 PT" },
-  { key: "city" as ScopeMode, label: "📍 CIDADE" },
+
+
+
+  { key: "world" as ScopeMode, label: IS_SMALL ? "🌍" : "🌍 MUNDO" },
+  { key: "country" as ScopeMode, label: IS_SMALL ? "🇵🇹" : "🇵🇹 PT" },
+  { key: "city" as ScopeMode, label: IS_SMALL ? "📍" : "📍 CIDADE" },
 ];
 
 export default function FeedScreen() {
@@ -41,7 +51,26 @@ export default function FeedScreen() {
   const [scopeCountry, setScopeCountry] = useState<string | null>(null);
   const [scopeCity, setScopeCity] = useState<string | null>(null);
   const [themes, setThemes] = useState<Theme[]>([]);
-  const [activeTheme, setActiveTheme] = useState<string | null>(null); // null = ALL
+
+  const [activeTheme, setActiveTheme] = useState<string | null>(null);
+  const [mascotTapCount, setMascotTapCount] = useState(0);
+  const [showMascot, setShowMascot] = useState(true);
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Mascot phrases cycle based on taps
+  const mascotPhrases = [
+    "BESORD!",
+    "VOTA! ✅",
+    "🔥 EM ALTA!",
+    "BW +1!",
+    "BOOST! 🚀",
+    "👑 REI!",
+  ];
+  const mascotPhrase = mascotPhrases[mascotTapCount % mascotPhrases.length];
+
+  const handleMascotPress = () => {
+    setMascotTapCount((prev) => prev + 1);
+  };
 
   // Load geo info on mount
   useEffect(() => {
@@ -283,7 +312,16 @@ export default function FeedScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.brand}>BESORD</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <BeetleMascot
+            size={36}
+            interactive={true}
+            showSpeech={mascotTapCount > 0}
+            speechText={mascotPhrase}
+            onPress={handleMascotPress}
+          />
+          <Text style={styles.brand}>BESORD</Text>
+        </View>
         <TouchableOpacity testID="btn-trends" onPress={() => router.push("/trends")} style={styles.trendsBtn}>
           <Ionicons name="trending-up" size={14} color={colors.text} />
           <Text style={styles.trendsText}>TRENDS</Text>
@@ -424,7 +462,7 @@ const styles = StyleSheet.create({
 
   // ─── Scope Bar ───
   scopeBar: {
-    paddingVertical: 10,
+    paddingVertical: IS_SMALL ? 6 : 8,
     borderBottomWidth: 3,
     borderBottomColor: colors.border,
     backgroundColor: colors.bgSubtle,
@@ -432,8 +470,8 @@ const styles = StyleSheet.create({
   scopeChip: {
     borderWidth: 3,
     borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: IS_SMALL ? 10 : 14,
+    paddingVertical: IS_SMALL ? 5 : 7,
     backgroundColor: colors.bg,
   },
   scopeChipActive: { backgroundColor: colors.text },
@@ -442,7 +480,7 @@ const styles = StyleSheet.create({
 
   // ─── Theme Bar ───
   themeBar: {
-    paddingVertical: 10,
+    paddingVertical: IS_SMALL ? 6 : 8,
     borderBottomWidth: 3,
     borderBottomColor: colors.border,
     backgroundColor: colors.bg,
@@ -471,7 +509,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    paddingVertical: 10,
+    paddingVertical: IS_SMALL ? 7 : 10,
     backgroundColor: colors.bg,
     borderRightWidth: 3,
     borderRightColor: colors.border,
@@ -480,7 +518,7 @@ const styles = StyleSheet.create({
   sortText: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2, color: colors.textSecondary },
   sortTextActive: { color: colors.text },
 
-  listContent: { padding: 20, paddingBottom: 40, gap: 32 },
+  listContent: { padding: IS_SMALL ? 12 : 20, paddingBottom: 40, gap: IS_SMALL ? 20 : 32 },
   empty: { paddingTop: 80, alignItems: "center", gap: 8 },
   emptyTitle: { fontSize: 28, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
   emptySub: {
