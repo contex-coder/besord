@@ -18,10 +18,6 @@ import { useAuth, AuthError as AuthErrorType } from "@/src/contexts/AuthContext"
 import { colors, brutalShadow } from "@/src/theme";
 import { t } from "@/src/i18n";
 
-// Mascot image hosted on Besord CDN
-const BEETLE_URL =
-  "https://besord.vercel.app/assets/mascot-beetle.png";
-
 const AuthError = ({ error, onClear }: { error: AuthErrorType, onClear: () => void }) => (
   <View style={styles.errorContainer}>
       <Ionicons name="alert-circle-outline" size={48} color={colors.reprovo} />
@@ -76,7 +72,7 @@ export default function Landing() {
         </View>
 
         <View style={styles.heroMascot}>
-          <Image source={{ uri: BEETLE_URL }} style={styles.mascot} resizeMode="contain" />
+          <Image source={require("@/assets/images/icon.png")} style={styles.mascot} resizeMode="contain" />
         </View>
 
         <View style={styles.actions}>
