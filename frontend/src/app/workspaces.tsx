@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -41,6 +41,7 @@ export default function WorkspacesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(params.new === "1");
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  const [countriesLoading, setCountriesLoading] = useState(false);
 
   // Create form
   const [name, setName] = useState("");
@@ -246,28 +247,64 @@ export default function WorkspacesScreen() {
               <Text style={styles.label}>PAÍS</Text>
               <TouchableOpacity
                 style={styles.input}
-                onPress={() => setCountryPickerOpen(!countryPickerOpen)}
+                onPress={() => setCountryPickerOpen(true)}
                 testID="input-country"
               >
-                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
-                  {selectedCountry ? `${selectedCountry.name}` : "Escolhe o país..."}
-                </Text>
-              </TouchableOpacity>
-              {countryPickerOpen && (
-                <View style={[styles.input, { padding: 0, maxHeight: 200 }]}>
-                  <ScrollView nestedScrollEnabled>
-                    {countries.map((c) => (
-                      <TouchableOpacity
-                        key={c.code}
-                        style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.bgSubtle }}
-                        onPress={() => { setSelectedCountry(c); setCountryPickerOpen(false); }}
-                      >
-                        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{c.name}</Text>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary }}>{c.tax_label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: selectedCountry ? colors.text : colors.textSecondary }}>
+                    {selectedCountry ? `${selectedCountry.name}` : "Escolhe o país..."}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.text} />
                 </View>
+              </TouchableOpacity>
+
+              {countryPickerOpen && (
+                <Modal transparent animationType="fade" onRequestClose={() => setCountryPickerOpen(false)}>
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", paddingHorizontal: 20 }}
+                    activeOpacity={1}
+                    onPress={() => setCountryPickerOpen(false)}
+                  >
+                    <View style={{ backgroundColor: colors.bg, borderWidth: 4, borderColor: colors.border, maxHeight: 400, ...brutalShadow }}>
+                      <View style={{ padding: 14, borderBottomWidth: 3, borderBottomColor: colors.border, backgroundColor: colors.text }}>
+                        <Text style={{ fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.textInverse, textAlign: "center" }}>
+                          ESCOLHE O PAÍS
+                        </Text>
+                      </View>
+                      <ScrollView style={{ maxHeight: 340 }}>
+                        {countries.length === 0 ? (
+                          <View style={{ padding: 24, alignItems: "center" }}>
+                            <ActivityIndicator color={colors.text} />
+                            <Text style={{ marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.textSecondary }}>A carregar países...</Text>
+                          </View>
+                        ) : countries.map((c) => (
+                          <TouchableOpacity
+                            key={c.code}
+                            style={{
+                              paddingVertical: 14,
+                              paddingHorizontal: 16,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                              backgroundColor: selectedCountry?.code === c.code ? colors.aprovo : colors.bg,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                            }}
+                            onPress={() => { setSelectedCountry(c); setCountryPickerOpen(false); }}
+                          >
+                            <View>
+                              <Text style={{ fontSize: 15, fontWeight: "900", color: colors.text }}>{c.name}</Text>
+                              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginTop: 2 }}>{c.tax_label}</Text>
+                            </View>
+                            {selectedCountry?.code === c.code && (
+                              <Ionicons name="checkmark-circle" size={20} color={colors.text} />
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </TouchableOpacity>
+                </Modal>
               )}
 
               <Text style={styles.label}>NOME COMERCIAL</Text>
@@ -338,3 +375,4 @@ const styles = StyleSheet.create({
   formBtn: { paddingVertical: 14, alignItems: "center", borderWidth: 4, borderColor: colors.border, ...brutalShadow },
   formBtnText: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.text },
 });
+
