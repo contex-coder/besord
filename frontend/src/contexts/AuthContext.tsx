@@ -20,7 +20,7 @@ type User = {
   picture?: string;
   is_admin?: boolean;
   bw_balance?: number;
-  has_business_profile?: boolean;
+  has_business?: boolean;
 };
 
 type AuthError = {

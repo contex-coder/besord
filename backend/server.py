@@ -1,3 +1,5 @@
+import sys
+from fastapi.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import RedirectResponse
@@ -41,36 +43,51 @@ db = client[os.environ['DB_NAME']]
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY", "sk_test_emergent")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+
+# Suporta tanto FRONTEND_URL (backend/.env.production) quanto FRONTEND_BASE_URL (render.yaml)
+FRONTEND_URL = os.environ.get("FRONTEND_URL") or os.environ.get("FRONTEND_BASE_URL", "http://localhost:3000")
+# Suporta tanto BACKEND_URL (backend/.env.production) quanto APP_BASE_URL (render.yaml)
+BACKEND_URL = os.environ.get("BACKEND_URL") or os.environ.get("APP_BASE_URL", "http://localhost:8000")
+
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
 # This must match the authorized redirect URI in your Google Cloud console
-GOOGLE_REDIRECT_URI = f'{BACKEND_URL}/api/auth/google/callback'
+# IMPORTANTE: Use uma variável de ambiente GOOGLE_REDIRECT_URI se quiser algo fixo
+# Senão, usa BACKEND_URL (que deve ser a URL exata do backend, sem barra no final)
+backend_url_clean = BACKEND_URL.rstrip('/')
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI") or f'{backend_url_clean}/api/auth/google/callback'
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-# CORREÇÃO: O SessionMiddleware deve vir antes de outros middlewares e garantir o uso da secret_key
+# Rota raiz para teste de conectividade
+@app.get("/")
+async def root():
+    return {"app": "Besord API", "status": "running", "version": "1.0.0"}
+
+# CORREÇÃO: SessionMiddleware com https_only=True em produção
+# Em ambiente de desenvolvimento (localhost), usamos False
+is_production = "vercel.app" in FRONTEND_URL or "render.com" in BACKEND_URL
 app.add_middleware(
     SessionMiddleware, 
     secret_key=os.environ.get("SESSION_SECRET", "uma-chave-secreta-muito-segura-e-longa-para-sessao-besord"),
     session_cookie="besord_session",
     same_site="lax",  # Importante para redirecionamentos OAuth entre domínios
-    https_only=False  # Mude para True se o seu Render estiver forçando HTTPS (recomendado)
+    https_only=is_production  # True em produção (Render/Vercel), False em localhost
 )
 
 # CORS Configuration - Allow frontend domain
+# IMPORTANTE: allow_credentials=True NÃO pode ser usado com allow_origins=["*"]
 CORS_ORIGINS = [
     FRONTEND_URL,
     "http://localhost:3000",
     "http://localhost:8081",
     "http://localhost:5173",
 ]
-if "vercel.app" in FRONTEND_URL or "render.com" in BACKEND_URL:
-    CORS_ORIGINS.append("*")
+# Remove potencial "*" que causaria erro CORS
+CORS_ORIGINS = [o for o in CORS_ORIGINS if o != "*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +96,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# ProxyHeadersMiddleware — essencial para Render/Vercel reconhecerem HTTPS
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # ---------- Models ----------
 class SessionRequest(BaseModel):
@@ -318,6 +338,11 @@ def serialize_campaign(c: dict, checkout_url: Optional[str] = None) -> CampaignO
 
 # ---------- Auth Routes ----------
 
+@api_router.get("/health")
+async def health_check():
+    return {"status": "ok", "app": "besord-backend", "version": "1.0.0"}
+
+
 @api_router.get("/auth/google/login")
 async def auth_google_login(request: Request):
     if not GOOGLE_CLIENT_ID:
@@ -341,7 +366,7 @@ async def auth_google_login(request: Request):
     return RedirectResponse(url=google_auth_url)
 
 
-@api_router.get("/auth/google/callback", response_model=AuthResponse)
+@api_router.get("/auth/google/callback")
 async def auth_google_callback(request: Request, code: str, state: str, error: Optional[str] = None):
     if error:
         raise HTTPException(status_code=400, detail=f"Google login error: {error}")
