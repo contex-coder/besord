@@ -1,4 +1,6 @@
 // Besord — Neo-Brutalist theme constants
+import { Platform } from "react-native";
+
 export const colors = {
   bg: "#FFFFFF",
   bgSubtle: "#F4F4F5",
@@ -20,11 +22,16 @@ export const spacing = {
   xl: 32,
 };
 
-// A reusable "brutalist" shadow offset
-export const brutalShadow = {
-  shadowColor: "#000",
-  shadowOffset: { width: 4, height: 4 },
-  shadowOpacity: 1,
-  shadowRadius: 0,
-  elevation: 6,
-};
+// A reusable "brutalist" shadow offset — no deprecated props
+export const brutalShadow = Platform.select({
+  web: {
+    boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)",
+  },
+  default: {
+    shadowColor: "#000",
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 6,
+  },
+});
