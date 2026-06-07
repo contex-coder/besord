@@ -8,8 +8,12 @@ import {
   TextInput,
   Platform,
   Share,
+  ScrollView,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+
+const { width: SCREEN_W } = Dimensions.get("window");
 
 import { colors, brutalShadow } from "@/src/theme";
 
@@ -27,6 +31,9 @@ export type PostItem = {
   post_id: string;
   word: string;
   image_base64: string;
+  images_base64?: string[] | null;  // carrossel (até 3)
+  video_base64?: string | null;      // vídeo 30s
+  is_hype?: boolean;                 // hype toggle
   author_id: string;
   author_name: string;
   author_picture?: string | null;
@@ -124,6 +131,10 @@ export default function PostCard({
     } catch {}
   };
 
+  // Carrossel state
+  const allImages = [post.image_base64, ...(post.images_base64 || [])];
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
   return (
     <View style={styles.card} testID={`post-card-${post.post_id}`}>
       {/* ─── Sponsored Badge ─── */}
@@ -131,6 +142,14 @@ export default function PostCard({
         <View style={styles.sponsoredBadge} testID="sponsored-badge">
           <Ionicons name="megaphone" size={12} color={colors.text} />
           <Text style={styles.sponsoredText}>PATROCINADO</Text>
+        </View>
+      )}
+
+      {/* ─── Hype Badge ─── */}
+      {post.is_hype && (
+        <View style={styles.hypeBadge}>
+          <Ionicons name="flame" size={12} color={colors.text} />
+          <Text style={styles.hypeBadgeText}>HYPE</Text>
         </View>
       )}
 
@@ -176,8 +195,54 @@ export default function PostCard({
         )}
       </View>
 
+      {/* ─── Carrossel de Imagens ─── */}
       <View style={styles.imageWrap}>
-        <Image source={{ uri: post.image_base64 }} style={styles.postImage} resizeMode="cover" />
+        {allImages.length > 1 ? (
+          <>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e) => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                setCurrentImageIndex(idx);
+              }}
+              style={{ flex: 1 }}
+            >
+              {allImages.map((img, i) => (
+                <Image
+                  key={i}
+                  source={{ uri: img }}
+                  style={{ width: SCREEN_W, aspectRatio: 3 / 4 }}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+            {/* Dots */}
+            <View style={styles.carouselDots}>
+              {allImages.map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.carouselDot,
+                    i === currentImageIndex && styles.carouselDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          </>
+        ) : (
+          <Image source={{ uri: post.image_base64 }} style={styles.postImage} resizeMode="cover" />
+        )}
+
+        {/* Video indicator */}
+        {post.video_base64 && (
+          <View style={styles.videoIndicator}>
+            <Ionicons name="videocam" size={16} color={colors.text} />
+            <Text style={styles.videoIndicatorText}>VÍDEO 30s</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           testID={`word-link-${post.post_id}`}
           style={styles.wordOverlay}
@@ -343,7 +408,7 @@ export default function PostCard({
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 6 },
+  card: { gap: 6, marginHorizontal: 4, paddingLeft: 8, paddingRight: 8 },
   sponsoredBadge: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -357,6 +422,19 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   sponsoredText: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
+  hypeBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.neutral,
+    borderWidth: 3,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 2,
+  },
+  hypeBadgeText: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
   eventBadge: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -399,6 +477,47 @@ const styles = StyleSheet.create({
     ...brutalShadow,
   },
   wordOverlayText: { fontSize: 30, fontWeight: "900", letterSpacing: -1, color: colors.text },
+
+  // ─── Carrossel ───
+  carouselDots: {
+    position: "absolute",
+    bottom: 30,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+  },
+  carouselDot: {
+    width: 8,
+    height: 8,
+    backgroundColor: "rgba(255,255,255,0.4)",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  carouselDotActive: {
+    width: 12,
+    height: 8,
+    backgroundColor: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  // ─── Video ───
+  videoIndicator: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  videoIndicatorText: { fontSize: 10, fontWeight: "900", color: "#FFF" },
 
   voteRow: { flexDirection: "row", gap: 10, marginTop: 24 },
   voteBtn: {

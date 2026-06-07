@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,13 +17,18 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
-import { ScrollView } from "react-native";
 import { colors, brutalShadow } from "@/src/theme";
+
+const MAX_IMAGES = 3; // até 3 imagens (1 principal + 2 extra)
+const MAX_VIDEO_SECONDS = 30;
 
 export default function CriarScreen() {
   const { apiFetch, user, refreshUser } = useAuth();
   const router = useRouter();
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [mainImage, setMainImage] = useState<string | null>(null);
+  const [extraImages, setExtraImages] = useState<string[]>([]);
+  const [videoBase64, setVideoBase64] = useState<string | null>(null);
+  const [isHype, setIsHype] = useState(false);
   const [word, setWord] = useState("");
   const [themes, setThemes] = useState<{ key: string; name: string; emoji: string }[]>([]);
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
@@ -61,7 +67,7 @@ export default function CriarScreen() {
     );
   }, [apiFetch, user, router, refreshUser]);
 
-  // Load themes on mount
+  // Load themes
   React.useEffect(() => {
     (async () => {
       try {
@@ -71,22 +77,26 @@ export default function CriarScreen() {
     })();
   }, [apiFetch]);
 
-  const pickImage = useCallback(async () => {
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const pickImage = useCallback(async (slot: "main" | "extra") => {
     if (Platform.OS === "web") {
-      // Web: use file input directly
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*";
       input.onchange = async (e: any) => {
         const file = e.target?.files?.[0];
         if (!file) return;
-        // Convert to base64
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          setImageBase64(result);
-        };
-        reader.readAsDataURL(file);
+        const b64 = await readFileAsBase64(file);
+        if (slot === "main") setMainImage(b64);
+        else setExtraImages((prev) => [...prev, b64].slice(0, MAX_IMAGES));
       };
       input.click();
       return;
@@ -94,14 +104,10 @@ export default function CriarScreen() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       if (!perm.canAskAgain) {
-        Alert.alert(
-          "Permissão necessária",
-          "Habilite o acesso à galeria nas configurações para escolher uma imagem.",
-          [{ text: "Cancelar" }, { text: "Abrir Configurações", onPress: () => { try { (require("react-native").Linking as any).openSettings(); } catch {} } }]
-        );
-      } else {
-        Alert.alert("Permissão necessária", "Precisamos de acesso à galeria para escolher a imagem do post.");
+        Alert.alert("Permissão", "Habilite o acesso à galeria nas configurações.");
+        return;
       }
+      Alert.alert("Permissão", "Precisamos de acesso à galeria.");
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -113,34 +119,75 @@ export default function CriarScreen() {
     });
     if (!res.canceled && res.assets[0]) {
       const a = res.assets[0];
+      let b64: string | null = null;
       if (a.base64) {
         const mime = a.mimeType || "image/jpeg";
-        setImageBase64(`data:${mime};base64,${a.base64}`);
+        b64 = `data:${mime};base64,${a.base64}`;
       } else if (a.uri) {
-
-        // Fallback: fetch and convert to base64
         try {
           const resp = await fetch(a.uri);
           const blob = await resp.blob();
           const reader = new FileReader();
-          reader.onload = () => setImageBase64(reader.result as string);
-          reader.readAsDataURL(blob);
-        } catch {
-          setImageBase64(a.uri);
-        }
+          b64 = await new Promise((resolve) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch { b64 = a.uri; }
+      }
+      if (b64) {
+        if (slot === "main") setMainImage(b64);
+        else setExtraImages((prev) => [...prev, b64!].slice(0, MAX_IMAGES));
+      }
+    }
+  }, []);
+
+  const pickVideo = useCallback(async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "video/*";
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        // Verificar duração
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.onloadedmetadata = () => {
+          if (video.duration > MAX_VIDEO_SECONDS) {
+            Alert.alert("Vídeo muito longo", `Máximo de ${MAX_VIDEO_SECONDS} segundos.`);
+            return;
+          }
+          readFileAsBase64(file).then(setVideoBase64);
+        };
+        video.src = URL.createObjectURL(file);
+      };
+      input.click();
+      return;
+    }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.8,
+      base64: true,
+    });
+    if (!res.canceled && res.assets[0]) {
+      const a = res.assets[0];
+      if (a.base64) {
+        const mime = a.mimeType || "video/mp4";
+        setVideoBase64(`data:${mime};base64,${a.base64}`);
       }
     }
   }, []);
 
   const onWordChange = (txt: string) => {
-    // 1 word only — strip spaces, max 20 chars, letters/numbers
     const cleaned = txt.replace(/\s+/g, "").replace(/[^A-Za-zÀ-ÿ0-9]/g, "").slice(0, 20);
     setWord(cleaned.toUpperCase());
   };
 
   const submit = useCallback(async () => {
-    if (!imageBase64) {
-      Alert.alert("Faltou a imagem", "Selecione uma imagem para o post.");
+    if (!mainImage) {
+      Alert.alert("Faltou a imagem", "Selecione pelo menos uma imagem.");
       return;
     }
     if (!word) {
@@ -149,13 +196,20 @@ export default function CriarScreen() {
     }
     setSubmitting(true);
     try {
+      const payload: any = { word, image_base64: mainImage, is_hype: isHype };
+      if (extraImages.length > 0) payload.images_base64 = extraImages;
+      if (videoBase64) payload.video_base64 = videoBase64;
+
       const r = await apiFetch("/api/posts", {
         method: "POST",
-        body: JSON.stringify({ word, image_base64: imageBase64 }),
+        body: JSON.stringify(payload),
       });
       if (r.ok) {
         const created = await r.json().catch(() => ({}));
-        setImageBase64(null);
+        setMainImage(null);
+        setExtraImages([]);
+        setVideoBase64(null);
+        setIsHype(false);
         setWord("");
         if (created?.post_id) {
           offerBoost(created.post_id);
@@ -171,7 +225,10 @@ export default function CriarScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [imageBase64, word, apiFetch, router, offerBoost]);
+  }, [mainImage, extraImages, videoBase64, isHype, word, apiFetch, router, offerBoost]);
+
+  const totalImages = (mainImage ? 1 : 0) + extraImages.length;
+  const canAddMoreImages = totalImages < MAX_IMAGES;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -180,24 +237,87 @@ export default function CriarScreen() {
         <View style={styles.headerBadge}><Text style={styles.headerBadgeText}>CRIAR</Text></View>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* ─── Imagem Principal ─── */}
         <TouchableOpacity
           testID="input-image"
-          style={[styles.imagePicker, imageBase64 && styles.imagePickerFilled]}
-          onPress={pickImage}
+          style={[styles.imagePicker, mainImage && styles.imagePickerFilled]}
+          onPress={() => pickImage("main")}
           activeOpacity={0.85}
         >
-          {imageBase64 ? (
-            <Image source={{ uri: imageBase64 }} style={styles.previewImage} resizeMode="cover" />
+          {mainImage ? (
+            <Image source={{ uri: mainImage }} style={styles.previewImage} resizeMode="cover" />
           ) : (
             <View style={styles.pickerEmpty}>
               <Ionicons name="cloud-upload-outline" size={56} color={colors.text} />
-              <Text style={styles.pickerEmptyTitle}>TOQUE PARA ESCOLHER</Text>
-              <Text style={styles.pickerEmptySub}>Imagem 4:5 recomendada</Text>
+              <Text style={styles.pickerEmptyTitle}>IMAGEM PRINCIPAL</Text>
+              <Text style={styles.pickerEmptySub}>4:5 · Toca para escolher</Text>
             </View>
           )}
         </TouchableOpacity>
 
+        {/* ─── Imagens Extra (Carrossel) ─── */}
+        <View style={styles.extraImagesRow}>
+          {extraImages.map((img, i) => (
+            <View key={i} style={styles.extraImageWrap}>
+              <Image source={{ uri: img }} style={styles.extraImage} resizeMode="cover" />
+              <TouchableOpacity
+                style={styles.removeExtraImage}
+                onPress={() => setExtraImages((prev) => prev.filter((_, j) => j !== i))}
+              >
+                <Ionicons name="close-circle" size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          ))}
+          {canAddMoreImages && (
+            <TouchableOpacity
+              style={styles.addExtraImage}
+              onPress={() => pickImage("extra")}
+            >
+              <Ionicons name="add" size={28} color={colors.text} />
+              <Text style={styles.addExtraText}>+{MAX_IMAGES - totalImages}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ─── Vídeo (opcional) ─── */}
+        <TouchableOpacity style={styles.videoPicker} onPress={pickVideo}>
+          <Ionicons name="videocam" size={24} color={colors.text} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.videoPickerTitle}>
+              {videoBase64 ? "✅ VÍDEO SELECIONADO (30s)" : "ADICIONAR VÍDEO (OPCIONAL)"}
+            </Text>
+            <Text style={styles.videoPickerSub}>Máx. 30 segundos</Text>
+          </View>
+          {videoBase64 && (
+            <TouchableOpacity onPress={() => setVideoBase64(null)}>
+              <Ionicons name="close-circle" size={22} color={colors.text} />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
+
+        {/* ─── Hype Toggle ─── */}
+        <TouchableOpacity
+          style={[styles.hypeToggle, isHype && styles.hypeToggleActive]}
+          onPress={() => setIsHype(!isHype)}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={isHype ? "flame" : "flame-outline"}
+            size={24}
+            color={isHype ? "#FFF" : colors.text}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.hypeToggleTitle, isHype && { color: "#FFF" }]}>
+              {isHype ? "✅ HYPE ATIVO" : "🔥 ATIVAR HYPE"}
+            </Text>
+            <Text style={[styles.hypeToggleSub, isHype && { color: "rgba(255,255,255,0.7)" }]}>
+              O teu post aparece na secção HYPES do feed (mais visibilidade)
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* ─── Palavra ─── */}
         <View style={styles.wordBlock}>
           <Text style={styles.label}>A PALAVRA</Text>
           <TextInput
@@ -215,11 +335,12 @@ export default function CriarScreen() {
           <Text style={styles.hint}>UMA ÚNICA PALAVRA. SEM ESPAÇOS. ATÉ 20 LETRAS.</Text>
         </View>
 
+        {/* ─── Submit ─── */}
         <TouchableOpacity
           testID="btn-submit-post"
-          style={[styles.submitBtn, (!imageBase64 || !word || submitting) && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, (!mainImage || !word || submitting) && styles.submitBtnDisabled]}
           onPress={submit}
-          disabled={!imageBase64 || !word || submitting}
+          disabled={!mainImage || !word || submitting}
           activeOpacity={0.85}
         >
           {submitting ? (
@@ -231,7 +352,7 @@ export default function CriarScreen() {
             </>
           )}
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -250,10 +371,12 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: "900", letterSpacing: -1, color: colors.text },
   headerBadge: { backgroundColor: colors.aprovo, borderWidth: 3, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 4 },
   headerBadgeText: { fontSize: 11, fontWeight: "900", letterSpacing: 2, color: colors.text },
-  content: { flex: 1, padding: 20, gap: 20 },
+  content: { padding: 20, gap: 16, paddingBottom: 60 },
+
+  // ─── Imagem Principal ───
   imagePicker: {
     width: "100%",
-    aspectRatio: 1,
+    aspectRatio: 4 / 5,
     borderWidth: 4,
     borderStyle: "dashed",
     borderColor: colors.border,
@@ -262,12 +385,64 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...brutalShadow,
   },
-  imagePickerFilled: { borderStyle: "solid", padding: 0, overflow: "hidden" },
+  imagePickerFilled: { borderStyle: "solid", overflow: "hidden" },
   previewImage: { width: "100%", height: "100%" },
   pickerEmpty: { alignItems: "center", gap: 8 },
   pickerEmptyTitle: { fontSize: 16, fontWeight: "900", letterSpacing: 2, color: colors.text, marginTop: 8 },
   pickerEmptySub: { fontSize: 12, fontWeight: "700", color: colors.textSecondary, letterSpacing: 1 },
 
+  // ─── Imagens Extra ───
+  extraImagesRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  extraImageWrap: {
+    width: 80,
+    height: 80,
+    borderWidth: 3,
+    borderColor: colors.border,
+    position: "relative",
+  },
+  extraImage: { width: "100%", height: "100%", backgroundColor: colors.bgSubtle },
+  removeExtraImage: { position: "absolute", top: -8, right: -8 },
+  addExtraImage: {
+    width: 80,
+    height: 80,
+    borderWidth: 3,
+    borderStyle: "dashed",
+    borderColor: colors.border,
+    backgroundColor: colors.bgSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addExtraText: { fontSize: 10, fontWeight: "900", color: colors.text, marginTop: 2 },
+
+  // ─── Vídeo ───
+  videoPicker: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSubtle,
+  },
+  videoPickerTitle: { fontSize: 13, fontWeight: "900", color: colors.text },
+  videoPickerSub: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, marginTop: 2 },
+
+  // ─── Hype Toggle ───
+  hypeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSubtle,
+    ...brutalShadow,
+  },
+  hypeToggleActive: { backgroundColor: colors.neutral, borderWidth: 4 },
+  hypeToggleTitle: { fontSize: 14, fontWeight: "900", color: colors.text },
+  hypeToggleSub: { fontSize: 10, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
+
+  // ─── Word ───
   wordBlock: { gap: 6 },
   label: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.text },
   wordInput: {

@@ -13,7 +13,29 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { VideoView, useVideoPlayer } from "expo-video";
+// Video component that works on web via native <video>
+function MascotVideo({ size }: { size: number }) {
+  if (typeof window !== "undefined" && Platform.OS === "web") {
+    return (
+      <video
+        src="/assets/images/besord_v.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        style={{ width: size, height: size, objectFit: "contain" }}
+      />
+    );
+  }
+  // Mobile fallback: use static image
+  return (
+    <Image
+      source={require("@/assets/images/besord_i.png")}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+    />
+  );
+}
 import { useAssets } from "expo-asset";
 import * as AppleAuthentication from "expo-apple-authentication";
 
@@ -61,12 +83,7 @@ export default function Landing() {
     }
   }, []);
 
-  const videoAsset = require("@/assets/images/besord_v.mp4");
-  const player = useVideoPlayer(videoAsset, (p) => {
-    p.play();
-    p.loop = true;
-    p.volume = 0;
-  });
+
 
   if (loading) {
     return (
@@ -85,12 +102,7 @@ export default function Landing() {
       >
       <View style={styles.content}>
         <View style={styles.heroSection}>
-          <VideoView
-            player={player}
-            style={[styles.mascot, { width: MASCOT_SIZE, height: MASCOT_SIZE }]}
-            contentFit="contain"
-            nativeControls={false}
-          />
+          <MascotVideo size={MASCOT_SIZE} />
           <Text style={styles.brand}>BESORD</Text>
           <Text style={styles.tagline}>
             {t("tagline_1")}

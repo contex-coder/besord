@@ -147,7 +147,10 @@ class AuthResponse(BaseModel):
 
 class PostCreate(BaseModel):
     word: str
-    image_base64: str
+    image_base64: str  # primeira imagem (principal)
+    images_base64: Optional[List[str]] = None  # carrossel (até 3 imagens adicionais)
+    video_base64: Optional[str] = None  # vídeo de até 30s
+    is_hype: bool = False  # se True, entra nos Hypes
     theme: Optional[str] = None  # one of THEME_KEYS, optional
 
 class CommentOut(BaseModel):
@@ -163,6 +166,10 @@ class PostOut(BaseModel):
     post_id: str
     word: str
     image_base64: str
+    images_base64: Optional[List[str]] = None  # carrossel (até 3)
+    video_base64: Optional[str] = None  # vídeo 30s
+    is_hype: bool = False  # hype toggle
+    is_sponsored: bool = False
     author_id: str
     author_name: str
     author_picture: Optional[str] = None
@@ -173,7 +180,6 @@ class PostOut(BaseModel):
     user_vote: Optional[Literal["aprovo", "desaprovo"]] = None
     user_comment: Optional[str] = None
     top_comments: List[CommentOut] = []
-    is_sponsored: bool = False
     campaign_id: Optional[str] = None
 
 class VoteRequest(BaseModel):
@@ -311,6 +317,9 @@ async def serialize_post(doc: dict, current_user_id: Optional[str]) -> PostOut:
         post_id=doc["post_id"],
         word=doc["word"],
         image_base64=doc["image_base64"],
+        images_base64=doc.get("images_base64"),  # carrossel
+        video_base64=doc.get("video_base64"),    # vídeo 30s
+        is_hype=bool(doc.get("is_hype")),
         author_id=doc["author_id"],
         author_name=doc.get("author_name", ""),
         author_picture=doc.get("author_picture"),
@@ -600,6 +609,7 @@ async def list_posts(
     scope: Literal["world", "country", "city"] = Query("world"),
     country_code: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
+    is_hype: Optional[bool] = Query(None),  # filtrar por hype
     authorization: Optional[str] = Header(None),
 ):
     user = await get_optional_user(authorization)
@@ -607,6 +617,10 @@ async def list_posts(
 
     # Base match — never show hidden posts
     match: dict = {"hidden": {"$ne": True}}
+
+    # Hype filter — only posts with is_hype=True
+    if is_hype:
+        match["is_hype"] = True
 
     # Source filter: followed styles
     if source == "styles":
@@ -709,6 +723,9 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
         "post_id": post_id,
         "word": word,
         "image_base64": image,
+        "images_base64": (payload.images_base64 or [])[:3],  # até 3 imagens extra
+        "video_base64": payload.video_base64,
+        "is_hype": bool(payload.is_hype),
         "author_id": user["user_id"],
         "author_name": user.get("name", ""),
         "author_picture": user.get("picture"),

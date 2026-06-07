@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
@@ -23,7 +22,6 @@ import { useFocusEffect, useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
-
 
 import PostCard, { PostItem } from "@/src/components/PostCard";
 import EventCard, { EventItem } from "@/src/components/EventCard";
@@ -56,15 +54,6 @@ const COUNTRIES = [
   { code: "MX", name: "Mexico" },
 ];
 
-const SCOPES = [
-
-
-
-  { key: "world" as ScopeMode, label: IS_SMALL ? "🌍" : "🌍 MUNDO" },
-  { key: "country" as ScopeMode, label: IS_SMALL ? "🇵🇹" : "🇵🇹 PT" },
-  { key: "city" as ScopeMode, label: IS_SMALL ? "📍" : "📍 CIDADE" },
-];
-
 export default function FeedScreen() {
   const { apiFetch, user } = useAuth();
   const router = useRouter();
@@ -83,13 +72,13 @@ export default function FeedScreen() {
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLon, setUserLon] = useState<number | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
-  // Workspaces for ProfileSwitcher
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [activeWsId, setActiveWsId] = useState<string | null>(null);
-  // Scope picker modal
   const [showScopePicker, setShowScopePicker] = useState(false);
   const [customCountry, setCustomCountry] = useState("");
   const [customCity, setCustomCity] = useState("");
+  // Hype toggle state
+  const [hypeActive, setHypeActive] = useState(false);
 
   const mascotPhrases = [
     "BESORD!",
@@ -109,7 +98,6 @@ export default function FeedScreen() {
   useEffect(() => {
     (async () => {
       try {
-        // 1. Get location from IP (backend)
         const r = await apiFetch("/api/geo/me");
         if (r.ok) {
           const data = await r.json();
@@ -118,17 +106,13 @@ export default function FeedScreen() {
           if (data.lat) setUserLat(data.lat);
           if (data.lon) setUserLon(data.lon);
         }
-
-        // 2. Get precise location from device (browser)
         if (typeof navigator !== "undefined" && navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (pos) => {
               setUserLat(pos.coords.latitude);
               setUserLon(pos.coords.longitude);
             },
-            () => {
-              // Permission denied or error — usar geo do IP já temos
-            },
+            () => {},
             { enableHighAccuracy: true, timeout: 10000 }
           );
         }
@@ -183,7 +167,7 @@ export default function FeedScreen() {
   }, [apiFetch, userLat, userLon]);
 
   const buildQueryString = useCallback(
-    (mode: SortMode, sc: ScopeMode, th: string | null) => {
+    (mode: SortMode, sc: ScopeMode, th: string | null, hype: boolean) => {
       const params = new URLSearchParams();
       if (mode === "styles") {
         params.set("source", "styles");
@@ -195,15 +179,16 @@ export default function FeedScreen() {
       if (sc === "country" && scopeCountry) params.set("country_code", scopeCountry);
       if (sc === "city" && scopeCity) params.set("city", scopeCity);
       if (th) params.set("theme", th);
+      if (hype) params.set("is_hype", "true");
       return params.toString();
     },
     [scopeCountry, scopeCity]
   );
 
   const load = useCallback(
-    async (mode: SortMode = sort, sc: ScopeMode = scope, th: string | null = activeTheme) => {
+    async (mode: SortMode = sort, sc: ScopeMode = scope, th: string | null = activeTheme, hype: boolean = hypeActive) => {
       try {
-        const qs = buildQueryString(mode, sc, th);
+        const qs = buildQueryString(mode, sc, th, hype);
         const r = await apiFetch(`/api/posts?${qs}`);
         if (r.ok) {
           const data = await r.json();
@@ -214,24 +199,24 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     },
-    [apiFetch, sort, scope, activeTheme, buildQueryString]
+    [apiFetch, sort, scope, activeTheme, hypeActive, buildQueryString]
   );
 
   // Reload when any filter changes
   useEffect(() => {
-    load(sort, scope, activeTheme);
-  }, [sort, scope, activeTheme]); // eslint-disable-line react-hooks/exhaustive-deps
+    load(sort, scope, activeTheme, hypeActive);
+  }, [sort, scope, activeTheme, hypeActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFocusEffect(
     useCallback(() => {
-      load(sort, scope, activeTheme);
-    }, [load, sort, scope, activeTheme])
+      load(sort, scope, activeTheme, hypeActive);
+    }, [load, sort, scope, activeTheme, hypeActive])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    load(sort, scope, activeTheme);
-  }, [load, sort, scope, activeTheme]);
+    load(sort, scope, activeTheme, hypeActive);
+  }, [load, sort, scope, activeTheme, hypeActive]);
 
   const onVote = useCallback(
     async (post_id: string, vote: "aprovo" | "desaprovo") => {
@@ -264,13 +249,13 @@ export default function FeedScreen() {
           const updated = await r.json();
           setPosts((prev) => prev.map((p) => (p.post_id === post_id ? updated : p)));
         } else {
-          load(sort, scope, activeTheme);
+          load(sort, scope, activeTheme, hypeActive);
         }
       } catch {
-        load(sort, scope, activeTheme);
+        load(sort, scope, activeTheme, hypeActive);
       }
     },
-    [apiFetch, load, sort, scope, activeTheme]
+    [apiFetch, load, sort, scope, activeTheme, hypeActive]
   );
 
   const onComment = useCallback(
@@ -362,7 +347,7 @@ export default function FeedScreen() {
               data.hidden ? "Post ocultado" : "Obrigado!",
               data.hidden ? "Este post foi removido do feed." : "Sua denúncia foi registrada."
             );
-            load(sort, scope, activeTheme);
+            load(sort, scope, activeTheme, hypeActive);
           }
         } catch {}
       };
@@ -377,7 +362,7 @@ export default function FeedScreen() {
         { text: "Reportar", style: "destructive", onPress: doReport },
       ]);
     },
-    [apiFetch, load, sort, scope, activeTheme]
+    [apiFetch, load, sort, scope, activeTheme, hypeActive]
   );
 
   const onWordPress = useCallback(
@@ -422,6 +407,7 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* ─── Header ─── */}
       <View style={styles.header}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Image source={require("@/assets/images/besord_i.png")} style={styles.headerLogo} resizeMode="contain" />
@@ -436,20 +422,20 @@ export default function FeedScreen() {
             />
           )}
           <TouchableOpacity testID="btn-trends" onPress={() => router.push("/trends")} style={styles.trendsBtn}>
-          <Ionicons name="trending-up" size={14} color={colors.text} />
-          <Text style={styles.trendsText}>TRENDS</Text>
-        </TouchableOpacity>
+            <Ionicons name="trending-up" size={14} color={colors.text} />
+            <Text style={styles.trendsText}>TRENDS</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* ─── Scope bar + HYPES button ─── */}
-      <View style={styles.scopeHypBar}>
+      {/* ─── Scope + Hype + Search bar (linha única) ─── */}
+      <View style={styles.filterBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
           {/* Scope chips */}
           {[
-            { key: "world" as ScopeMode, label: String.fromCodePoint(127758) },
-            { key: "country" as ScopeMode, label: String.fromCodePoint(128204) },
-            { key: "city" as ScopeMode, label: String.fromCodePoint(128205) },
+            { key: "world" as ScopeMode, label: "🌍" },
+            { key: "country" as ScopeMode, label: scopeCountry ? `🇵🇹` : "📍" },
+            { key: "city" as ScopeMode, label: scopeCity ? "📍CIDADE" : "📍" },
           ].map((s) => (
             <TouchableOpacity
               key={s.key}
@@ -465,26 +451,49 @@ export default function FeedScreen() {
               <Text style={[styles.scopeChipText, scope === s.key && styles.scopeChipTextActive]}>
                 {s.label}
               </Text>
-              {(s.key === "country" || s.key === "city") && (
-                <Ionicons name="chevron-down" size={10} color={scope === s.key ? colors.textInverse : colors.text} />
-              )}
+              <Ionicons name="chevron-down" size={10} color={scope === s.key ? "#FFF" : colors.text} />
             </TouchableOpacity>
           ))}
 
-          <View style={styles.scopeDivider} />
+          {/* Divider */}
+          <View style={styles.filterDivider} />
 
-          {/* HYPES button -> /hypes page */}
+          {/* Hype toggle button */}
           <TouchableOpacity
-            style={styles.hypeBtn}
-            onPress={() => { router.push("/hypes"); }}
+            style={[styles.hypeChip, hypeActive && styles.hypeChipActive]}
+            onPress={() => setHypeActive(!hypeActive)}
           >
-            <Ionicons name="flame" size={14} color={colors.text} />
-            <Text style={styles.hypeBtnText}>HYPES</Text>
+            <Ionicons
+              name={hypeActive ? "flame" : "flame-outline"}
+              size={14}
+              color={hypeActive ? "#FFF" : colors.text}
+            />
+            <Text style={[styles.hypeChipText, hypeActive && styles.hypeChipTextActive]}>
+              HYPES
+            </Text>
+          </TouchableOpacity>
+
+          {/* Trends button (ao lado do Hype) */}
+          <TouchableOpacity
+            style={styles.trendChip}
+            onPress={() => router.push("/trends")}
+          >
+            <Ionicons name="trending-up" size={14} color={colors.text} />
+            <Text style={styles.trendChipText}>TRENDS</Text>
+          </TouchableOpacity>
+
+          {/* Explorar Eventos */}
+          <TouchableOpacity
+            style={styles.eventChip}
+            onPress={() => router.push("/events/explorar")}
+          >
+            <Ionicons name="location" size={14} color={colors.text} />
+            <Text style={styles.eventChipText}>EVENTOS</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
 
-{/* ─── Sort Toggle ─── */}
+      {/* ─── Sort Toggle ─── */}
       <View style={styles.sortRow}>
         <TouchableOpacity
           testID="sort-recent"
@@ -510,32 +519,6 @@ export default function FeedScreen() {
           <Text style={[styles.sortText, sort === "styles" && styles.sortTextActive]}>ESTILOS</Text>
         </TouchableOpacity>
       </View>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
       {/* ——— Scope Picker Modal ——— */}
       <Modal visible={showScopePicker} transparent animationType="fade" onRequestClose={() => setShowScopePicker(false)}>
@@ -587,14 +570,6 @@ export default function FeedScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.text} />
         }
         ListHeaderComponent={
-
-
-
-
-
-
-
-
           <View>
             {/* ─── Event Bar (horizontal scroll) ─── */}
             {events.length > 0 && (
@@ -644,7 +619,9 @@ export default function FeedScreen() {
           <View style={styles.empty} testID="feed-empty">
             <Text style={styles.emptyTitle}>NADA POR AQUI</Text>
             <Text style={styles.emptySub}>
-              {scope === "city" && scopeCity
+              {hypeActive
+                ? "Ainda não há hypes ativos. Ativa o modo hype nos teus posts!"
+                : scope === "city" && scopeCity
                 ? `Ainda não há posts em ${scopeCity.toUpperCase()}. Muda para MUNDO ou PT.`
                 : scope === "country" && scopeCountry
                 ? `Ainda não há posts em PT. Muda para MUNDO.`
@@ -696,8 +673,8 @@ const styles = StyleSheet.create({
   },
   trendsText: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2, color: colors.text },
 
-  // ─── Scope + HYPES combined bar ───
-  scopeHypBar: {
+  // ─── Filter bar (Scope + Hype + Trends numa linha) ───
+  filterBar: {
     paddingVertical: 8,
     borderBottomWidth: 3,
     borderBottomColor: colors.border,
@@ -716,19 +693,48 @@ const styles = StyleSheet.create({
   scopeChipActive: { backgroundColor: colors.text },
   scopeChipText: { fontSize: 12, fontWeight: "900", color: colors.text },
   scopeChipTextActive: { color: colors.textInverse },
-  scopeDivider: { width: 3, backgroundColor: colors.border, marginHorizontal: 4 },
-  hypeBtn: {
+  filterDivider: { width: 3, backgroundColor: colors.border, marginHorizontal: 4 },
+
+  // ─── Hype Chip ───
+  hypeChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    borderWidth: 3,
+    gap: 4,
+    borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.aprovo,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    ...brutalShadow,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.bgSubtle,
   },
-  hypeBtnText: { fontSize: 12, fontWeight: "900", letterSpacing: 1.2, color: colors.text },
+  hypeChipActive: { backgroundColor: colors.neutral, borderWidth: 3 },
+  hypeChipText: { fontSize: 11, fontWeight: "900", color: colors.text },
+  hypeChipTextActive: { color: colors.text },
+
+  // ─── Trend Chip ───
+  trendChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.bgSubtle,
+  },
+  trendChipText: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2, color: colors.text },
+
+  // ─── Event Chip ───
+  eventChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.aprovo,
+  },
+  eventChipText: { fontSize: 11, fontWeight: "900", color: colors.text },
 
   // ——— Scope Picker Modal ———
   modalOverlay: {
@@ -776,8 +782,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   modalBtnText: { fontSize: 12, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
-
-
 
   // ─── Sort ───
   sortRow: {
@@ -839,6 +843,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.text,
   },
+
   // ─── Feed Misto ───
   feedEventHeader: {
     flexDirection: "row",
