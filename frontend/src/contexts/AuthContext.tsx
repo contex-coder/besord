@@ -1,13 +1,18 @@
 import * as React from "react";
 import { Platform } from "react-native";
-import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
-import * as AppleAuthentication from "expo-apple-authentication";
+import * * as Linking from "expo-linking";
+import * * as WebBrowser from "expo-web-browser";
+import * * as AppleAuthentication from "expo-apple-authentication";
 import { storage } from "@/src/utils/storage";
 
 // --- CONSTANTS ---
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+// Para a FRONTEND_URL, em ambiente browser usa-se window.location.origin (dinâmico).
+// Em ambiente Node/build (static rendering), usa o valor da variável de ambiente ou fallback.
+const FRONTEND_URL = typeof window !== 'undefined'
+  ? window.location.origin
+  : (process.env.EXPO_PUBLIC_FRONTEND_URL || "http://localhost:8081");
 const TOKEN_KEY = "besord_token";
 const AUTH_TIMEOUT_MS = 15000; // 15 seconds
 
@@ -74,7 +79,7 @@ function parseUrlForToken(url: string | null): string | null {
   if (!url) return null;
   try {
     // Garante uma URL base absoluta válida para evitar quebras na Web
-    const base = typeof window !== 'undefined' ? window.location.origin : "http://localhost";
+    const base = typeof window !== 'undefined' ? window.location.origin : FRONTEND_URL;
     const urlObj = new URL(url, base); 
     const token = urlObj.searchParams.get("token") || url.match(/#token=([^&]+)/)?.[1];
     return token ? decodeURIComponent(token) : null;
@@ -88,7 +93,7 @@ function parseUrlForError(url: string | null): AuthError | null {
   if (!url) return null;
   try {
     // Garante uma URL base absoluta válida para evitar quebras na Web
-    const base = typeof window !== 'undefined' ? window.location.origin : "http://localhost";
+    const base = typeof window !== 'undefined' ? window.location.origin : FRONTEND_URL;
     const urlObj = new URL(url, base);
     const error = urlObj.searchParams.get("error");
     if (error) {
@@ -223,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const redirectUrl = Platform.OS === "web"
-        ? `${window.location.origin}/auth/callback`
+        ? `${FRONTEND_URL}/auth/callback`
         : Linking.createURL("auth/callback");
 
       const authUrl = `${BACKEND_URL}/api/auth/google/login?redirect_uri=${encodeURIComponent(redirectUrl)}`;
@@ -324,3 +329,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+
