@@ -1121,26 +1121,26 @@ async def stripe_webhook(request: Request):
         # --- Campaign payment ---
         if event_type == "campaign":
             campaign_id = metadata.get("campaign_id")
-        if campaign_id:
-            now = datetime.now(timezone.utc)
-            await db.campaigns.update_one(
-                {"campaign_id": campaign_id},
-                {"$set": {
-                    "status": "active",
-                    "payment_intent": session.get("payment_intent"),
-                    "paid_at": now,
-                    "starts_at": now,
+            if campaign_id:
+                now = datetime.now(timezone.utc)
+                await db.campaigns.update_one(
+                    {"campaign_id": campaign_id},
+                    {"$set": {
+                        "status": "active",
+                        "payment_intent": session.get("payment_intent"),
+                        "paid_at": now,
+                        "starts_at": now,
                         "ends_at": now + timedelta(days=30),
-                }}
-            )
-            campaign = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
-            if campaign:
-                tier = TIERS.get(campaign.get("tier_key"))
-                if tier:
-                    await db.campaigns.update_one(
-                        {"campaign_id": campaign_id},
-                        {"$set": {"ends_at": now + timedelta(days=tier.duration_days)}}
-                    )
+                    }}
+                )
+                campaign = await db.campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+                if campaign:
+                    tier = TIERS.get(campaign.get("tier_key"))
+                    if tier:
+                        await db.campaigns.update_one(
+                            {"campaign_id": campaign_id},
+                            {"$set": {"ends_at": now + timedelta(days=tier.duration_days)}}
+                        )
         # --- Event payment ---
         elif event_type == "event":
             event_id = metadata.get("event_id")
