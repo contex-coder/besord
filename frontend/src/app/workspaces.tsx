@@ -258,55 +258,6 @@ export default function WorkspacesScreen() {
                 </View>
               </TouchableOpacity>
 
-              {countryPickerOpen && (
-                <Modal transparent animationType="fade" onRequestClose={() => setCountryPickerOpen(false)}>
-                  <TouchableOpacity
-                    style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", paddingHorizontal: 20 }}
-                    activeOpacity={1}
-                    onPress={() => setCountryPickerOpen(false)}
-                  >
-                    <View style={{ backgroundColor: colors.bg, borderWidth: 4, borderColor: colors.border, maxHeight: 400, ...brutalShadow }}>
-                      <View style={{ padding: 14, borderBottomWidth: 3, borderBottomColor: colors.border, backgroundColor: colors.text }}>
-                        <Text style={{ fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.textInverse, textAlign: "center" }}>
-                          ESCOLHE O PAÍS
-                        </Text>
-                      </View>
-                      <ScrollView style={{ maxHeight: 340 }}>
-                        {countries.length === 0 ? (
-                          <View style={{ padding: 24, alignItems: "center" }}>
-                            <ActivityIndicator color={colors.text} />
-                            <Text style={{ marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.textSecondary }}>A carregar países...</Text>
-                          </View>
-                        ) : countries.map((c) => (
-                          <TouchableOpacity
-                            key={c.code}
-                            style={{
-                              paddingVertical: 14,
-                              paddingHorizontal: 16,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.border,
-                              backgroundColor: selectedCountry?.code === c.code ? colors.aprovo : colors.bg,
-                              flexDirection: "row",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                            }}
-                            onPress={() => { setSelectedCountry(c); setCountryPickerOpen(false); }}
-                          >
-                            <View>
-                              <Text style={{ fontSize: 15, fontWeight: "900", color: colors.text }}>{c.name}</Text>
-                              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginTop: 2 }}>{c.tax_label}</Text>
-                            </View>
-                            {selectedCountry?.code === c.code && (
-                              <Ionicons name="checkmark-circle" size={20} color={colors.text} />
-                            )}
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  </TouchableOpacity>
-                </Modal>
-              )}
-
               <Text style={styles.label}>NOME COMERCIAL</Text>
               <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Minha Empresa, Lda." placeholderTextColor="#D4D4D8" testID="input-ws-name" />
 
@@ -338,6 +289,55 @@ export default function WorkspacesScreen() {
           </KeyboardAvoidingView>
         )}
       </ScrollView>
+
+      {countryPickerOpen && (
+        <Modal transparent animationType="fade" onRequestClose={() => setCountryPickerOpen(false)}>
+          <TouchableOpacity
+            style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", paddingHorizontal: 20 }}
+            activeOpacity={1}
+            onPress={() => setCountryPickerOpen(false)}
+          >
+            <View style={{ backgroundColor: colors.bg, borderWidth: 4, borderColor: colors.border, maxHeight: 400, ...brutalShadow }}>
+              <View style={{ padding: 14, borderBottomWidth: 3, borderBottomColor: colors.border, backgroundColor: colors.text }}>
+                <Text style={{ fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.textInverse, textAlign: "center" }}>
+                  ESCOLHE O PAÍS
+                </Text>
+              </View>
+              <ScrollView style={{ maxHeight: 340 }}>
+                {countries.length === 0 ? (
+                  <View style={{ padding: 24, alignItems: "center" }}>
+                    <ActivityIndicator color={colors.text} />
+                    <Text style={{ marginTop: 8, fontSize: 12, fontWeight: "700", color: colors.textSecondary }}>A carregar países...</Text>
+                  </View>
+                ) : countries.map((c) => (
+                  <TouchableOpacity
+                    key={c.code}
+                    style={{
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                      backgroundColor: selectedCountry?.code === c.code ? colors.aprovo : colors.bg,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                    onPress={() => { setSelectedCountry(c); setCountryPickerOpen(false); }}
+                  >
+                    <View>
+                      <Text style={{ fontSize: 15, fontWeight: "900", color: colors.text }}>{c.name}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textSecondary, marginTop: 2 }}>{c.tax_label}</Text>
+                    </View>
+                    {selectedCountry?.code === c.code && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.text} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
