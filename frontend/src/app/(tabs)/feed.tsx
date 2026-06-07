@@ -587,6 +587,13 @@ export default function FeedScreen() {
                 <View style={styles.eventBarHeader}>
                   <Ionicons name="location" size={14} color={colors.text} />
                   <Text style={styles.eventBarTitle}>EVENTOS PRÓXIMOS</Text>
+                  <TouchableOpacity
+                    style={styles.exploreEventsBtn}
+                    onPress={() => router.push("/events/explorar")}
+                  >
+                    <Ionicons name="search" size={12} color={colors.text} />
+                    <Text style={styles.exploreEventsText}>EXPLORAR</Text>
+                  </TouchableOpacity>
                 </View>
                 <ScrollView
                   horizontal
@@ -798,6 +805,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 1.5,
+    color: colors.text,
+    flex: 1,
+  },
+  exploreEventsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  exploreEventsText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1,
     color: colors.text,
   },
   // ─── Feed Misto ───

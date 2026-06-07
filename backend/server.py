@@ -32,7 +32,7 @@ from routes import discovery as _discovery_mod
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
 # Used by the admin "reset" endpoint to restore defaults — never mutated.
-_ORIGINAL_TIERS = {k: dataclass_replace(v) for k, v in TIERS.items()}
+_ORIGINAL_TIERS = {k: dataclass_replace(v) forque  k, v in TIERS.items()}
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -2106,7 +2106,187 @@ async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
     return serialize_event(doc, user["user_id"] if user else None)
 
 
-# ---------- JOIN EVENT ----------
+
+# ==============================
+# ADMIN: LIST ALL EVENTS (search by city/country)
+# ==============================
+@api_router.get("/admin/events")
+async def admin_list_events(
+    country_code: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    
+    query: dict = {}
+    if country_code:
+        query["location.country_code"] = country_code.upper()
+    if city:
+        query["location.city"] = {"$regex": re.escape(city), "$options": "i"}
+    if status:
+        query["status"] = status
+    
+    cursor = db.events.find(query, {"_id": 0}).sort("created_at", -1)
+    docs = await cursor.to_list(length=500)
+    return [serialize_event(d, user["user_id"]) for d in docs]
+
+
+# ==============================
+# ADMIN: CREATE EVENT (admin can create on behalf of any company)
+# ==============================
+@api_router.post("/admin/events")
+async def admin_create_event(payload: EventCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    
+    # Same logic as create_event but without requiring business_profile
+    if not payload.image_base64 or len(payload.image_base64) < 50:
+        raise HTTPException(status_code=400, detail="Imagem inválida.")
+    title = (payload.title or "").strip()
+    if not title or len(title) < 3:
+        raise HTTPException(status_code=400, detail="Título deve ter pelo menos 3 caracteres.")
+    try:
+        event_date = datetime.fromisoformat(payload.date)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Data inválida.")
+    
+    location = {}
+    if payload.lat is not None and payload.lon is not None:
+        location = {"lat": payload.lat, "lon": payload.lon, "address": payload.address or "", "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
+    elif payload.address:
+        raise HTTPException(status_code=400, detail="Admin: fornece coordenadas (lat/lon).")
+    else:
+        raise HTTPException(status_code=400, detail="Fornece localização.")
+    
+    event_id = f"event_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=7)
+    
+    event_data = {
+        "event_id": event_id,
+        "company_id": user["user_id"],
+        "company_name": "Besord Admin",
+        "title": title,
+        "description": (payload.description or "").strip(),
+        "image_base64": payload.image_base64,
+        "location": location,
+        "date": event_date,
+        "prize": None,
+        "max_participants": None,
+        "bw_reward": 50,
+        "event_type": "public",
+        "radius_km": max(0.1, min(2.0, payload.radius_km)),
+        "participants": [],
+        "checkins": [],
+        "exhibitors": [],
+        "created_at": now,
+        "expires_at": expires_at,
+        "status": "active",  # Admin events are auto-approved
+    }
+    await db.events.insert_one(event_data)
+    return serialize_event(event_data, user["user_id"])
+
+
+# ==============================
+# PUBLIC: SEARCH EVENTS by city/country
+# ==============================
+@api_router.get("/events/search")
+async def search_events(
+    q: str = Query(..., description="Cidade, país ou endereço"),
+    authorization: Optional[str] = Header(None),
+):
+    user = await get_optional_user(authorization)
+    current_user_id = user["user_id"] if user else None
+    now = datetime.now(timezone.utc)
+    
+    # Search by city, country_code, or address
+    query = {
+        "status": {"$in": ["active", "full"]},
+        "expires_at": {"$gt": now},
+        "$or": [
+            {"location.city": {"$regex": q, "$options": "i"}},
+            {"location.country_code": {"$regex": q, "$options": "i"}},
+            {"location.address": {"$regex": q, "$options": "i"}},
+            {"title": {"$regex": q, "$options": "i"}},
+        ]
+    }
+    cursor = db.events.find(query, {"_id": 0}).sort("created_at", -1)
+    docs = await cursor.to_list(length=100)
+    return [serialize_event(d, current_user_id) for d in docs]
+
+
+# ==============================
+# PUBLIC: USER CHECK-IN to event
+# ==============================
+@api_router.post("/events/{event_id}/checkin")
+async def checkin_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event["status"] not in ("active", "full"):
+        raise HTTPException(status_code=400, detail="Evento não está ativo.")
+    
+    checkins = event.get("checkins", [])
+    if user["user_id"] in checkins:
+        return {"ok": True, "already_checked_in": True}
+    
+    await db.events.update_one(
+        {"event_id": event_id},
+        {"$push": {"checkins": user["user_id"]}}
+    )
+    await notify_user(
+        event["company_id"],
+        f"👤 Novo check-in no evento \"{event['title']}\"!",
+        f"{user.get('name', 'Alguém')} fez check-in. Total: {len(checkins) + 1}",
+    )
+    return {"ok": True, "already_checked_in": False}
+
+
+# ==============================
+# HELPERS
+# ==============================
+def serialize_event(doc: dict, current_user_id: Optional[str] = None) -> EventOut:
+    participants = doc.get("participants", [])
+    checkins = doc.get("checkins", [])
+    exhibitors = doc.get("exhibitors", [])
+    
+    return EventOut(
+        event_id=doc["event_id"],
+        company_id=doc.get("company_id", ""),
+        company_name=doc.get("company_name", ""),
+        title=doc["title"],
+        description=doc.get("description", ""),
+        image_base64=doc["image_base64"],
+        location=doc.get("location", {}),
+        date=doc["date"].isoformat() if isinstance(doc["date"], datetime) else doc["date"],
+        prize=doc.get("prize"),
+        prize_image=doc.get("prize_image_base64"),
+        max_participants=doc.get("max_participants"),
+        participants_count=len(participants),
+        bw_reward=doc.get("bw_reward", 50),
+        created_at=doc["created_at"].isoformat() if isinstance(doc["created_at"], datetime) else doc["created_at"],
+        expires_at=doc["expires_at"].isoformat() if isinstance(doc["expires_at"], datetime) else doc["expires_at"],
+        status=doc.get("status", "active"),
+        raffle_done=bool(doc.get("raffle_done")),
+        raffle_winner_id=doc.get("raffle_winner_id"),
+        is_participant=current_user_id in participants if current_user_id else False,
+        is_owner=current_user_id == doc.get("company_id") if current_user_id else False,
+        event_type=doc.get("event_type", "private"),
+        radius_km=doc.get("radius_km", 1.0),
+        checkins_count=len(checkins),
+        exhibitors_count=len(exhibitors),
+        distance_km=doc.get("distance_km"),
+    )
+
+
+# ==============================
+# JOIN EVENT (participate with BW reward)
+# ==============================
 # END — EVENTOS PRESENCIAIS
 # ==============================
 

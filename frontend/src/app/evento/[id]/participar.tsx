@@ -117,9 +117,12 @@ export default function ParticiparEventoScreen() {
   };
 
   const submit = useCallback(async () => {
-    if (!inviteCode) {
-      Alert.alert("Código de convite", "Precisas do código de convite do organizador.");
-      return;
+    // Se evento público, o código é opcional
+    if (event?.event_type !== "public") {
+      if (!inviteCode) {
+        Alert.alert("Código de convite", "Precisas do código de convite do organizador.");
+        return;
+      }
     }
     if (!imageBase64) {
       Alert.alert("Faltou a imagem", "Seleciona uma imagem para o teu anúncio.");

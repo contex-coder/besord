@@ -143,6 +143,13 @@ export default function AdminScreen() {
           <Ionicons name="pricetags" size={16} color={colors.text} />
           <Text style={styles.tiersBtnText}>PREÇOS</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/business/evento/novo")}
+          style={styles.tiersBtn}
+        >
+          <Ionicons name="add-circle" size={16} color={colors.text} />
+          <Text style={styles.tiersBtnText}>CRIAR EVENTO</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ─── Tabs ─── */}

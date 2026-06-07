@@ -443,6 +443,32 @@ export default function EventDetailScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Empresa: Quero anunciar aqui (evento público ativo e não sou owner) */}
+          {!isOwner && event?.event_type === "public" && event?.status === "active" && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: colors.neutral }]}
+              onPress={() => {
+                // Ir para o ecrã de participação — se tiver business profile
+                if (!user?.business_profile) {
+                  Alert.alert(
+                    "Precisas de um perfil de empresa",
+                    "Para anunciar em eventos, cria o teu perfil empresarial primeiro.",
+                    [
+                      { text: "Criar agora", onPress: () => router.push("/business/onboard") },
+                      { text: "Voltar", style: "cancel" },
+                    ]
+                  );
+                  return;
+                }
+                router.push(`/evento/${id}/participar`);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="megaphone" size={20} color={colors.text} />
+              <Text style={styles.actionBtnText}>📢 QUERO ANUNCIAR AQUI</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Owner: Sorteio */}
           {isOwner && !isExpired && event.prize && (
             <TouchableOpacity
