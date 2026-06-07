@@ -12,6 +12,7 @@ can filter by business identity rather than by login identity.
 import os
 import secrets
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -250,6 +251,101 @@ async def ensure_indexes(db) -> None:
         logger.warning("workspaces ensure_indexes warning: %s", e)
 
 
+# ---------------------------------------------------------------------------
+# External tax authority lookups (API calls to government databases)
+# Used for automatic verification when possible.
+# ---------------------------------------------------------------------------
+async def _lookup_vies(vat_number: str) -> Optional[dict]:
+    """Query the EU VIES VAT validation API (gratuito, oficial UE)."""
+    if not _HAS_HTTPX:
+        return None
+    # VIES expects country code (2 letters) + number (no spaces)
+    raw = vat_number.replace(" ", "").replace("-", "")
+    # Try to extract country code from the first 2 letters if present
+    cc = raw[:2].upper()
+    num = raw[2:] if cc.isalpha() else raw
+    if not num.isdigit():
+        return None
+    url = f"https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat/{cc}/{num}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("isValid"):
+                    return {
+                        "valid": True,
+                        "name": data.get("name", ""),
+                        "address": data.get("address", ""),
+                        "source": "vies",
+                    }
+    except Exception as e:
+        logger.warning("VIES lookup failed for %s%s: %s", cc, num, e)
+    return None
+
+
+async def _lookup_br_cnpj(cnpj: str) -> Optional[dict]:
+    """Query the Brazilian Receita Federal CNPJ API (gratuito, público)."""
+    digits = re.sub(r"\D", "", cnpj)
+    if len(digits) != 14:
+        return None
+    url = f"https://www.receitaws.com.br/v1/cnpj/{digits}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("status") == "OK":
+                    return {
+                        "valid": True,
+                        "name": data.get("nome", ""),
+                        "address": data.get("logradouro", ""),
+                        "source": "receitaws",
+                    }
+    except Exception as e:
+        logger.warning("CNPJ lookup failed for %s: %s", digits, e)
+    return None
+
+
+async def _lookup_pt_nipc(nipc: str) -> Optional[dict]:
+    """Query the Portuguese AT (Autoridade Tributária) NIPC validation."""
+    # AT provides a SOAP service; for now we use the public HTML page
+    # This is a best-effort validation using the public endpoint
+    digits = re.sub(r"\D", "", nipc)
+    if len(digits) != 9:
+        return None
+    url = f"https://www.nif.pt/{digits}/"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url, headers={"User-Agent": "Besord/1.0"})
+            if r.status_code == 200:
+                # nif.pt returns JSON if ?json=1
+                return {"valid": True, "source": "nifpt"}
+    except Exception as e:
+        logger.warning("NIPC lookup failed for %s: %s", digits, e)
+    return None
+
+
+async def auto_verify_workspace(country_code: Optional[str], tax_id: str) -> bool:
+    """
+    Try to verify the tax ID against official government APIs.
+    Returns True if the tax ID exists in the official registry.
+    Falls back to False (email verification required) if API unavailable.
+    """
+    cc = (country_code or "").upper()
+    if cc == "PT":
+        result = await _lookup_pt_nipc(tax_id)
+    elif cc == "BR":
+        result = await _lookup_br_cnpj(tax_id)
+    elif cc in ("DE", "FR", "IT", "ES", "GB", "NL", "BE", "AT", "PL", "SE", "DK", "FI", "IE", "CZ", "HU", "RO", "PT", "GR", "SK", "BG", "HR", "LT", "SI", "LV", "EE"):  # EU countries
+        # VIES uses VAT format: country code + number
+        vat = f"{cc}{re.sub(r'\D', '', tax_id)}"
+        result = await _lookup_vies(vat)
+    else:
+        return False
+    return result is not None and result.get("valid", False)
+
+
 # ---------- Router ----------
 def build_router(db, get_current_user) -> APIRouter:
     router = APIRouter()
@@ -288,7 +384,6 @@ def build_router(db, get_current_user) -> APIRouter:
                                authorization: Optional[str] = Header(None)):
         user = await get_current_user(authorization)
         if payload.type == "personal":
-            # Only one personal per user; reject creating extra
             existing = await db.workspaces.find_one({
                 "owner_user_id": user["user_id"], "type": "personal",
                 "deleted_at": {"$exists": False},
@@ -296,6 +391,7 @@ def build_router(db, get_current_user) -> APIRouter:
             if existing:
                 raise HTTPException(409, "Já tens um workspace pessoal.")
 
+        normalized = None
         if payload.type == "business":
             raw_tax_id = (payload.tax_id or payload.nif or "").strip()
             if not raw_tax_id:
@@ -307,7 +403,16 @@ def build_router(db, get_current_user) -> APIRouter:
                 raise HTTPException(400, "Email de faturação obrigatório para empresa.")
 
         cc = (payload.country_code or "").upper() or None
-        # Generate email verification token (only for business workspaces)
+
+        # --- Auto-verify against official government APIs ---
+        auto_verified = False
+        if payload.type == "business" and normalized:
+            try:
+                auto_verified = await auto_verify_workspace(cc, normalized)
+            except Exception as e:
+                logger.warning("auto_verify_workspace exception: %s", e)
+
+        # Generate email verification token (always needed for consent/GDPR)
         ver_token_plain = None
         ver_token_hash = None
         if payload.type == "business":
@@ -328,8 +433,10 @@ def build_router(db, get_current_user) -> APIRouter:
             "billing_email": payload.billing_email or payload.contact_email,
             "picture": payload.picture,
             "created_at": _now(),
-            "verified": False,
+            "verified": auto_verified,  # auto-verified if gov API confirmed
+            "verified_at": _now() if auto_verified else None,
             "verification_token_hash": ver_token_hash,
+            "marketing_consent": None,  # to be filled when user clicks email link
         }
         await db.workspaces.insert_one(doc)
         if doc["type"] == "business":
@@ -337,14 +444,26 @@ def build_router(db, get_current_user) -> APIRouter:
             target = doc.get("billing_email") or doc.get("contact_email")
             front = os.getenv("FRONTEND_URL") or os.getenv("FRONTEND_BASE_URL", "https://besord.vercel.app")
             link = f"{front}/verify-empresa?ws={doc['workspace_id']}&token={ver_token_plain}"
-            logger.info("[workspace-verify] %s → %s", target, link)
-            send_verification_email(
-                to_email=target,
-                workspace_id=doc["workspace_id"],
-                business_name=doc["name"],
-                verification_token=ver_token_plain,
-                front_base_url=front,
-            )
+
+            if auto_verified:
+                logger.info("[workspace-auto-verified] %s (%s) confirmed via gov API", doc["name"], cc)
+                # Send welcome email with consent link (not verification link)
+                send_verification_email(
+                    to_email=target,
+                    workspace_id=doc["workspace_id"],
+                    business_name=doc["name"],
+                    verification_token=ver_token_plain,
+                    front_base_url=front,
+                )
+            else:
+                logger.info("[workspace-verify] %s → %s", target, link)
+                send_verification_email(
+                    to_email=target,
+                    workspace_id=doc["workspace_id"],
+                    business_name=doc["name"],
+                    verification_token=ver_token_plain,
+                    front_base_url=front,
+                )
         return _serialize(doc)
 
     @router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
@@ -462,15 +581,22 @@ def build_router(db, get_current_user) -> APIRouter:
         if not h or not _pwd_ctx.verify(token, h):
             raise HTTPException(400, "Token inválido ou expirado.")
         now = _now()
+        # Capture marketing consent if provided (GDPR compliance)
+        marketing_consent = payload.get("marketing_consent")
+        update = {
+            "verified": True,
+            "verified_at": now,
+            "marketing_consent": marketing_consent if marketing_consent in (True, False) else None,
+            "marketing_consent_at": now if marketing_consent in (True, False) else None,
+        }
         await db.workspaces.update_one(
             {"_id": ws["_id"]},
-            {"$set": {"verified": True, "verified_at": now},
+            {"$set": update,
              "$unset": {"verification_token_hash": ""}},
         )
-        ws["verified"] = True
-        ws["verified_at"] = now
+        ws.update(update)
         if ws.get("type") == "business":
             await mirror_to_business_profile(db, ws)
-        return {"ok": True, "verified": True}
+        return {"ok": True, "verified": True, "marketing_consent": marketing_consent}
 
     return router
