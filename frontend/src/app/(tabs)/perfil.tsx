@@ -180,6 +180,23 @@ export default function PerfilScreen() {
               );
             })()}
 
+            {/* ──────────── MEUS EVENTOS ──────────── */}
+            <Text style={styles.sectionHeader}>📍  MEUS EVENTOS</Text>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/meus-eventos")}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIconWrap}>
+                <Ionicons name="location" size={20} color={colors.text} />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>EVENTOS VISITADOS</Text>
+                <Text style={styles.menuSub}>Eventos onde fizeste check-in e os anúncios que viste</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+
             {/* ──────────── ESPAÇO EMPRESA ──────────── */}
             <Text style={styles.sectionHeader}>🏢  ESPAÇO EMPRESA</Text>
             {user.has_business ? (

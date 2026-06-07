@@ -639,7 +639,7 @@ async def list_posts(
         if vote_posts:
             match["post_id"] = {"$in": vote_posts}
 
-    # Include posts from events where user checked in (feed misto)
+    # Include posts from events where user checked in AND voted (feed misto)
     if current_user_id:
         events_checkin = await db.events.find(
             {"checkins": current_user_id},
@@ -647,21 +647,23 @@ async def list_posts(
         ).to_list(length=50)
         event_ids = [e["event_id"] for e in events_checkin]
         if event_ids:
+            # Only show event posts that the user has also voted on
+            voted_post_ids = await db.votes.distinct("post_id", {"user_id": current_user_id})
             # Add event posts to the match query
             existing_post_ids = match.get("post_id", {})
             if isinstance(existing_post_ids, dict) and "$in" in existing_post_ids:
-                # Combine scope filter + event posts
+                # Combine scope filter + event posts (with vote requirement)
                 match["$or"] = [
                     {"post_id": {"$in": existing_post_ids["$in"]}},
-                    {"event_id": {"$in": event_ids}},
+                    {"event_id": {"$in": event_ids}, "post_id": {"$in": voted_post_ids}},
                 ]
                 del match["post_id"]
             else:
-                match["event_id"] = {"$in": event_ids}
-                # Also show normal posts (not event posts)
-                existing_or = match.get("$or", [])
-                existing_or.append({"event_id": {"$exists": False}})
-                match["$or"] = existing_or
+                # Show normal posts + event posts where user voted
+                match["$or"] = [
+                    {"event_id": {"$exists": False}},
+                    {"event_id": {"$in": event_ids}, "post_id": {"$in": voted_post_ids}},
+                ]
 
     # Sort
     if sort == "trending":
@@ -1100,7 +1102,7 @@ async def stripe_webhook(request: Request):
         event_type = metadata.get("type")
 
         # --- Campaign payment ---
-        if event_type == "campaign":
+        elif event_type == "campaign":
             campaign_id = metadata.get("campaign_id")
         if campaign_id:
             now = datetime.now(timezone.utc)
@@ -1937,10 +1939,10 @@ async def draw_post_prize(post_id: str, authorization: Optional[str] = Header(No
     if post.get("prize_drawn"):
         raise HTTPException(status_code=409, detail="Sorteio já foi realizado.")
 
-    # Quem votou APROVO concorre
-    votes = await db.votes.find({"post_id": post_id, "vote": "aprovo"}, {"_id": 0, "user_id": 1}).to_list(length=1000)
+    # Todos os votantes (APROVO + DESAPROVO) concorrem — o sorteio é secundário
+    votes = await db.votes.find({"post_id": post_id}, {"_id": 0, "user_id": 1}).to_list(length=1000)
     if len(votes) < 1:
-        raise HTTPException(status_code=400, detail="Ninguém votou APROVO ainda. Não há participantes no sorteio.")
+        raise HTTPException(status_code=400, detail="Ninguém votou ainda. Não há participantes no sorteio.")
 
     winner_id = random.choice([v["user_id"] for v in votes])
 
@@ -2206,6 +2208,52 @@ async def my_checkedin_events(authorization: Optional[str] = Header(None)):
     cursor = db.events.find({"checkins": user["user_id"]}, {"_id": 0}).sort("date", -1)
     docs = await cursor.to_list(length=100)
     return [serialize_event(d, user["user_id"]) for d in docs]
+
+
+@api_router.get("/me/event-posts-voted")
+async def my_event_posts_voted(authorization: Optional[str] = Header(None)):
+    """
+    Devolve os posts de eventos onde o user fez check-in E votou.
+    Útil para o ecrã "Meus Eventos" com os anúncios que votei.
+    """
+    user = await get_current_user(authorization)
+    
+    # Eventos onde fez check-in
+    events_checkin = await db.events.find(
+        {"checkins": user["user_id"]},
+        {"_id": 0, "event_id": 1, "title": 1, "image_base64": 1, "date": 1}
+    ).to_list(length=50)
+    event_ids = [e["event_id"] for e in events_checkin]
+    
+    if not event_ids:
+        return {"eventos": [], "posts": []}
+    
+    # Posts desses eventos
+    event_posts = await db.posts.find(
+        {"event_id": {"$in": event_ids}, "hidden": {"$ne": True}},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(length=200)
+    
+    # Ver quais o user votou
+    voted_post_ids = set()
+    if event_posts:
+        votes = await db.votes.find(
+            {"user_id": user["user_id"], "post_id": {"$in": [p["post_id"] for p in event_posts]}},
+            {"_id": 0, "post_id": 1}
+        ).to_list(length=200)
+        voted_post_ids = {v["post_id"] for v in votes}
+    
+    # Serializar posts com info de voto
+    result_posts = []
+    for p in event_posts:
+        serialized = await serialize_post(p, user["user_id"])
+        result_posts.append(serialized)
+    
+    return {
+        "eventos": [serialize_event(e, user["user_id"]) for e in events_checkin],
+        "posts": result_posts,
+        "voted_post_ids": list(voted_post_ids),
+    }
 
 
 # ==============================

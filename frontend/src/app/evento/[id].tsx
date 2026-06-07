@@ -45,7 +45,7 @@ function formatTime(iso: string): string {
 }
 
 export default function EventDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, anuncio } = useLocalSearchParams<{ id: string; anuncio?: string }>();
   const { apiFetch, user } = useAuth();
   const router = useRouter();
 
@@ -53,6 +53,15 @@ export default function EventDetailScreen() {
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // Detetar se veio do Stripe (pagamento concluído)
+  useEffect(() => {
+    if (anuncio === "sucesso") {
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 8000);
+    }
+  }, [anuncio]);
 
   const isOwner = user?.user_id === event?.company_id;
   const isAdmin = user?.is_admin;
@@ -300,6 +309,20 @@ export default function EventDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} onScrollEndDrag={onRefresh}>
+        {/* ─── Banner de Sucesso (pós-pagamento) ─── */}
+        {showSuccess && (
+          <View style={styles.successBanner}>
+            <Ionicons name="checkmark-circle" size={24} color={colors.text} />
+            <View>
+              <Text style={styles.successTitle}>✅ PAGAMENTO CONCLUÍDO!</Text>
+              <Text style={styles.successSub}>O teu anúncio está ativo neste evento. Vai aparecer na secção abaixo.</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowSuccess(false)}>
+              <Ionicons name="close" size={20} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* ─── Imagem ─── */}
         <View style={styles.imageWrap}>
           <Image
@@ -571,6 +594,19 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
+
+  // ─── Success Banner ───
+  successBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    backgroundColor: colors.aprovo,
+    borderBottomWidth: 4,
+    borderBottomColor: colors.border,
+  },
+  successTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 0.5, color: colors.text },
+  successSub: { fontSize: 10, fontWeight: "600", color: colors.text, marginTop: 2 },
 
   scrollContent: { paddingBottom: 40 },
 
