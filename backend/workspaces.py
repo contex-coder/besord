@@ -335,7 +335,7 @@ def build_router(db, get_current_user) -> APIRouter:
         if doc["type"] == "business":
             await mirror_to_business_profile(db, doc)
             target = doc.get("billing_email") or doc.get("contact_email")
-            front = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
+            front = os.getenv("FRONTEND_URL") or os.getenv("FRONTEND_BASE_URL", "https://besord.vercel.app")
             link = f"{front}/verify-empresa?ws={doc['workspace_id']}&token={ver_token_plain}"
             logger.info("[workspace-verify] %s → %s", target, link)
             send_verification_email(
@@ -435,7 +435,7 @@ def build_router(db, get_current_user) -> APIRouter:
                        "verification_resent_at": _now()}},
         )
         target = ws.get("billing_email") or ws.get("contact_email")
-        front = os.getenv("FRONTEND_BASE_URL", "https://besord.eu")
+        front = os.getenv("FRONTEND_URL") or os.getenv("FRONTEND_BASE_URL", "https://besord.vercel.app")
         link = f"{front}/verify-empresa?ws={workspace_id}&token={plain}"
         logger.info("[workspace-verify-resend] %s → %s", target, link)
         send_verification_email(
