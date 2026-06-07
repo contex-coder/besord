@@ -265,7 +265,7 @@ def user_out(user: dict) -> UserOut:
         email=user["email"],
         name=user["name"],
         picture=user.get("picture"),
-        has_business=bool(user.get("business_profile")),
+        has_business=bool(user.get("business_profile")) or False,  # workspace check below
         is_admin=is_admin,
         age_confirmed=bool(user.get("age_confirmed_at")),
         birth_year=user.get("birth_year"),
@@ -491,7 +491,14 @@ async def auth_apple(payload: AppleSignInRequest):
 @api_router.get("/auth/me", response_model=UserOut)
 async def auth_me(authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    return user_out(user)
+    # Dynamic has_business: check if there's an active business workspace
+    biz_ws = await db.workspaces.find_one(
+        {"owner_user_id": user["user_id"], "type": "business", "deleted_at": {"$exists": False}},
+    )
+    has_biz = bool(biz_ws)
+    out = user_out(user)
+    out.has_business = has_biz
+    return out
 
 
 class AgeConfirmRequest(BaseModel):
@@ -912,8 +919,14 @@ async def get_campaign(campaign_id: str, authorization: Optional[str] = Header(N
 @api_router.post("/campaigns")
 async def create_campaign(payload: CampaignCreate, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    if not user.get("business_profile"):
-        raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa primeiro.")
+    # Verifica se o utilizador tem um workspace business (não apagado) em vez do legacy business_profile
+    biz_ws = await db.workspaces.find_one(
+        {"owner_user_id": user["user_id"], "type": "business", "deleted_at": {"$exists": False}},
+    )
+    if not biz_ws:
+        raise HTTPException(status_code=403, detail="Precisas de criar uma empresa primeiro em /workspaces.")
+    if not biz_ws.get("verified"):
+        raise HTTPException(status_code=403, detail="A empresa precisa de ter o email verificado. Verifica a tua caixa de entrada.")
 
     word = normalize_word(payload.word)
     if not WORD_RE.match(word):

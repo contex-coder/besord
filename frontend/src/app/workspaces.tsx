@@ -94,20 +94,25 @@ export default function WorkspacesScreen() {
       Alert.alert("Não permitido", "O workspace pessoal não pode ser apagado.");
       return;
     }
-    Alert.alert(
-      "Apagar workspace?",
-      `${ws.name} será arquivado. As campanhas anteriores permanecem visíveis no histórico.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Apagar", style: "destructive",
-          onPress: async () => {
-            const r = await apiFetch(`/api/workspaces/${ws.workspace_id}`, { method: "DELETE" });
-            if (r.ok) load();
-          },
-        },
-      ]
-    );
+
+    const doDelete = async () => {
+      const r = await apiFetch(`/api/workspaces/${ws.workspace_id}`, { method: "DELETE" });
+      if (r.ok) load();
+    };
+
+    const msg = `${ws.name} será arquivado. As campanhas anteriores permanecem visíveis no histórico.`;
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (window.confirm(`Apagar "${ws.name}"?\n\n${msg}`)) {
+        doDelete();
+      }
+      return;
+    }
+
+    Alert.alert("Apagar workspace?", msg, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Apagar", style: "destructive", onPress: doDelete },
+    ]);
   };
 
   const onCreate = async () => {
