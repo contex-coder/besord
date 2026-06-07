@@ -1119,7 +1119,7 @@ async def stripe_webhook(request: Request):
         event_type = metadata.get("type")
 
         # --- Campaign payment ---
-        elif event_type == "campaign":
+        if event_type == "campaign":
             campaign_id = metadata.get("campaign_id")
         if campaign_id:
             now = datetime.now(timezone.utc)
