@@ -1101,20 +1101,21 @@ async def cancel_campaign(campaign_id: str, authorization: Optional[str] = Heade
 # ==============================
 @api_router.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
-    payload_body = await request.body()
-    sig_header = request.headers.get("stripe-signature")
+    try:
+        payload_body = await request.body()
+        sig_header = request.headers.get("stripe-signature")
 
-    if STRIPE_WEBHOOK_SECRET:
-        try:
-            event = stripe.Webhook.construct_event(payload_body, sig_header, STRIPE_WEBHOOK_SECRET)
-        except stripe.error.SignatureVerificationError:
-            raise HTTPException(status_code=400, detail="Invalid signature")
-    else:
-        data = json.loads(payload_body)
-        event = {"type": data.get("type", ""), "data": data.get("data", {})}
+        if STRIPE_WEBHOOK_SECRET:
+            try:
+                event = stripe.Webhook.construct_event(payload_body, sig_header, STRIPE_WEBHOOK_SECRET)
+            except stripe.error.SignatureVerificationError:
+                raise HTTPException(status_code=400, detail="Invalid signature")
+        else:
+            data = json.loads(payload_body)
+            event = {"type": data.get("type", ""), "data": data.get("data", {})}
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
+        if event["type"] == "checkout.session.completed":
+            session = event["data"]["object"]
         metadata = session.get("metadata", {})
         event_type = metadata.get("type")
 
@@ -1217,6 +1218,11 @@ async def stripe_webhook(request: Request):
         await db.invoices.insert_one(invoice_doc)
 
     return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[stripe_webhook] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 # ==============================
 # NOTIFICATIONS
 # ==============================
