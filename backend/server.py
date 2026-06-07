@@ -2092,6 +2092,9 @@ async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
 # END — EVENTOS PRESENCIAIS
 # ==============================
 
+# Mount sub‑routers from other modules
+app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
+app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
 app.include_router(api_router)
 
 
