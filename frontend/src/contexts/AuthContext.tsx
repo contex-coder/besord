@@ -1,8 +1,8 @@
 import * as React from "react";
 import { Platform } from "react-native";
-import * * as Linking from "expo-linking";
-import * * as WebBrowser from "expo-web-browser";
-import * * as AppleAuthentication from "expo-apple-authentication";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { storage } from "@/src/utils/storage";
 
 // --- CONSTANTS ---
