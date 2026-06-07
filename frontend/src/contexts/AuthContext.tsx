@@ -25,10 +25,13 @@ type User = {
   picture?: string;
   is_admin?: boolean;
   bw_balance?: number;
+  bw_total_earned?: number;
   has_business?: boolean;
+  business_profile?: boolean;
+  age_confirmed_at?: string | null;
 };
 
-type AuthError = {
+export type AuthError = {
   code: "timeout" | "invalid_token" | "network_error" | "oauth_error" | "user_cancelled" | "unknown";
   message: string;
 };

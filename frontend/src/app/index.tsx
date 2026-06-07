@@ -49,7 +49,7 @@ const MASCOT_SIZE = Math.min(SCREEN_W * 0.7, 320);
 
 const AuthError = ({ error, onClear }: { error: AuthErrorType, onClear: () => void }) => (
   <View style={styles.errorContainer}>
-      <Ionicons name="alert-circle-outline" size={48} color={colors.reprovo} />
+      <Ionicons name="alert-circle-outline" size={48} color={colors.desaprovo} />
       <Text style={styles.errorTitle}>Authentication Failed</Text>
       <Text style={styles.errorMessage}>{error.message}</Text>
       <TouchableOpacity style={styles.errorButton} onPress={onClear}>
@@ -65,7 +65,7 @@ export default function Landing() {
 
   useEffect(() => {
     if (!loading && user) {
-      if (!user.age_confirmed) {
+      if (!user.age_confirmed_at) {
         router.replace("/age-gate");
       } else {
         // --- NOVO: Redirecionar para onboarding que pergunta qual tipo de conta ---

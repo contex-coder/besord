@@ -51,7 +51,7 @@ export default function PerfilScreen() {
 
   // Redirect to age-gate if not confirmed (e.g. existing sessions before fix)
   useEffect(() => {
-    if (user && !user.age_confirmed) {
+    if (user && !user.age_confirmed_at) {
       router.replace("/age-gate");
     }
   }, [user, router]);
@@ -350,6 +350,31 @@ const styles = StyleSheet.create({
   advertiseBtn: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.neutral, padding: 14, ...brutalShadow },
   advertiseBtnLocked: { opacity: 0.55, backgroundColor: colors.bg, borderStyle: "dashed" },
   sectionHeader: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.textSecondary, marginTop: 16, marginBottom: 4 },
+
+  // ─── Menu Item (como "EVENTOS VISITADOS") ───
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    ...brutalShadow,
+  },
+  menuIconWrap: {
+    width: 40,
+    height: 40,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.neutral,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuContent: { flex: 1 },
+  menuTitle: { fontSize: 14, fontWeight: "900", letterSpacing: 0.5, color: colors.text },
+  menuSub: { fontSize: 11, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
+
   advertiseTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 1, color: colors.text },
   advertiseSub: { fontSize: 11, fontWeight: "700", color: colors.text, marginTop: 2 },
 

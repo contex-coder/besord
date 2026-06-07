@@ -14,7 +14,7 @@ export default function AccountTypeScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const prev = await storage.getItem("besord_account_type");
+        const prev = await storage.getItem("besord_account_type", null);
         if (prev === "personal") {
           router.replace("/(tabs)/feed");
           return;

@@ -157,5 +157,4 @@ const styles = StyleSheet.create({
   kpiLabel: { fontSize: 8, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary, marginTop: 2 },
   statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
   statusChip: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
-  emptyBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
 });

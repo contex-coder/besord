@@ -1,3 +1,18 @@
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+
+import { useAuth } from "@/src/contexts/AuthContext";
+import { colors, brutalShadow } from "@/src/theme";
+
 export default function VerifyEmpresaScreen() {
   const router = useRouter();
   const { ws, token } = useLocalSearchParams<{ ws: string; token: string }>();
