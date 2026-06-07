@@ -1342,6 +1342,7 @@ class EventOut(BaseModel):
     location: dict
     date: str
     prize: Optional[str] = None
+    prize_image: Optional[str] = None
     max_participants: Optional[int] = None
     participants_count: int
     bw_reward: int
@@ -1368,6 +1369,7 @@ class ExhibitorJoinRequest(BaseModel):
     word: str
     image_base64: str
     prize: Optional[str] = None
+    prize_image_base64: Optional[str] = None
 
 
 class PostReportOut(BaseModel):
@@ -1386,6 +1388,7 @@ class PostReportOut(BaseModel):
     total_checkins_event: int = 0
     total_exhibitors_event: int = 0
     prize: Optional[str] = None
+    prize_image: Optional[str] = None
     prize_drawn: bool = False
     created_at: str
 
@@ -1611,6 +1614,7 @@ async def join_as_exhibitor(event_id: str, payload: ExhibitorJoinRequest, author
             "exhibitor_id": exhibitor_id,
             "exhibitor_name": user.get("business_profile", {}).get("company_name", user.get("name", "")),
             "prize": (payload.prize or "").strip() or None,
+            "prize_image_base64": payload.prize_image_base64,
             "prize_drawn": False,
             "hidden": False,
             "status": "pending_payment",
@@ -1883,6 +1887,7 @@ async def get_post_report(post_id: str, authorization: Optional[str] = Header(No
         total_checkins_event=event_info.get("total_checkins_event", 0),
         total_exhibitors_event=event_info.get("total_exhibitors_event", 0),
         prize=post.get("prize"),
+        prize_image=post.get("prize_image_base64"),
         prize_drawn=bool(post.get("prize_drawn")),
         created_at=post["created_at"].isoformat() if isinstance(post["created_at"], datetime) else str(post["created_at"]),
     )

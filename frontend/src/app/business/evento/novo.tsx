@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,7 +19,8 @@ import { useRouter } from "expo-router";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
-import EventMap from "@/src/components/EventMap";
+import ModernDatePicker from "@/src/components/ModernDatePicker";
+import EventMapPicker from "@/src/components/EventMapPicker";
 
 type EventType = "private" | "public";
 
@@ -26,104 +28,109 @@ export default function CriarEventoScreen() {
   const { apiFetch, user } = useAuth();
   const router = useRouter();
 
+  // Imagem do evento
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+
+  // Dados básicos
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [eventType, setEventType] = useState<EventType>("private");
+
+  // Data
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+      // Localização
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [countryCode, setCountryCode] = useState("");
-  const [lat, setLat] = useState("");
-  const [lon, setLon] = useState("");
-  const [radiusKm, setRadiusKm] = useState("1.0");
-  const [prize, setPrize] = useState("");
-  const [maxParticipants, setMaxParticipants] = useState("");
-  const [bwReward, setBwReward] = useState("50");
-  const [submitting, setSubmitting] = useState(false);
+  const [lat, setLat] = useState<number>(0);
+  const [lon, setLon] = useState<number>(0);
+  const [hasLocation, setHasLocation] = useState(false);
 
+  // Raio (km) — max 2km como pedido
+  const [radiusKm, setRadiusKm] = useState(1.0);
+
+  // Estado
+  const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState<"basic" | "location" | "review">("basic");
+
+  // Animações
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const animateStep = (next: "basic" | "location" | "review") => {
+    Animated.sequence([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+    setStep(next);
+  };
+
+  // Image picker
   const pickImage = useCallback(async () => {
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-      input.onchange = async (e: any) => {
-        const file = e.target?.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          setImageBase64(result);
+    setImageLoading(true);
+    try {
+          if (Platform.OS === "web") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.onchange = async (e: any) => {
+          const file = e.target?.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => setImageBase64(reader.result as string);
+          reader.readAsDataURL(file);
         };
-        reader.readAsDataURL(file);
-      };
-      input.click();
-      return;
-    }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permissão necessária", "Precisamos de acesso à galeria.");
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
-      base64: true,
-      allowsEditing: true,
-      aspect: [16, 9],
-    });
-    if (!res.canceled && res.assets[0]) {
-      const a = res.assets[0];
-      if (a.base64) {
-        const mime = a.mimeType || "image/jpeg";
-        setImageBase64(`data:${mime};base64,${a.base64}`);
-      } else if (a.uri) {
-        try {
+        input.click();
+        return;
+      }
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permissão", "Precisamos de acesso à galeria.");
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        base64: true,
+        allowsEditing: true,
+        aspect: [16, 9],
+      });
+      if (!res.canceled && res.assets[0]) {
+        const a = res.assets[0];
+        if (a.base64) {
+          setImageBase64(`data:${a.mimeType || "image/jpeg"};base64,${a.base64}`);
+        } else if (a.uri) {
           const resp = await fetch(a.uri);
           const blob = await resp.blob();
           const reader = new FileReader();
           reader.onload = () => setImageBase64(reader.result as string);
           reader.readAsDataURL(blob);
-        } catch {
-          setImageBase64(a.uri);
         }
       }
+    } finally {
+      setImageLoading(false);
     }
   }, []);
 
+  const handleLocationChange = useCallback((loc: { lat: number; lon: number; address: string; city: string; countryCode: string }) => {
+    setLat(loc.lat);
+    setLon(loc.lon);
+    setAddress(loc.address);
+    setCity(loc.city);
+    setCountryCode(loc.countryCode);
+    setHasLocation(true);
+  }, []);
+
   const submit = useCallback(async () => {
-    // Validações
-    if (!imageBase64) {
-      Alert.alert("Faltou a imagem", "Seleciona uma imagem para o evento.");
-      return;
-    }
-    if (!title.trim()) {
-      Alert.alert("Faltou o título", "Dá um nome ao teu evento.");
-      return;
-    }
-    if (!date.trim()) {
-      Alert.alert("Faltou a data", "Indica a data do evento (AAAA-MM-DD).");
-      return;
-    }
-    if (!address.trim() && (!lat.trim() || !lon.trim())) {
-      Alert.alert("Faltou a localização", "Indica o endereço ou coordenadas.");
-      return;
-    }
-    if (!time.trim()) {
-      Alert.alert("Faltou a hora", "Indica a hora do evento (HH:MM).");
-      return;
-    }
+    if (!imageBase64) { Alert.alert("Imagem", "Seleciona uma imagem para o evento."); return; }
+    if (!title.trim()) { Alert.alert("Título", "Dá um nome ao evento."); return; }
+    if (!date) { Alert.alert("Data", "Seleciona a data do evento."); return; }
+    if (!time.trim()) { Alert.alert("Hora", "Indica a hora do evento."); return; }
+    if (!hasLocation) { Alert.alert("Localização", "Indica onde será o evento."); return; }
 
-    // Montar data ISO
     const isoDate = `${date}T${time}:00`;
-
-    // Validar raio
-    const radius = parseFloat(radiusKm) || 1.0;
-    if (radius < 0.1 || radius > 10) {
-      Alert.alert("Raio inválido", "O raio deve ser entre 0.1 e 10 km.");
-      return;
-    }
+    const radius = Math.max(0.1, Math.min(2.0, radiusKm));
 
     setSubmitting(true);
     try {
@@ -134,24 +141,11 @@ export default function CriarEventoScreen() {
         event_type: eventType,
         radius_km: radius,
         date: isoDate,
-        bw_reward: parseInt(bwReward) || 50,
+        lat, lon,
+        address: address.trim(),
+        city: city.trim(),
+        country_code: countryCode,
       };
-
-      if (prize.trim()) payload.prize = prize.trim();
-      if (maxParticipants.trim()) payload.max_participants = parseInt(maxParticipants) || 100;
-
-      // Localização
-      if (lat.trim() && lon.trim()) {
-        payload.lat = parseFloat(lat);
-        payload.lon = parseFloat(lon);
-        payload.address = address.trim();
-        payload.city = city.trim();
-        payload.country_code = countryCode.trim().toUpperCase();
-      } else {
-        payload.address = address.trim();
-        payload.city = city.trim();
-        payload.country_code = countryCode.trim().toUpperCase();
-      }
 
       const r = await apiFetch("/api/events", {
         method: "POST",
@@ -161,264 +155,310 @@ export default function CriarEventoScreen() {
       if (r.ok) {
         const data = await r.json();
         if (data.checkout_url) {
-          // Stripe Checkout (privado)
           if (Platform.OS === "web") {
             window.open(data.checkout_url, "_self");
           } else {
-            // Mobile: abrir no browser
             const { Linking } = require("react-native");
             await Linking.openURL(data.checkout_url);
           }
-          Alert.alert(
-            "Evento criado!",
-            eventType === "public"
-              ? "O evento público foi enviado para aprovação do admin."
-              : "Evento criado! Conclui o pagamento no Stripe para ativar.",
-            [{ text: "OK", onPress: () => router.back() }]
-          );
-        } else {
-          Alert.alert(
-            "Evento criado! 🎉",
-            eventType === "public"
-              ? "O evento público foi enviado para aprovação do admin. Serás notificado quando for aprovado."
-              : "Evento criado com sucesso!",
-            [{ text: "OK", onPress: () => router.back() }]
-          );
         }
+        Alert.alert(
+          "🎉 Evento criado!",
+          eventType === "public"
+            ? "O evento público foi enviado para aprovação. Serás notificado."
+            : "Evento criado! Conclui o pagamento para ativar.",
+          [{ text: "OK", onPress: () => router.back() }]
+  );
       } else {
         const err = await r.json().catch(() => ({}));
         Alert.alert("Erro", err.detail || "Falha ao criar evento.");
       }
     } catch (e: any) {
-      Alert.alert("Erro", e?.message || "Falha ao criar evento.");
+      Alert.alert("Erro", e?.message || "Falha ao criar.");
     } finally {
       setSubmitting(false);
     }
-  }, [imageBase64, title, description, eventType, date, time, address, city, countryCode, lat, lon, radiusKm, prize, maxParticipants, bwReward, apiFetch, router]);
+  }, [imageBase64, title, description, eventType, date, time, lat, lon, address, city, countryCode, hasLocation, radiusKm, apiFetch, router]);
+
+  const canGoNext = () => {
+    if (step === "basic") return !!imageBase64 && !!title && !!date && !!time;
+    if (step === "location") return hasLocation;
+    return true;
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Header com steps */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.text} />
+          <Ionicons name="arrow-back" size={20} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>CRIAR EVENTO</Text>
+        <Text style={styles.headerTitle}>NOVO EVENTO</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* ─── Imagem ─── */}
-        <TouchableOpacity
-          style={[styles.imagePicker, imageBase64 && styles.imagePickerFilled]}
-          onPress={pickImage}
-          activeOpacity={0.85}
-        >
-          {imageBase64 ? (
-            <Image source={{ uri: imageBase64 }} style={styles.previewImage} resizeMode="cover" />
-          ) : (
-            <View style={styles.pickerEmpty}>
-              <Ionicons name="cloud-upload-outline" size={48} color={colors.text} />
-              <Text style={styles.pickerEmptyTitle}>IMAGEM DO EVENTO</Text>
-              <Text style={styles.pickerEmptySub}>16:9 recomendado</Text>
+      {/* Progress bar com steps interativos */}
+      <View style={styles.progressRow}>
+        {["basic", "location", "review"].map((s, i) => (
+          <React.Fragment key={s}>
+            <TouchableOpacity
+              style={[
+                styles.stepDot,
+                step === s && styles.stepDotActive,
+                ["basic", "location", "review"].indexOf(step) >= i && styles.stepDotDone,
+              ]}
+              onPress={() => animateStep(s as any)}
+            >
+              <Text style={[
+                styles.stepDotText,
+                (step === s || ["basic", "location", "review"].indexOf(step) >= i) && styles.stepDotTextActive,
+              ]}>
+                {["basic", "location", "review"].indexOf(step) > i ? "✓" : i + 1}
+              </Text>
+            </TouchableOpacity>
+            {i < 2 && <View style={[styles.stepLine, ["basic", "location", "review"].indexOf(step) > i && styles.stepLineDone]} />}
+          </React.Fragment>
+        ))}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Animated.View style={{ opacity: fadeAnim }}>
+          {step === "basic" && (
+            <View style={styles.stepWrap}>
+              {/* ─── Imagem ─── */}
+              <Text style={styles.sectionTitle}>IMAGEM DO EVENTO</Text>
+              <TouchableOpacity
+                style={[styles.imagePicker, imageBase64 && styles.imagePickerFilled]}
+                onPress={pickImage}
+                activeOpacity={0.85}
+              >
+                {imageLoading ? (
+                  <ActivityIndicator size="large" color={colors.text} />
+                ) : imageBase64 ? (
+                  <>
+                    <Image source={{ uri: imageBase64 }} style={styles.previewImage} resizeMode="cover" />
+                    <View style={styles.imageOverlay}>
+                      <Ionicons name="camera" size={18} color="#fff" />
+                      <Text style={styles.imageOverlayText}>ALTERAR</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.pickerEmpty}>
+                    <View style={styles.pickerIconWrap}>
+                      <Ionicons name="camera" size={32} color={colors.text} />
+                    </View>
+                    <Text style={styles.pickerEmptyTitle}>FOTO DO EVENTO</Text>
+                    <Text style={styles.pickerEmptySub}>16:9 · Toca para selecionar</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* ─── Tipo ─── */}
+              <Text style={styles.sectionTitle}>TIPO</Text>
+              <View style={styles.typeRow}>
+                <TouchableOpacity
+                  style={[styles.typeBtn, eventType === "private" && styles.typeBtnActive]}
+                  onPress={() => setEventType("private")}
+                >
+                  <Ionicons name="lock-closed" size={18} color={eventType === "private" ? colors.textInverse : colors.text} />
+                  <Text style={[styles.typeBtnText, eventType === "private" && { color: colors.textInverse }]}>PRIVADO</Text>
+                  <Text style={[styles.typeBtnMeta, eventType === "private" && { color: colors.textInverse }]}>Só a tua empresa</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.typeBtn, eventType === "public" && styles.typeBtnActive]}
+                  onPress={() => setEventType("public")}
+                >
+                  <Ionicons name="globe" size={18} color={eventType === "public" ? colors.textInverse : colors.text} />
+                  <Text style={[styles.typeBtnText, eventType === "public" && { color: colors.textInverse }]}>PÚBLICO</Text>
+                  <Text style={[styles.typeBtnMeta, eventType === "public" && { color: colors.textInverse }]}>Várias empresas</Text>
+                </TouchableOpacity>
+              </View>
+              {eventType === "public" && (
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle" size={14} color={colors.text} />
+                  <Text style={styles.infoText}>
+                    Eventos públicos precisam de aprovação. Serás notificado assim que for validado.
+                  </Text>
+                </View>
+              )}
+
+              {/* ─── Título ─── */}
+              <Text style={styles.sectionTitle}>NOME DO EVENTO</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="ex: Feira de Lisboa 2026"
+                placeholderTextColor="#A1A1AA"
+                value={title}
+                onChangeText={setTitle}
+                autoCapitalize="sentences"
+                maxLength={80}
+              />
+
+              {/* ─── Descrição ─── */}
+              <Text style={styles.sectionTitle}>DESCRIÇÃO</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="O que vai acontecer no evento?"
+                placeholderTextColor="#A1A1AA"
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+              />
+
+              {/* ─── Data + Hora ─── */}
+              <Text style={styles.sectionTitle}>DATA DO EVENTO</Text>
+              <ModernDatePicker value={date} onChange={setDate} />
+
+              <View style={styles.hourRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>HORA</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="20:00"
+                    placeholderTextColor="#A1A1AA"
+                    value={time}
+                    onChangeText={(v) => {
+                      const nums = v.replace(/[^0-9]/g, "").slice(0, 4);
+                      if (nums.length <= 2) setTime(nums);
+                      else setTime(`${nums.slice(0, 2)}:${nums.slice(2, 4)}`);
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={5}
+                  />
+                </View>
+                <View style={styles.hourBadge}>
+                  <Text style={styles.hourBadgeText}>DURAÇÃO: 7 DIAS</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.nextBtn, !canGoNext() && styles.nextBtnDisabled]}
+                onPress={() => animateStep("location")}
+                disabled={!canGoNext()}
+              >
+                <Text style={styles.nextBtnText}>CONTINUAR → LOCALIZAÇÃO</Text>
+              </TouchableOpacity>
             </View>
           )}
-        </TouchableOpacity>
 
-        {/* ─── Tipo de Evento ─── */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>TIPO DE EVENTO</Text>
-          <View style={styles.typeRow}>
-            <TouchableOpacity
-              style={[styles.typeBtn, eventType === "private" && styles.typeBtnActive]}
-              onPress={() => setEventType("private")}
-            >
-              <Ionicons name="lock-closed" size={16} color={colors.text} />
-              <Text style={styles.typeBtnText}>PRIVADO</Text>
-              <Text style={styles.typeDesc}>Só eu publico</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.typeBtn, eventType === "public" && styles.typeBtnActive]}
-              onPress={() => setEventType("public")}
-            >
-              <Ionicons name="globe" size={16} color={colors.text} />
-              <Text style={styles.typeBtnText}>PÚBLICO</Text>
-              <Text style={styles.typeDesc}>Várias empresas</Text>
-            </TouchableOpacity>
-          </View>
-          {eventType === "public" && (
-            <Text style={styles.hint}>Eventos públicos precisam de aprovação do admin (conteeteixeira@gmail.com / rodrigocontecunha@gmail.com).</Text>
+          {step === "location" && (
+            <View style={styles.stepWrap}>
+              <View style={styles.locationHeader}>
+                <Ionicons name="location" size={22} color={colors.text} />
+                <Text style={styles.sectionTitle}>ONDE?</Text>
+              </View>
+              <Text style={styles.sectionSub}>Pesquisa o local ou escreve o endereço</Text>
+
+              <EventMapPicker onLocationChange={handleLocationChange} initialAddress={address} />
+
+              {/* ─── Raio (max 2km) ─── */}
+              <View style={styles.radiusSection}>
+                <View style={styles.radiusHeader}>
+                  <Ionicons name="radio" size={16} color={colors.text} />
+                  <Text style={styles.radiusLabel}>
+                    RAIO DE CHECK-IN: <Text style={{ fontWeight: "900" }}>{radiusKm.toFixed(1)} km</Text>
+                  </Text>
+                </View>
+                <View style={styles.sliderContainer}>
+                  {[0.5, 1.0, 1.5, 2.0].map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[
+                        styles.radiusOption,
+                        Math.abs(radiusKm - r) < 0.1 && styles.radiusOptionActive,
+                      ]}
+                      onPress={() => setRadiusKm(r)}
+                    >
+                      <Text style={[
+                        styles.radiusOptionText,
+                        Math.abs(radiusKm - r) < 0.1 && styles.radiusOptionTextActive,
+                      ]}>{r}km</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.radiusHint}>Máximo 2 km do local do evento</Text>
+              </View>
+
+              <View style={styles.stepNav}>
+                <TouchableOpacity style={styles.prevBtn} onPress={() => animateStep("basic")}>
+                  <Ionicons name="arrow-back" size={16} color={colors.text} />
+                  <Text style={styles.prevBtnText}>VOLTAR</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.nextBtn, !canGoNext() && styles.nextBtnDisabled, { flex: 1 }]}
+                  onPress={() => animateStep("review")}
+                  disabled={!canGoNext()}
+                >
+                  <Text style={styles.nextBtnText}>REVER →</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           )}
-        </View>
 
-        {/* ─── Título ─── */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>TÍTULO</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="ex: FEIRA DE LISBOA 2026"
-            placeholderTextColor="#A1A1AA"
-            value={title}
-            onChangeText={setTitle}
-            autoCapitalize="characters"
-            maxLength={80}
-          />
-        </View>
+          {step === "review" && (
+            <View style={styles.stepWrap}>
+              <Text style={styles.sectionTitle}>REVER EVENTO</Text>
+              <Text style={styles.sectionSub}>Confirma os dados antes de criar</Text>
 
-        {/* ─── Descrição ─── */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>DESCRIÇÃO</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Descrição do evento..."
-            placeholderTextColor="#A1A1AA"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={3}
-          />
-        </View>
+              <View style={styles.reviewCard}>
+                {imageBase64 && (
+                  <Image source={{ uri: imageBase64 }} style={styles.reviewImage} resizeMode="cover" />
+                )}
+                <View style={styles.reviewBody}>
+                  <View style={styles.reviewBadge}>
+                    <Text style={styles.reviewBadgeText}>{eventType === "public" ? "PÚBLICO" : "PRIVADO"}</Text>
+                  </View>
+                  <Text style={styles.reviewTitle}>{title || "Sem título"}</Text>
+                  {description ? <Text style={styles.reviewDesc}>{description}</Text> : null}
+                  <View style={styles.reviewMeta}>
+                    <Ionicons name="calendar" size={14} color={colors.textSecondary} />
+                    <Text style={styles.reviewMetaText}>{date} às {time}</Text>
+                  </View>
+                  {hasLocation && (
+                    <View style={styles.reviewMeta}>
+                      <Ionicons name="location" size={14} color={colors.textSecondary} />
+                      <Text style={styles.reviewMetaText} numberOfLines={2}>{address}</Text>
+                    </View>
+                  )}
+                  <View style={styles.reviewMeta}>
+                    <Ionicons name="radio" size={14} color={colors.textSecondary} />
+                    <Text style={styles.reviewMetaText}>Raio: {radiusKm.toFixed(1)} km · {city}{countryCode ? ` (${countryCode})` : ""}</Text>
+                  </View>
+                </View>
+              </View>
 
-        {/* ─── Data e Hora ─── */}
-        <View style={styles.row}>
-          <View style={[styles.fieldBlock, { flex: 1 }]}>
-            <Text style={styles.label}>DATA</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="AAAA-MM-DD"
-              placeholderTextColor="#A1A1AA"
-              value={date}
-              onChangeText={setDate}
-              autoCapitalize="none"
-              maxLength={10}
-            />
-          </View>
-          <View style={[styles.fieldBlock, { flex: 1 }]}>
-            <Text style={styles.label}>HORA</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="HH:MM"
-              placeholderTextColor="#A1A1AA"
-              value={time}
-              onChangeText={setTime}
-              autoCapitalize="none"
-              maxLength={5}
-            />
-          </View>
-        </View>
+              <View style={styles.stepNav}>
+                <TouchableOpacity style={styles.prevBtn} onPress={() => animateStep("location")}>
+                  <Ionicons name="arrow-back" size={16} color={colors.text} />
+                  <Text style={styles.prevBtnText}>VOLTAR</Text>
+                </TouchableOpacity>
+              </View>
 
-        {/* ─── Localização com Mapa Interativo ─── */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>LOCALIZAÇÃO</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Endereço (ex: Av. da Liberdade, Lisboa)"
-            placeholderTextColor="#A1A1AA"
-            value={address}
-            onChangeText={setAddress}
-          />
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Cidade"
-              placeholderTextColor="#A1A1AA"
-              value={city}
-              onChangeText={setCity}
-            />
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="País (PT)"
-              placeholderTextColor="#A1A1AA"
-              value={countryCode}
-              onChangeText={setCountryCode}
-              autoCapitalize="characters"
-              maxLength={2}
-            />
-          </View>
-          <EventMap
-            editable={true}
-            onLocationSelect={(newLat, newLon) => {
-              setLat(newLat.toFixed(6));
-              setLon(newLon.toFixed(6));
-            }}
-            address={address}
-          />
-        </View>
+              <TouchableOpacity
+                style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+                onPress={submit}
+                disabled={submitting}
+                activeOpacity={0.85}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.textInverse} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={22} color={colors.textInverse} />
+                    <Text style={styles.submitText}>
+                      {eventType === "public" ? "SOLICITAR CRIAÇÃO" : "CRIAR EVENTO (€9,99)"}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
-        {/* ─── Raio ─── */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>RAIO GEOGRÁFICO</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="1.0 (km)"
-            placeholderTextColor="#A1A1AA"
-            value={radiusKm}
-            onChangeText={setRadiusKm}
-            keyboardType="numeric"
-          />
-          <Text style={styles.hint}>Distância em km para check-in. Mín: 0.1, Máx: 10. Default: 1 km.</Text>
-        </View>
-
-        {/* ─── Prémio (opcional) ─── */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>PRÉMIO (OPCIONAL)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="ex: 1 iPhone 16"
-            placeholderTextColor="#A1A1AA"
-            value={prize}
-            onChangeText={setPrize}
-          />
-          <Text style={styles.hint}>Sorteio automático no fim do evento.</Text>
-        </View>
-
-        {/* ─── Máx Participantes (opcional) ─── */}
-        <View style={styles.row}>
-          <View style={[styles.fieldBlock, { flex: 1 }]}>
-            <Text style={styles.label}>MÁX PARTICIPANTES</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ilimitado"
-              placeholderTextColor="#A1A1AA"
-              value={maxParticipants}
-              onChangeText={setMaxParticipants}
-              keyboardType="numeric"
-            />
-          </View>
-          <View style={[styles.fieldBlock, { flex: 1 }]}>
-            <Text style={styles.label}>RECOMPENSA BW</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="50"
-              placeholderTextColor="#A1A1AA"
-              value={bwReward}
-              onChangeText={setBwReward}
-              keyboardType="numeric"
-            />
-          </View>
-        </View>
-
-        {/* ─── Submit ─── */}
-        <TouchableOpacity
-          style={[styles.submitBtn, (!imageBase64 || !title || !date || submitting) && styles.submitBtnDisabled]}
-          onPress={submit}
-          disabled={!imageBase64 || !title || !date || submitting}
-          activeOpacity={0.85}
-        >
-          {submitting ? (
-            <ActivityIndicator color={colors.text} />
-          ) : (
-            <>
-              <Ionicons name="location" size={20} color={colors.text} />
-              <Text style={styles.submitText}>
-                {eventType === "public" ? "CRIAR EVENTO PÚBLICO" : "CRIAR EVENTO (GRÁTIS)"}
+              <Text style={styles.footerText}>
+                O valor do evento cobre a infraestrutura por 7 dias. Posts/anúncios dentro do evento são pagos à parte.
               </Text>
-            </>
+            </View>
           )}
-        </TouchableOpacity>
-
-        <Text style={styles.footer}>
-          CRIAR EVENTO É GRÁTIS. PAGA-SE APENAS PELOS ANÚNCIOS/POSTS DENTRO DO EVENTO (€9,99 CADA).
-        </Text>
+        </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -432,90 +472,144 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 4,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.bg,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderWidth: 3,
+    width: 38,
+    height: 38,
+    borderWidth: 2.5,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.bg,
   },
-  headerTitle: { fontSize: 16, fontWeight: "900", letterSpacing: 1, color: colors.text, flex: 1, textAlign: "center" },
+  headerTitle: { fontSize: 15, fontWeight: "900", letterSpacing: 1, color: colors.text, flex: 1, textAlign: "center" },
 
-  content: { padding: 16, gap: 18, paddingBottom: 60 },
+  // Progress
+  progressRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingVertical: 16 },
+  stepDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotActive: { backgroundColor: colors.neutral, transform: [{ scale: 1.1 }] },
+  stepDotDone: { borderColor: colors.text, backgroundColor: colors.text },
+  stepDotText: { fontSize: 14, fontWeight: "900", color: colors.textSecondary },
+  stepDotTextActive: { color: colors.bg },
+  stepLine: { flex: 1, height: 4, backgroundColor: colors.bgSubtle, marginHorizontal: -2 },
+  stepLineDone: { backgroundColor: colors.text },
 
-  // ─── Imagem ───
+  content: { padding: 20, paddingBottom: 60 },
+  stepWrap: { gap: 16 },
+  sectionTitle: { fontSize: 11, fontWeight: "900", letterSpacing: 1.5, color: colors.text, marginBottom: 4 },
+  sectionSub: { fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginTop: -12, marginBottom: 4 },
+
+  // Image
   imagePicker: {
     width: "100%",
     aspectRatio: 16 / 9,
-    borderWidth: 4,
-    borderStyle: "dashed",
+    borderWidth: 3,
     borderColor: colors.border,
     backgroundColor: colors.bgSubtle,
     alignItems: "center",
     justifyContent: "center",
     ...brutalShadow,
   },
-  imagePickerFilled: { borderStyle: "solid", padding: 0, overflow: "hidden" },
+  imagePickerFilled: { padding: 0, overflow: "hidden" },
   previewImage: { width: "100%", height: "100%" },
-  pickerEmpty: { alignItems: "center", gap: 8 },
-  pickerEmptyTitle: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.text, marginTop: 8 },
-  pickerEmptySub: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, letterSpacing: 1 },
-
-  // ─── Tipo ───
-  fieldBlock: { gap: 6 },
-  label: { fontSize: 11, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
-
-  typeRow: { flexDirection: "row", gap: 10 },
-  typeBtn: {
-    flex: 1,
-    borderWidth: 3,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: colors.bgSubtle,
+  imageOverlay: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
   },
-  typeBtnActive: { backgroundColor: colors.aprovo },
-  typeBtnText: { fontSize: 13, fontWeight: "900", letterSpacing: 1, color: colors.text },
-  typeDesc: { fontSize: 10, fontWeight: "700", color: colors.textSecondary },
+  imageOverlayText: { color: "#fff", fontSize: 10, fontWeight: "900" },
+  pickerEmpty: { alignItems: "center", gap: 8 },
+  pickerIconWrap: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.border },
+  pickerEmptyTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 1, color: colors.text },
+  pickerEmptySub: { fontSize: 10, fontWeight: "700", color: colors.textSecondary },
 
-  // ─── Inputs ───
+  // Inputs
   input: {
     borderWidth: 3,
     borderColor: colors.border,
-    height: 48,
-    paddingHorizontal: 12,
-    fontSize: 14,
+    height: 52,
+    paddingHorizontal: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: colors.text,
     backgroundColor: colors.bg,
   },
-  textArea: { height: 80, paddingTop: 12, textAlignVertical: "top" },
+  textArea: { height: 90, paddingTop: 14, textAlignVertical: "top" },
 
-  row: { flexDirection: "row", gap: 10 },
-  hint: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.5 },
-
-  // ─── Submit ───
-  submitBtn: {
-    height: 56,
-    backgroundColor: colors.neutral,
-    borderWidth: 4,
+  // Type
+  typeRow: { flexDirection: "row", gap: 12 },
+  typeBtn: {
+    flex: 1,
+    borderWidth: 3,
     borderColor: colors.border,
+    padding: 12,
+    backgroundColor: colors.bg,
     alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 10,
-    ...brutalShadow,
-    marginTop: 10,
+    gap: 4,
   },
-  submitBtnDisabled: { opacity: 0.5 },
-  submitText: { fontSize: 15, fontWeight: "900", letterSpacing: 2, color: colors.text },
+  typeBtnActive: { backgroundColor: colors.text, borderColor: colors.text },
+  typeBtnText: { fontSize: 13, fontWeight: "900", color: colors.text },
+  typeBtnMeta: { fontSize: 9, fontWeight: "700", color: colors.textSecondary },
 
-  footer: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, textAlign: "center", paddingHorizontal: 20, marginTop: 10 },
+  infoBox: { flexDirection: "row", gap: 8, padding: 12, backgroundColor: colors.bgSubtle, borderWidth: 2, borderColor: colors.border },
+  infoText: { flex: 1, fontSize: 11, fontWeight: "600", color: colors.text, lineHeight: 16 },
+
+  hourRow: { flexDirection: "row", alignItems: "flex-end", gap: 12 },
+  hourBadge: { height: 52, paddingHorizontal: 16, backgroundColor: colors.bgSubtle, borderWidth: 3, borderColor: colors.border, justifyContent: "center" },
+  hourBadgeText: { fontSize: 11, fontWeight: "900", color: colors.textSecondary },
+
+  // Radius
+  radiusSection: { padding: 16, backgroundColor: colors.bgSubtle, borderWidth: 3, borderColor: colors.border, gap: 12 },
+  radiusHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  radiusLabel: { fontSize: 12, fontWeight: "700", color: colors.text },
+  sliderContainer: { flexDirection: "row", gap: 8 },
+  radiusOption: { flex: 1, height: 40, borderWidth: 2, borderColor: colors.border, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
+  radiusOptionActive: { backgroundColor: colors.text, borderColor: colors.text },
+  radiusOptionText: { fontSize: 12, fontWeight: "900", color: colors.text },
+  radiusOptionTextActive: { color: colors.bg },
+  radiusHint: { fontSize: 10, fontWeight: "600", color: colors.textSecondary, textAlign: "center" },
+
+  // Navigation
+  stepNav: { flexDirection: "row", gap: 12, marginTop: 10 },
+  prevBtn: { height: 56, paddingHorizontal: 20, borderWidth: 3, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 8 },
+  prevBtnText: { fontSize: 13, fontWeight: "900", color: colors.text },
+  nextBtn: { height: 56, backgroundColor: colors.neutral, borderWidth: 3, borderColor: colors.border, alignItems: "center", justifyContent: "center", ...brutalShadow },
+  nextBtnDisabled: { opacity: 0.5 },
+  nextBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: 1, color: colors.text },
+
+  // Review
+  reviewCard: { borderWidth: 4, borderColor: colors.border, backgroundColor: colors.bg, overflow: "hidden", ...brutalShadow },
+  reviewImage: { width: "100%", height: 160 },
+  reviewBody: { padding: 16, gap: 8 },
+  reviewBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.text, marginBottom: 4 },
+  reviewBadgeText: { color: colors.bg, fontSize: 10, fontWeight: "900" },
+  reviewTitle: { fontSize: 18, fontWeight: "900", color: colors.text },
+  reviewDesc: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  reviewMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  reviewMetaText: { fontSize: 12, fontWeight: "700", color: colors.textSecondary },
+
+  submitBtn: { height: 64, backgroundColor: colors.text, borderWidth: 3, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 20, ...brutalShadow },
+  submitBtnDisabled: { opacity: 0.7 },
+  submitText: { fontSize: 16, fontWeight: "900", letterSpacing: 1, color: colors.bg },
+  footerText: { fontSize: 10, fontWeight: "600", color: colors.textSecondary, textAlign: "center", marginTop: 12, lineHeight: 14 },
+
+  locationHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
 });
+
