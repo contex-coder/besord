@@ -339,7 +339,8 @@ async def auto_verify_workspace(country_code: Optional[str], tax_id: str) -> boo
         result = await _lookup_br_cnpj(tax_id)
     elif cc in ("DE", "FR", "IT", "ES", "GB", "NL", "BE", "AT", "PL", "SE", "DK", "FI", "IE", "CZ", "HU", "RO", "PT", "GR", "SK", "BG", "HR", "LT", "SI", "LV", "EE"):  # EU countries
         # VIES uses VAT format: country code + number
-        vat = f"{cc}{re.sub(r'\D', '', tax_id)}"
+        digits_only = re.sub(r'\D', '', tax_id)
+        vat = f"{cc}{digits_only}"
         result = await _lookup_vies(vat)
     else:
         return False
