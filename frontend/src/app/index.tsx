@@ -46,7 +46,9 @@ export default function Landing() {
       if (!user.age_confirmed) {
         router.replace("/age-gate");
       } else {
-        router.replace("/(tabs)/feed");
+        // --- NOVO: Redirecionar para onboarding que pergunta qual tipo de conta ---
+        // Só vai direto para o feed se já passou pelo onboarding
+        router.replace("/account-type");
       }
     }
   }, [user, loading, router]);
