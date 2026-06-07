@@ -639,6 +639,30 @@ async def list_posts(
         if vote_posts:
             match["post_id"] = {"$in": vote_posts}
 
+    # Include posts from events where user checked in (feed misto)
+    if current_user_id:
+        events_checkin = await db.events.find(
+            {"checkins": current_user_id},
+            {"_id": 0, "event_id": 1}
+        ).to_list(length=50)
+        event_ids = [e["event_id"] for e in events_checkin]
+        if event_ids:
+            # Add event posts to the match query
+            existing_post_ids = match.get("post_id", {})
+            if isinstance(existing_post_ids, dict) and "$in" in existing_post_ids:
+                # Combine scope filter + event posts
+                match["$or"] = [
+                    {"post_id": {"$in": existing_post_ids["$in"]}},
+                    {"event_id": {"$in": event_ids}},
+                ]
+                del match["post_id"]
+            else:
+                match["event_id"] = {"$in": event_ids}
+                # Also show normal posts (not event posts)
+                existing_or = match.get("$or", [])
+                existing_or.append({"event_id": {"$exists": False}})
+                match["$or"] = existing_or
+
     # Sort
     if sort == "trending":
         sort_order = [("aprovo_count", -1), ("created_at", -1)]
@@ -1370,6 +1394,7 @@ class ExhibitorJoinRequest(BaseModel):
     image_base64: str
     prize: Optional[str] = None
     prize_image_base64: Optional[str] = None
+    is_owner_post: bool = False  # Se True, o dono do evento está a publicar
 
 
 class PostReportOut(BaseModel):
@@ -1535,8 +1560,12 @@ async def join_as_exhibitor(event_id: str, payload: ExhibitorJoinRequest, author
     if event.get("event_type") != "public":
         raise HTTPException(status_code=400, detail="Apenas eventos públicos aceitam múltiplas empresas.")
 
-    # Validar código de convite
-    if event.get("invite_code") != payload.invite_code:
+    # Validar código de convite (apenas se não for o dono)
+    is_owner = event.get("company_id") == user["user_id"]
+    if is_owner:
+        # Dono publica sem código, mas paga igual
+        pass
+    elif event.get("invite_code") != payload.invite_code:
         raise HTTPException(status_code=403, detail="Código de convite inválido.")
 
     # Validar word
@@ -1577,7 +1606,7 @@ async def join_as_exhibitor(event_id: str, payload: ExhibitorJoinRequest, author
                         "name": f"Anúncio no evento: {event['title']}",
                         "description": f"1 palavra + 1 imagem — {word}",
                     },
-                    "unit_amount": 999,
+                    "unit_amount": await get_event_post_price(),
                 },
                 "quantity": 1,
             }],
@@ -1930,6 +1959,68 @@ async def draw_post_prize(post_id: str, authorization: Optional[str] = Header(No
     )
 
     return {"ok": True, "winner_id": winner_id, "winner_name": winner_name}
+
+
+# Preço do anúncio em evento (configurável pelo admin)
+EVENT_POST_PRICE_CENTS = 999  # Default: €9,99
+
+async def get_event_post_price() -> int:
+    """Lê o preço configurado no DB ou usa default"""
+    config = await db.config.find_one({"key": "event_post_price_cents"})
+    if config:
+        return int(config.get("value", EVENT_POST_PRICE_CENTS))
+    return EVENT_POST_PRICE_CENTS
+
+
+# ==============================
+# BUSINESS DASHBOARD
+# ==============================
+@api_router.get("/business/dashboard")
+async def business_dashboard(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user.get("business_profile"):
+        raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa.")
+    
+    uid = user["user_id"]
+    now = datetime.now(timezone.utc)
+    
+    # Meus eventos
+    meus_eventos = await db.events.find({"company_id": uid}, {"_id": 0}).sort("created_at", -1).to_list(length=100)
+    
+    # Meus anúncios em eventos (como expositor)
+    meus_anuncios = await db.posts.find({
+        "author_id": uid,
+        "is_event_post": True,
+    }, {"_id": 0}).sort("created_at", -1).to_list(length=100)
+    
+    # Check-ins recebidos (total de todos os meus eventos)
+    total_checkins = sum(e.get("checkins", []) for e in meus_eventos)
+    total_checkins_count = len(total_checkins) if isinstance(total_checkins, list) else 0
+    
+    # Votos nos meus anúncios de evento
+    post_ids = [p["post_id"] for p in meus_anuncios]
+    total_aprovo = 0
+    total_desaprovo = 0
+    if post_ids:
+        votes_cursor = db.votes.find({"post_id": {"$in": post_ids}}, {"_id": 0, "vote": 1})
+        async for v in votes_cursor:
+            if v["vote"] == "aprovo":
+                total_aprovo += 1
+            else:
+                total_desaprovo += 1
+    
+    return {
+        "eventos": [serialize_event(e, uid) for e in meus_eventos],
+        "anuncios": [await serialize_post(p, uid) for p in meus_anuncios],
+        "total_eventos": len(meus_eventos),
+        "total_anuncios": len(meus_anuncios),
+        "total_checkins_recebidos": total_checkins_count,
+        "total_aprovo": total_aprovo,
+        "total_desaprovo": total_desaprovo,
+        "company_name": user.get("business_profile", {}).get("company_name", ""),
+    }
+
+
 @api_router.post("/events")
 async def create_event(payload: EventCreate, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
@@ -2008,7 +2099,7 @@ async def create_event(payload: EventCreate, authorization: Optional[str] = Head
                         "name": f"Evento: {title}",
                         "description": f"Criação de evento presencial — 7 dias de visibilidade no Besord",
                     },
-                    "unit_amount": 999,  # €9,99
+                    "unit_amount": await get_event_post_price(),  # €9,99
                 },
                 "quantity": 1,
             }],
@@ -2105,6 +2196,16 @@ async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Evento não encontrado.")
     return serialize_event(doc, user["user_id"] if user else None)
 
+
+# ==============================
+# USER: Events where I checked in (badge "estive lá")
+# ==============================
+@api_router.get("/me/events-checkin")
+async def my_checkedin_events(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    cursor = db.events.find({"checkins": user["user_id"]}, {"_id": 0}).sort("date", -1)
+    docs = await cursor.to_list(length=100)
+    return [serialize_event(d, user["user_id"]) for d in docs]
 
 
 # ==============================

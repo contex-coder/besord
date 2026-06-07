@@ -105,10 +105,11 @@ export default function FeedScreen() {
     setMascotTapCount((prev) => prev + 1);
   };
 
-  // Load geo info on mount
+  // Load geo info on mount + request device location
   useEffect(() => {
     (async () => {
       try {
+        // 1. Get location from IP (backend)
         const r = await apiFetch("/api/geo/me");
         if (r.ok) {
           const data = await r.json();
@@ -116,6 +117,20 @@ export default function FeedScreen() {
           if (data.city) setScopeCity(data.city);
           if (data.lat) setUserLat(data.lat);
           if (data.lon) setUserLon(data.lon);
+        }
+
+        // 2. Get precise location from device (browser)
+        if (typeof navigator !== "undefined" && navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setUserLat(pos.coords.latitude);
+              setUserLon(pos.coords.longitude);
+            },
+            () => {
+              // Permission denied or error — usar geo do IP já temos
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
         }
       } catch {}
     })();

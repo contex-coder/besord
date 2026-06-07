@@ -64,18 +64,18 @@ export default function BusinessDashboardScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<BizStats | null>(null);
-  const [events, setEvents] = useState<BizEvent[]>([]);
-  const [posts, setPosts] = useState<BizPost[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [events, setEvents] = useState<any[]>([]);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [userWorkspace, setUserWorkspace] = useState<any>(null);
 
   const load = useCallback(async () => {
     try {
-      const [wsRes, statsRes] = await Promise.all([
+      const [wsRes, bizRes] = await Promise.all([
         apiFetch("/api/workspaces"),
-        apiFetch("/api/business/dashboard").catch(() => null),
+        apiFetch("/api/business/dashboard"),
       ]);
 
       if (wsRes.ok) {
@@ -83,38 +83,15 @@ export default function BusinessDashboardScreen() {
         const biz = wsData.workspaces.filter((w: any) => w.type === "business");
         setWorkspaces(biz);
         setActiveId(wsData.active_workspace_id || null);
-
-        // Se existe active, guardar o workspace atual
         const act = biz.find((w: any) => w.workspace_id === wsData.active_workspace_id);
         setUserWorkspace(act || null);
       }
 
-      if (statsRes && statsRes.ok) {
-        const data = await statsRes.json();
+      if (bizRes.ok) {
+        const data = await bizRes.json();
         setStats(data);
-      }
-
-      // Carregar eventos
-      const eventsRes = await apiFetch("/api/events");
-      if (eventsRes.ok) {
-        const evData = await eventsRes.json();
-        setEvents(evData.filter((e: any) => e.is_owner));
-      }
-
-      // Carregar posts empresariais (através de campaigns)
-      const campRes = await apiFetch("/api/business/campaigns");
-      if (campRes.ok) {
-        const campData = await campRes.json();
-        const postsList = (campData.campaigns || campData).map((c: any) => ({
-          post_id: c.post_id,
-          word: c.word || "—",
-          aprovo_count: c.aprovo_count || 0,
-          desaprovo_count: c.desaprovo_count || 0,
-          comments_count: c.comments_count || 0,
-          created_at: c.created_at,
-          event_title: c.event_title || null,
-        }));
-        setPosts(postsList);
+        setEvents(data.eventos || []);
+        setPosts(data.anuncios || []);
       }
     } finally {
       setLoading(false);
@@ -227,79 +204,48 @@ export default function BusinessDashboardScreen() {
               </View>
             </View>
 
-            {/* ─── Métricas ─── */}
+            {/* ─── Métricas do Dashboard Business ─── */}
             {stats && (
               <View style={styles.metricsGrid}>
                 <MetricBox
-                  label="CAMPANHAS ATIVAS"
-                  value={String(stats.active_campaigns)}
-                  icon="rocket"
-                  bg={colors.neutral}
-                />
-                <MetricBox
-                  label="GASTO TOTAL"
-                  value={formatEuro(stats.total_spent)}
-                  icon="cash"
-                  bg={colors.aprovo}
-                />
-                <MetricBox
-                  label="POSTS EVENTO"
-                  value={String(stats.total_posts)}
-                  icon="megaphone"
-                  bg={colors.neutral}
-                />
-                <MetricBox
                   label="EVENTOS"
-                  value={String(stats.total_events)}
+                  value={String(stats.total_eventos || 0)}
                   icon="location"
-                  bg={colors.aprovo}
-                />
-                <MetricBox
-                  label="VOTOS RECEBIDOS"
-                  value={String(stats.total_votes_received)}
-                  icon="thumbs-up"
                   bg={colors.neutral}
                 />
                 <MetricBox
-                  label="BW DISTRIBUÍDOS"
-                  value={String(stats.total_bw_distributed)}
-                  icon="wallet"
+                  label="ANÚNCIOS"
+                  value={String(stats.total_anuncios || 0)}
+                  icon="megaphone"
                   bg={colors.aprovo}
+                />
+                <MetricBox
+                  label="CHECK-INS"
+                  value={String(stats.total_checkins_recebidos || 0)}
+                  icon="people"
+                  bg={colors.neutral}
+                />
+                <MetricBox
+                  label="👍 APROVO"
+                  value={String(stats.total_aprovo || 0)}
+                  icon="thumbs-up"
+                  bg={colors.aprovo}
+                />
+                <MetricBox
+                  label="👎 DESAPROVO"
+                  value={String(stats.total_desaprovo || 0)}
+                  icon="thumbs-down"
+                  bg={colors.neutral}
                 />
               </View>
             )}
 
-            {/* ─── Ações Rápidas ─── */}
-            <Text style={styles.sectionTitle}>📋 AÇÕES RÁPIDAS</Text>
-            <View style={styles.actionsGrid}>
-              <ActionCard
-                icon="location"
-                label="CRIAR EVENTO"
-                onPress={() => router.push("/business/evento/novo")}
-              />
-              <ActionCard
-                icon="megaphone"
-                label="POSTAR ANÚNCIO"
-                onPress={() => router.push("/eventos")}
-              />
-              <ActionCard
-                icon="bar-chart"
-                label="RELATÓRIOS"
-                onPress={() => router.push("/business/campaigns")}
-              />
-              <ActionCard
-                icon="document-text"
-                label="RECIBOS"
-                onPress={() => router.push("/business/recibos")}
-              />
-            </View>
-
-            {/* ─── Meus Eventos Ativos ─── */}
+            {/* ─── Meus Eventos ─── */}
             {events.length > 0 && (
               <>
                 <Text style={styles.sectionTitle}>🎪 MEUS EVENTOS</Text>
-                {events.map((ev) => {
-                  const isExpired = ev.status === "expired";
+                {events.map((ev: any) => {
+                  const isExpired = ev.status === "expired" || ev.status === "raffle_done";
                   return (
                     <TouchableOpacity
                       key={ev.event_id}
@@ -319,24 +265,24 @@ export default function BusinessDashboardScreen() {
                             📅 {ev.date?.split("T")[0] || ev.date}
                           </Text>
                           <Text style={styles.eventMeta}>
-                            👥 {ev.checkins_count} check-ins
+                            👥 {ev.checkins_count || 0} check-ins
                           </Text>
                         </View>
                         <View style={styles.eventMetaRow}>
                           <Text style={styles.eventMeta}>
-                            🏪 {ev.exhibitors_count} anúncios
+                            🏪 {ev.exhibitors_count || 0} anúncios
                           </Text>
                           {ev.prize && (
                             <Text style={styles.eventMeta}>🎁 {ev.prize}</Text>
                           )}
                         </View>
-                        {isExpired && (
+                        {!isExpired && (
                           <TouchableOpacity
-                            style={styles.raffleBtn}
-                            onPress={() => router.push(`/evento/${ev.event_id}/sorteio`)}
+                            style={styles.postarAnuncioBtn}
+                            onPress={() => router.push(`/evento/${ev.event_id}/participar`)}
                           >
-                            <Ionicons name="gift" size={12} color={colors.text} />
-                            <Text style={styles.raffleBtnText}>SORTEAR PRÉMIO</Text>
+                            <Ionicons name="megaphone" size={12} color={colors.text} />
+                            <Text style={styles.postarAnuncioBtnText}>CRIAR ANÚNCIO</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -346,25 +292,23 @@ export default function BusinessDashboardScreen() {
               </>
             )}
 
-            {/* ─── Últimos Posts (Anúncios) ─── */}
+            {/* ─── Meus Anúncios em Eventos ─── */}
             {posts.length > 0 && (
               <>
-                <Text style={styles.sectionTitle}>📊 ÚLTIMOS ANÚNCIOS</Text>
-                {posts.slice(0, 5).map((p) => {
-                  const total = p.aprovo_count + p.desaprovo_count;
-                  const aprovoPct = total === 0 ? 50 : Math.round((p.aprovo_count / total) * 100);
+                <Text style={styles.sectionTitle}>📊 MEUS ANÚNCIOS EM EVENTOS</Text>
+                {posts.slice(0, 10).map((p: any) => {
+                  const total = (p.aprovo_count || 0) + (p.desaprovo_count || 0);
+                  const aprovoPct = total === 0 ? 50 : Math.round(((p.aprovo_count || 0) / total) * 100);
                   return (
                     <TouchableOpacity
                       key={p.post_id}
                       style={styles.postCard}
-                      onPress={() => router.push(`/evento/${p.event_title || "0"}/post/${p.post_id}/relatorio`)}
+                      onPress={() => router.push(`/business/campaigns`)}
                       activeOpacity={0.8}
                     >
                       <View style={styles.postHeader}>
                         <Text style={styles.postWord}>#{p.word}</Text>
-                        {p.event_title && (
-                          <Text style={styles.postEvent}>{p.event_title}</Text>
-                        )}
+                        <Text style={styles.postEvent}>{p.event_title || "Evento"}</Text>
                       </View>
                       <View style={styles.postStats}>
                         <View style={styles.postVoteBar}>
@@ -376,18 +320,55 @@ export default function BusinessDashboardScreen() {
                           />
                         </View>
                         <Text style={styles.postVoteText}>
-                          👍 {p.aprovo_count} · 👎 {p.desaprovo_count} · 💬 {p.comments_count}
+                          👍 {p.aprovo_count || 0} · 👎 {p.desaprovo_count || 0} · 💬 {p.comments_count || 0}
                         </Text>
                       </View>
-                      <View style={styles.postActions}>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                        <Text style={styles.postActionText}>VER RELATÓRIO</Text>
-                      </View>
+                      {/* Botão de sorteio do prémio do anúncio */}
+                      {p.prize && !p.prize_drawn && (
+                        <TouchableOpacity
+                          style={styles.sortearBtn}
+                          onPress={() => router.push(`/evento/${p.event_id || "0"}/post/${p.post_id}/sorteio`)}
+                        >
+                          <Ionicons name="gift" size={12} color={colors.text} />
+                          <Text style={styles.sortearBtnText}>🎲 SORTEAR PRÉMIO</Text>
+                        </TouchableOpacity>
+                      )}
+                      {p.prize && p.prize_drawn && (
+                        <View style={[styles.sortearBtn, { backgroundColor: colors.aprovo }]}>
+                          <Ionicons name="checkmark-circle" size={12} color={colors.text} />
+                          <Text style={styles.sortearBtnText}>PRÉMIO SORTEADO</Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
                   );
                 })}
               </>
             )}
+
+            {/* ─── Ações Rápidas ─── */}
+            <Text style={styles.sectionTitle}>⚡ AÇÕES RÁPIDAS</Text>
+            <View style={styles.actionsGrid}>
+              <ActionCard
+                icon="location"
+                label="CRIAR EVENTO"
+                onPress={() => router.push("/business/evento/novo")}
+              />
+              <ActionCard
+                icon="megaphone"
+                label="ANUNCIAR EM EVENTO"
+                onPress={() => router.push("/events/explorar")}
+              />
+              <ActionCard
+                icon="bar-chart"
+                label="RELATÓRIOS"
+                onPress={() => router.push("/business/campaigns")}
+              />
+              <ActionCard
+                icon="document-text"
+                label="RECIBOS"
+                onPress={() => router.push("/business/recibos")}
+              />
+            </View>
           </>
         )}
       </ScrollView>
@@ -602,4 +583,35 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   postActionText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.textSecondary },
+
+  // ─── Postar Anúncio no Evento ───
+  postarAnuncioBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: colors.neutral,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignSelf: "flex-start",
+  },
+  postarAnuncioBtnText: { fontSize: 9, fontWeight: "900", letterSpacing: 1, color: colors.text },
+
+  // ─── Sortear Prémio ───
+  sortearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: colors.neutral,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignSelf: "flex-start",
+  },
+  sortearBtnText: { fontSize: 9, fontWeight: "900", letterSpacing: 1, color: colors.text },
 });
+

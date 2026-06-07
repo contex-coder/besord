@@ -150,6 +150,13 @@ export default function AdminScreen() {
           <Ionicons name="add-circle" size={16} color={colors.text} />
           <Text style={styles.tiersBtnText}>CRIAR EVENTO</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/admin/config")}
+          style={styles.tiersBtn}
+        >
+          <Ionicons name="settings" size={16} color={colors.text} />
+          <Text style={styles.tiersBtnText}>CONFIG</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ─── Tabs ─── */}

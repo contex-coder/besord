@@ -166,9 +166,10 @@ export default function CriarEventoScreen() {
           "🎉 Evento criado!",
           eventType === "public"
             ? "O evento público foi enviado para aprovação. Serás notificado."
-            : "Evento criado! Conclui o pagamento para ativar.",
-          [{ text: "OK", onPress: () => router.back() }]
-  );
+            : "Evento criado com sucesso! Agora cria um anúncio/post para o teu evento.",
+          [{ text: "CRIAR ANÚNCIO", onPress: () => router.push(`/evento/${data.event_id}/participar` as any) },
+           { text: "OK", onPress: () => router.back() }]
+        );
       } else {
         const err = await r.json().catch(() => ({}));
         Alert.alert("Erro", err.detail || "Falha ao criar evento.");
