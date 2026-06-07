@@ -1101,19 +1101,22 @@ async def cancel_campaign(campaign_id: str, authorization: Optional[str] = Heade
 # ==============================
 @api_router.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
-    payload_body = await request.body()
-    sig_header = request.headers.get("stripe-signature")
+    try:
+        payload_body = await request.body()
+        sig_header = request.headers.get("stripe-signature")
 
-    if STRIPE_WEBHOOK_SECRET:
-        try:
-            event = stripe.Webhook.construct_event(payload_body, sig_header, STRIPE_WEBHOOK_SECRET)
-        except stripe.error.SignatureVerificationError:
-            raise HTTPException(status_code=400, detail="Invalid signature")
-    else:
-        data = json.loads(payload_body)
-        event = {"type": data.get("type", ""), "data": data.get("data", {})}
+        if STRIPE_WEBHOOK_SECRET:
+            try:
+                event = stripe.Webhook.construct_event(payload_body, sig_header, STRIPE_WEBHOOK_SECRET)
+            except stripe.error.SignatureVerificationError:
+                raise HTTPException(status_code=400, detail="Invalid signature")
+        else:
+            data = json.loads(payload_body)
+            event = {"type": data.get("type", ""), "data": data.get("data", {})}
 
-    if event["type"] == "checkout.session.completed":
+        if event["type"] != "checkout.session.completed":
+            return {"ok": True}
+
         session = event["data"]["object"]
         metadata = session.get("metadata", {})
         event_type = metadata.get("type")
@@ -1156,14 +1159,14 @@ async def stripe_webhook(request: Request):
                         "stripe_session_id": session.get("id"),
                         "payment_intent": session.get("payment_intent"),
                     }}
-                    )
+                )
                 # Notificar empresa que o evento está no ar
-                event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
-                if event:
+                evt = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+                if evt:
                     await notify_user(
-                        event["company_id"],
-                        f"🎪 Evento \"{event['title']}\" está no ar!",
-                        f"O teu evento está visível no feed por 7 dias. Boa sorte! 🚀",
+                        evt["company_id"],
+                        f"Evento {evt['title']} está no ar!",
+                        f"O teu evento está visível no feed por 7 dias. Boa sorte!",
                     )
 
         # --- Event exhibitor (empresa paga para postar no evento) ---
@@ -1180,7 +1183,7 @@ async def stripe_webhook(request: Request):
                         "status": "active",
                         "paid_at": now,
                     }}
-    )
+                )
                 # Atualizar status do expositor no evento
                 await db.events.update_one(
                     {"event_id": event_id, "exhibitors.exhibitor_id": exhibitor_id},
@@ -1188,35 +1191,40 @@ async def stripe_webhook(request: Request):
                         "exhibitors.$.status": "active",
                         "exhibitors.$.paid_at": now,
                     }}
-    )
+                )
                 # Notificar organizador
                 org_event = await db.events.find_one({"event_id": event_id}, {"_id": 0, "company_id": 1, "title": 1})
                 if org_event:
                     await notify_user(
                         org_event["company_id"],
-                        f"🏢 Nova empresa no evento \"{org_event['title']}\"!",
+                        f"Nova empresa no evento {org_event['title']}!",
                         f"Uma empresa acabou de publicar um anúncio no teu evento.",
                     )
 
-    # --- Save invoice (all types) ---
-    if session.get("payment_intent"):
-        amount_total = session.get("amount_total", 0) or session.get("amount_subtotal", 0)
-        invoice_doc = {
-            "invoice_id": secrets.token_hex(16),
-            "stripe_session_id": session.get("id"),
-            "payment_intent": session.get("payment_intent"),
-            "amount_cents": amount_total,
-            "currency": session.get("currency", "eur"),
-            "customer_email": session.get("customer_details", {}).get("email", ""),
-            "customer_name": session.get("customer_details", {}).get("name", ""),
-            "metadata": metadata,
-            "taxes": session.get("total_details", {}).get("breakdown", {}).get("taxes", []),
-            "status": "paid",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.invoices.insert_one(invoice_doc)
+        # --- Save invoice (all types) ---
+        if session.get("payment_intent"):
+            amount_total = session.get("amount_total", 0) or session.get("amount_subtotal", 0)
+            invoice_doc = {
+                "invoice_id": secrets.token_hex(16),
+                "stripe_session_id": session.get("id"),
+                "payment_intent": session.get("payment_intent"),
+                "amount_cents": amount_total,
+                "currency": session.get("currency", "eur"),
+                "customer_email": session.get("customer_details", {}).get("email", ""),
+                "customer_name": session.get("customer_details", {}).get("name", ""),
+                "metadata": metadata,
+                "taxes": session.get("total_details", {}).get("breakdown", {}).get("taxes", []),
+                "status": "paid",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.invoices.insert_one(invoice_doc)
 
-    return {"ok": True}
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[stripe_webhook] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 # ==============================
 # NOTIFICATIONS
 # ==============================
