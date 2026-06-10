@@ -52,11 +52,18 @@
 
 ## 🟢 Leves
 
-### 8. `campaigns.tsx` — Propriedade duplicada
+### 8. EAS Build — `splash-icon.png` não encontrado (Prebuild)
+- **Problema:** `app.json` referenciava `assets/images/splash-icon.png` mas o ficheiro correcto é `splash-image.png` → `expo prebuild` falhava com `ENOENT`
+- **Builds afectadas:** `56d0b896` (Node 24), `3dcad0df` (Prebuild), `32ca6576` (fix aplicado)
+- **Solução aplicada (10/jun/2026):** `splash-icon.png` → `splash-image.png` em `app.json`, commit `5898177`
+- **APK gerado:** https://expo.dev/artifacts/eas/jHhZhUnWDr8W5gWAxJfRGk8BDH92QnVEOwFIPISC8mY.apk
+- ✅ **Corrigido**
+
+### 9. `campaigns.tsx` — Propriedade duplicada
 - `emptyBtnText` estava definido duas vezes (linhas 151 e 160)
 - ✅ **Já corrigido**
 
-### 9. `verify-empresa.tsx` — Ficheiro sem imports
+### 10. `verify-empresa.tsx` — Ficheiro sem imports
 - Faltavam imports de `useRouter`, `useState`, `useEffect`, etc.
 - ✅ **Já corrigido**
 

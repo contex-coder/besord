@@ -1,53 +1,91 @@
 # 🏠 Besord — Home
 
-**Bem-vindo à documentação do projeto Besord.**
+**Bem-vindo à documentação do projecto Besord.**
+
+---
 
 ## 🎯 O que é o Besord
 
-Plataforma social de votação onde users publicam **palavras**, outros votam **APROVO 👍 / DESAPROVO 👎**, e quem recebe hype acumula **B$ (Besord coins)**.
+**Plataforma B2B2C de Inteligência de Percepção.**
+
+Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O motor de receita são os eventos (3 tipos) onde empresas pagam por percepção qualificada — não por visualizações.
+
+> *"O Instagram te conhece para te vender coisas. O Besord te ajuda a te conhecer para não precisares de mais nada."*
+
+---
 
 ## 🔗 Navegação Rápida
 
 | Secção | Descrição |
 |---|---|
+| [[visao_reinventada]] | Visão de produto final — IMUTÁVEL |
+| [[🚀 Plano Final de Implementação]] | Plano de 4 fases com tarefas e critérios |
+| [[🎨 Design & UX — Ecrãs e Fluxos]] | Wireframes, fluxos, guia de imagens |
 | [[📐 Arquitetura]] | Stack, fluxo de dados, diagramas |
-| [[👤 User Flow]] | Fluxo de ecrãs e jornada do utilizador |
-| [[🗄️ Estrutura de Dados]] | Collections do MongoDB e schemas |
-| [[⚙️ Regras de Negócio]] | Hype, B$, sorteios, campanhas |
+| [[👤 User Flow]] | Jornada do utilizador por tipo |
+| [[🗄️ Estrutura de Dados]] | Collections MongoDB e schemas |
+| [[⚙️ Regras de Negócio]] | Time-Gate, Espelho de Empatia, Eventos, B$ |
 | [[🧪 Testes & QA]] | Como testar cada funcionalidade |
 | [[🐛 Erros Conhecidos]] | Bugs e problemas identificados |
 | [[📋 Checklist Deploy]] | Passos antes de cada deploy |
 | [[🔧 Setup Local]] | Como desenvolver no PC |
+| [[📅 Sessão 10 Junho 2026]] | Relatório da sessão de onboarding |
+
+---
 
 ## 📊 Estado dos Serviços
 
 | Componente | Status | URL |
 |---|---|---|
 | **Backend** | 🟢 Live | https://besord-backend.onrender.com |
-| **Frontend** | 🟢 Live | https://besord.vercel.app |
-| **MongoDB Atlas** | 🟢 Online | Cluster: Besord |
-| **Stripe (teste)** | 🟢 Ativo | Dashboard Stripe |
-
-## 🗺️ Plano de Acção (4 Fases)
-
-Ver detalhes completos em: [[📅 Sessão 10 Junho 2026]]
-
-| Fase | Objectivo | Estado |
-|---|---|---|
-| **Fase 0** — Saúde & Triage | Estabilidade técnica, bugs críticos, EAS APK | ✅ Concluída |
-| **Fase 1** — Reposicionamento | Onboarding novo, feed com eventos, perfil renovado | ⏳ A seguir |
-| **Fase 2** — Arquitectura de Eventos | 3 tipos de evento, revenue sharing, mapa melhorado | ⏳ Pendente |
-| **Fase 3** — B2B Reinventado | Relatórios de Sincronia, eventos enterprise, novo pricing | ⏳ Pendente |
-| **Fase 4** — IA & Social | Printable Effect, B$ redemption, Empathy Mirror | ⏳ Pendente |
-
-## 📌 Próximos Passos Imediatos
-
-- [ ] Instalar APK no Android do fundador (link enviado quando build terminar)
-- [ ] Testar fluxo completo de campanhas (criar → pagar → activar)
-- [ ] Testar sorteio (`POST /posts/{id}/draw-prize`)
-- [ ] Testar verificação de empresa
-- [ ] Iniciar Fase 1 — Redesign onboarding e feed
+| **Frontend Web** | 🟢 Live | https://besord.vercel.app |
+| **MongoDB Atlas** | 🟢 Online | Cluster: Besord (M0 Free) |
+| **Stripe Webhook** | 🟢 Validado | Assina e rejeita inválidos ✓ |
+| **APK Android** | ✅ Build concluído | [Descarregar APK](https://expo.dev/artifacts/eas/jHhZhUnWDr8W5gWAxJfRGk8BDH92QnVEOwFIPISC8mY.apk) |
 
 ---
 
-> **Última atualização:** 10 Junho 2026
+## 🗺️ Plano de Acção — Estado Actual
+
+| Fase | Objectivo | Estado |
+|---|---|---|
+| **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída |
+| **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Onboarding, Modo Neutro | ⏳ A seguir |
+| **Fase 2** — Eventos + Editorial | Painel de eventos magistral, Word of the Day, 3 tipos | ⏳ Pendente |
+| **Fase 3** — Camada de IA | Espelho de Empatia, memória por utilizador, Printable Effect | ⏳ Pendente |
+| **Fase 4** — B2B + Escala | Sincronia Reports, Sintonizados, Besord como Filtro | ⏳ Pendente |
+
+---
+
+## 🔑 Credenciais e IDs Importantes
+
+| Recurso | Valor |
+|---|---|
+| Render Service ID | `srv-d8fd8areo5us73bpep9g` |
+| Expo Project ID | `83893be0-ae4d-43a8-837d-dbd441193fef` |
+| Expo Robot Token | `wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd` |
+| Android Package | `com.besord.app` |
+| Stripe Webhook Secret (prod) | `whsec_1cThiKZTKfxIlPMlrdiLQVq5xNycMUKa` |
+
+> ⚠️ Mover para gestor de passwords — não deixar em texto simples
+
+---
+
+## ⚡ Comandos Rápidos
+
+**Publicar OTA update (após cada sessão de dev):**
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"
+cd frontend
+EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "descrição"
+```
+
+**Novo build APK:**
+```bash
+cd frontend
+EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform android --profile preview
+```
+
+---
+
+> **Última actualização:** 10 Junho 2026 (APK confirmado às 15:37)
