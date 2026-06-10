@@ -31,7 +31,7 @@ export const brutalShadow = Platform.select({
     shadowColor: "#000",
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
-    shadowRadius: 0,
+    shadowRadius: 0.5, // iOS requires > 0 to render; 0.5 keeps the hard-edge look
     elevation: 6,
   },
 });

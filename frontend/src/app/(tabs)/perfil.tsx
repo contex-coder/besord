@@ -49,7 +49,6 @@ export default function PerfilScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Redirect to age-gate if not confirmed (e.g. existing sessions before fix)
   useEffect(() => {
     if (user && !user.age_confirmed_at) {
       router.replace("/age-gate");
@@ -60,14 +59,12 @@ export default function PerfilScreen() {
     const doLogout = async () => {
       await signOut();
       if (Platform.OS === "web" && typeof window !== "undefined") {
-        // Force clean reload on web so all state resets
         window.location.assign("/");
       } else {
         router.replace("/");
       }
     };
     if (Platform.OS === "web") {
-      // Alert.alert callbacks on RN-Web are unreliable — use native confirm
       if (typeof window !== "undefined" && window.confirm("Tem certeza que deseja sair?")) {
         doLogout();
       }
@@ -154,8 +151,7 @@ export default function PerfilScreen() {
               </Text>
             </View>
 
-            {/* ──────────── ESPAÇO PESSOAL ──────────── */}
-            <Text style={styles.sectionHeader}>👤  ESPAÇO PESSOAL</Text>
+            <Text style={styles.sectionHeader}>ESPAÇO PESSOAL</Text>
             {(() => {
               const bw = Number(user.bw_balance || 0);
               const canBoost = bw >= 100;
@@ -180,8 +176,7 @@ export default function PerfilScreen() {
               );
             })()}
 
-            {/* ──────────── MEUS EVENTOS ──────────── */}
-            <Text style={styles.sectionHeader}>📍  MEUS EVENTOS</Text>
+            <Text style={styles.sectionHeader}>MEUS EVENTOS</Text>
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => router.push("/meus-eventos")}
@@ -197,8 +192,7 @@ export default function PerfilScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            {/* ──────────── ESPAÇO EMPRESA ──────────── */}
-            <Text style={styles.sectionHeader}>🏢  ESPAÇO EMPRESA</Text>
+            <Text style={styles.sectionHeader}>ESPAÇO EMPRESA</Text>
             {user.has_business ? (
               <TouchableOpacity
                 testID="btn-advertise"
@@ -339,19 +333,14 @@ const styles = StyleSheet.create({
   avatarFallbackText: { fontSize: 24, fontWeight: "900", color: colors.text },
   userName: { fontSize: 18, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
   userEmail: { fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
-
   statsRow: { flexDirection: "row", gap: 8 },
   statBox: { flex: 1, borderWidth: 3, borderColor: colors.border, paddingVertical: 14, alignItems: "center", ...brutalShadow },
   statValue: { fontSize: 22, fontWeight: "900", color: colors.text },
   statLabel: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5, color: colors.text, marginTop: 2 },
-
   sectionLabel: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.text, marginTop: 8 },
-
   advertiseBtn: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.neutral, padding: 14, ...brutalShadow },
   advertiseBtnLocked: { opacity: 0.55, backgroundColor: colors.bg, borderStyle: "dashed" },
   sectionHeader: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.textSecondary, marginTop: 16, marginBottom: 4 },
-
-  // ─── Menu Item (como "EVENTOS VISITADOS") ───
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -374,15 +363,12 @@ const styles = StyleSheet.create({
   menuContent: { flex: 1 },
   menuTitle: { fontSize: 14, fontWeight: "900", letterSpacing: 0.5, color: colors.text },
   menuSub: { fontSize: 11, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
-
   advertiseTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 1, color: colors.text },
   advertiseSub: { fontSize: 11, fontWeight: "700", color: colors.text, marginTop: 2 },
-
   gridItem: { flex: 1, marginBottom: 12, borderWidth: 3, borderColor: colors.border, ...brutalShadow },
   gridImage: { width: "100%", aspectRatio: 1 },
   gridWord: { borderTopWidth: 3, borderTopColor: colors.border, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: colors.bg },
   gridWordText: { fontSize: 16, fontWeight: "900", letterSpacing: -0.5, color: colors.text, textAlign: "center" },
-
   empty: { paddingTop: 30, alignItems: "center" },
   emptyText: { fontSize: 14, fontWeight: "600", color: colors.textSecondary },
 });

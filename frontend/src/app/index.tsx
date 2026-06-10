@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { Dimensions, ScrollView } from "react-native";
 import {
   View,
@@ -36,12 +36,13 @@ function MascotVideo({ size }: { size: number }) {
     />
   );
 }
-import { useAssets } from "expo-asset";
 import * as AppleAuthentication from "expo-apple-authentication";
 
 import { useAuth, AuthError as AuthErrorType } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 import { t } from "@/src/i18n";
+import { storage } from "@/src/utils/storage";
+import { onboardingState } from "@/src/utils/onboardingState";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const IS_SMALL = SCREEN_W < 380;
@@ -62,18 +63,25 @@ export default function Landing() {
   const { user, loading, error, clearError, signIn, signInWithApple } = useAuth();
   const router = useRouter();
   const [appleAvailable, setAppleAvailable] = React.useState(false);
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
-    if (!loading && user) {
-      if (!user.age_confirmed_at) {
-        router.replace("/age-gate");
-      } else {
-        // --- NOVO: Redirecionar para onboarding que pergunta qual tipo de conta ---
-        // Só vai direto para o feed se já passou pelo onboarding
+    if (!loading && user && !hasNavigated.current) {
+      hasNavigated.current = true;
+      (async () => {
+        if (!user.age_confirmed_at) {
+          router.replace("/age-gate");
+          return;
+        }
+        const onboarded = onboardingState.get() || !!(await storage.getItem("besord_onboarded", null));
+        if (!onboarded) {
+          router.replace("/onboarding");
+          return;
+        }
         router.replace("/account-type");
-      }
+      })();
     }
-  }, [user, loading, router]);
+  }, [user, loading]);
 
   useEffect(() => {
     if (Platform.OS === "ios") {
