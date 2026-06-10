@@ -12,19 +12,25 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Selecione fotos para criar posts no Besord"
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
       "package": "com.besord.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
         "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
         "READ_MEDIA_IMAGES"
-      ]
+      ],
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "bundler": "metro",
@@ -39,7 +45,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000"
+          "backgroundColor": "#000000"
         }
       ],
       "expo-font",
@@ -54,6 +60,9 @@
         "projectId": "83893be0-ae4d-43a8-837d-dbd441193fef"
       }
     },
-    "owner": "besord"
+    "owner": "besord",
+    "updates": {
+      "url": "https://u.expo.dev/83893be0-ae4d-43a8-837d-dbd441193fef"
+    }
   }
 }
