@@ -112,6 +112,12 @@ async def startup():
         await db.events.create_index("status")
         # Índice para push tokens
         await db.push_tokens.create_index("user_id")
+        # Índices para admiradores
+        await db.admirers.create_index("user_id")
+        await db.admirers.create_index("admired_user_id")
+        await db.admirers.create_index(
+            [("user_id", 1), ("admired_user_id", 1)], unique=True
+        )
     except Exception:
         pass  # Índices já existem
 
@@ -140,6 +146,7 @@ class UserOut(BaseModel):
     birth_year: Optional[int] = None
     bw_balance: int = 0
     bw_total_earned: int = 0
+    admirers_count: int = 0
 
 class AuthResponse(BaseModel):
     token: str
@@ -277,6 +284,7 @@ def user_out(user: dict) -> UserOut:
         birth_year=user.get("birth_year"),
         bw_balance=int(user.get("bw_balance", 0) or 0),
         bw_total_earned=int(user.get("bw_total_earned", 0) or 0),
+        admirers_count=int(user.get("admirers_count", 0) or 0),
     )
 
 
@@ -362,6 +370,23 @@ def serialize_campaign(c: dict, checkout_url: Optional[str] = None) -> CampaignO
         ends_at=c["ends_at"].isoformat() if c.get("ends_at") and isinstance(c["ends_at"], datetime) else None,
         checkout_url=checkout_url or c.get("checkout_url"),
     )
+
+
+# ---------- Notify helper ----------
+async def notify_user(user_id: str, title: str, body: str, notif_type: str = "info", data: dict = None):
+    """Insert a notification into the DB. Fire-and-forget — never raises."""
+    try:
+        await db.notifications.insert_one({
+            "user_id": user_id,
+            "type": notif_type,
+            "title": title,
+            "body": body,
+            "read": False,
+            "data": data or {},
+            "created_at": datetime.now(timezone.utc),
+        })
+    except Exception as exc:
+        print(f"[notify_user] failed for {user_id}: {exc}")
 
 
 # ---------- Auth Routes ----------
@@ -588,7 +613,112 @@ async def whoami(authorization: Optional[str] = Header(None)):
         "matches_admin": bool(ADMIN_EMAIL and user_email == ADMIN_EMAIL),
     }
 
-# ... (rest of routes remain the same)
+# ==============================
+# ADMIRADORES
+# ==============================
+
+@api_router.post("/users/{target_user_id}/admire")
+async def admire_user(target_user_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    my_id = user["user_id"]
+    if my_id == target_user_id:
+        raise HTTPException(status_code=400, detail="Não podes admirar-te a ti próprio.")
+    target = await db.users.find_one({"user_id": target_user_id}, {"_id": 0, "name": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Utilizador não encontrado.")
+    existing = await db.admirers.find_one({"user_id": my_id, "admired_user_id": target_user_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Já estás a admirar este utilizador.")
+    await db.admirers.insert_one({
+        "user_id": my_id,
+        "admired_user_id": target_user_id,
+        "followed_at": datetime.now(timezone.utc),
+    })
+    await db.users.update_one({"user_id": target_user_id}, {"$inc": {"admirers_count": 1}})
+    await notify_user(
+        target_user_id,
+        "Tens um novo admirador!",
+        f"{user.get('name', 'Alguém')} passou a admirar-te.",
+        notif_type="new_admirer",
+        data={"from_user_id": my_id, "from_user_name": user.get("name", "")},
+    )
+    return {"ok": True, "admiring": True}
+
+
+@api_router.delete("/users/{target_user_id}/admire")
+async def unadmire_user(target_user_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    my_id = user["user_id"]
+    result = await db.admirers.delete_one({"user_id": my_id, "admired_user_id": target_user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Não estavas a admirar este utilizador.")
+    await db.users.update_one(
+        {"user_id": target_user_id, "admirers_count": {"$gt": 0}},
+        {"$inc": {"admirers_count": -1}},
+    )
+    return {"ok": True, "admiring": False}
+
+
+@api_router.get("/users/{target_user_id}/profile")
+async def get_public_profile(target_user_id: str, authorization: Optional[str] = Header(None)):
+    current_user = await get_optional_user(authorization)
+    target = await db.users.find_one({"user_id": target_user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Utilizador não encontrado.")
+    is_admired = False
+    if current_user:
+        is_admired = bool(await db.admirers.find_one({
+            "user_id": current_user["user_id"],
+            "admired_user_id": target_user_id,
+        }))
+    cursor = db.posts.find(
+        {"author_id": target_user_id, "hidden": {"$ne": True}},
+        {"_id": 0}
+    ).sort("created_at", -1).limit(20)
+    posts = await cursor.to_list(length=20)
+    serialized = []
+    for p in posts:
+        serialized.append(await serialize_post(p, current_user["user_id"] if current_user else None))
+    return {
+        "user_id": target["user_id"],
+        "name": target.get("name", ""),
+        "picture": target.get("picture"),
+        "bio": target.get("bio", ""),
+        "location": target.get("location", ""),
+        "admirers_count": int(target.get("admirers_count", 0)),
+        "bw_total_earned": int(target.get("bw_total_earned", 0)),
+        "is_admired": is_admired,
+        "posts": serialized,
+    }
+
+
+@api_router.get("/users/me/admiring")
+async def my_admiring(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    cursor = db.admirers.find({"user_id": user["user_id"]}, {"_id": 0, "admired_user_id": 1})
+    docs = await cursor.to_list(length=1000)
+    return {"admiring": [d["admired_user_id"] for d in docs]}
+
+
+@api_router.get("/feed/admired")
+async def feed_admired(
+    skip: int = 0,
+    limit: int = Query(default=20, le=50),
+    authorization: Optional[str] = Header(None),
+):
+    user = await get_current_user(authorization)
+    cursor = db.admirers.find({"user_id": user["user_id"]}, {"_id": 0, "admired_user_id": 1})
+    admiring_docs = await cursor.to_list(length=1000)
+    admiring_ids = [d["admired_user_id"] for d in admiring_docs]
+    if not admiring_ids:
+        return []
+    cursor = db.posts.find(
+        {"author_id": {"$in": admiring_ids}, "hidden": {"$ne": True}},
+        {"_id": 0}
+    ).sort("created_at", -1).skip(skip).limit(limit)
+    posts = await cursor.to_list(length=limit)
+    return [await serialize_post(p, user["user_id"]) for p in posts]
+
 
 # ==============================
 # POSTS ROUTES
@@ -778,15 +908,40 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
 
     existing = await db.votes.find_one({"post_id": post_id, "user_id": user["user_id"]}, {"_id": 0})
     now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%d")  # UTC date
+
+    # ── Time-Gate: only for new votes on non-sponsored posts ──────────────────
+    is_new_vote = not existing
+    is_sponsored_post = bool(doc.get("is_sponsored")) or bool(doc.get("campaign_id"))
+    if is_new_vote and not is_sponsored_post:
+        di = user.get("daily_interactions") or {}
+        if di.get("reset_date") != today_str:
+            # New day — reset counter in DB
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$set": {"daily_interactions": {"count": 0, "reset_date": today_str}}},
+            )
+            di = {"count": 0, "reset_date": today_str}
+        count = int(di.get("count", 0))
+        if count >= 10:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "time_gate_reached",
+                    "message": "O mundo já te deu o suficiente por hoje. Vá viver.",
+                    "remaining": 0,
+                },
+            )
+    # ─────────────────────────────────────────────────────────────────────────
 
     if existing:
         if existing["vote"] == payload.vote:
-            # Toggle off
+            # Toggle off — does NOT count as a new interaction
             await db.votes.delete_one({"post_id": post_id, "user_id": user["user_id"]})
             field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
             await db.posts.update_one({"post_id": post_id}, {"$inc": {field: -1}})
         else:
-            # Switch vote
+            # Switch vote — already counted when first voted, no new interaction
             await db.votes.update_one(
                 {"post_id": post_id, "user_id": user["user_id"]},
                 {"$set": {"vote": payload.vote, "created_at": now}},
@@ -797,7 +952,7 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
             # Award BW for the new vote
             await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
     else:
-        # New vote
+        # New vote — increment daily interaction counter
         await db.votes.insert_one({
             "post_id": post_id,
             "user_id": user["user_id"],
@@ -809,9 +964,22 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
         await db.posts.update_one({"post_id": post_id}, {"$inc": {field: 1}})
         # Award BW
         await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
+        # Increment Time-Gate counter (only for non-sponsored posts)
+        if not is_sponsored_post:
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$inc": {"daily_interactions.count": 1},
+                 "$set": {"daily_interactions.reset_date": today_str}},
+            )
 
     doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
-    return await serialize_post(doc, user["user_id"])
+    post_out = await serialize_post(doc, user["user_id"])
+    # Attach remaining interactions so frontend can show the warning
+    fresh_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "daily_interactions": 1})
+    di = (fresh_user or {}).get("daily_interactions") or {}
+    today_str2 = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    count_today = int(di.get("count", 0)) if di.get("reset_date") == today_str2 else 0
+    return {**post_out.model_dump(), "daily_interactions_remaining": max(0, 10 - count_today)}
 
 
 # ---------- COMMENT ----------

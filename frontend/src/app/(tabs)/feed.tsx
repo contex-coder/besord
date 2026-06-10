@@ -33,6 +33,7 @@ const IS_SMALL = SCREEN_W < 380;
 
 type SortMode = "recent" | "trending" | "styles";
 type ScopeMode = "world" | "country" | "city";
+type FeedTab = "global" | "admired";
 
 type Theme = { key: string; name: string; emoji: string; covers: string };
 
@@ -79,6 +80,15 @@ export default function FeedScreen() {
   const [customCity, setCustomCity] = useState("");
   // Hype toggle state
   const [hypeActive, setHypeActive] = useState(false);
+  const [feedTab, setFeedTab] = useState<FeedTab>("global");
+  const [admiredPosts, setAdmiredPosts] = useState<PostItem[]>([]);
+  // Time-Gate
+  const [dailyRemaining, setDailyRemaining] = useState<number>(10);
+  const [showTimeGateWarning, setShowTimeGateWarning] = useState(false);
+  // Word Links bottom sheet
+  const [wordSheetWord, setWordSheetWord] = useState<string | null>(null);
+  const [wordSheetPosts, setWordSheetPosts] = useState<PostItem[]>([]);
+  const [wordSheetLoading, setWordSheetLoading] = useState(false);
 
   const mascotPhrases = [
     "BESORD!",
@@ -248,6 +258,14 @@ export default function FeedScreen() {
         if (r.ok) {
           const updated = await r.json();
           setPosts((prev) => prev.map((p) => (p.post_id === post_id ? updated : p)));
+          const remaining = updated.daily_interactions_remaining ?? 10;
+          setDailyRemaining(remaining);
+          if (remaining <= 3) setShowTimeGateWarning(true);
+        } else if (r.status === 429) {
+          // Time-Gate reached — revert optimistic update
+          load(sort, scope, activeTheme, hypeActive);
+          setDailyRemaining(0);
+          setShowTimeGateWarning(true);
         } else {
           load(sort, scope, activeTheme, hypeActive);
         }
@@ -365,11 +383,30 @@ export default function FeedScreen() {
     [apiFetch, load, sort, scope, activeTheme, hypeActive]
   );
 
+  const loadAdmired = useCallback(async () => {
+    try {
+      const r = await apiFetch("/api/feed/admired");
+      if (r.ok) setAdmiredPosts(await r.json());
+    } catch {}
+  }, [apiFetch]);
+
+  useEffect(() => {
+    if (feedTab === "admired") loadAdmired();
+  }, [feedTab, loadAdmired]);
+
   const onWordPress = useCallback(
-    (word: string) => {
-      router.push(`/word/${encodeURIComponent(word)}`);
+    async (word: string) => {
+      setWordSheetWord(word);
+      setWordSheetPosts([]);
+      setWordSheetLoading(true);
+      try {
+        const r = await apiFetch(`/api/posts?sort=recent&word=${encodeURIComponent(word)}`);
+        if (r.ok) setWordSheetPosts(await r.json());
+      } finally {
+        setWordSheetLoading(false);
+      }
     },
-    [router]
+    [apiFetch]
   );
 
   const onEventCheckin = useCallback(
@@ -428,8 +465,25 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      {/* ─── Scope + Hype + Search bar (linha única) ─── */}
-      <View style={styles.filterBar}>
+      {/* ─── Subtabs Global | Admirados ─── */}
+      <View style={styles.subtabRow}>
+        <TouchableOpacity
+          style={[styles.subtab, feedTab === "global" && styles.subtabActive]}
+          onPress={() => setFeedTab("global")}
+        >
+          <Text style={[styles.subtabText, feedTab === "global" && styles.subtabTextActive]}>GLOBAL</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.subtab, feedTab === "admired" && styles.subtabActive]}
+          onPress={() => setFeedTab("admired")}
+        >
+          <Ionicons name="heart" size={12} color={feedTab === "admired" ? colors.text : colors.textSecondary} />
+          <Text style={[styles.subtabText, feedTab === "admired" && styles.subtabTextActive]}>ADMIRADOS</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ─── Scope + Hype + Search bar (linha única) — apenas no Global ─── */}
+      {feedTab === "global" && <View style={styles.filterBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
           {/* Scope chips */}
           {[
@@ -491,10 +545,10 @@ export default function FeedScreen() {
             <Text style={styles.eventChipText}>EVENTOS</Text>
           </TouchableOpacity>
         </ScrollView>
-      </View>
+      </View>}
 
-      {/* ─── Sort Toggle ─── */}
-      <View style={styles.sortRow}>
+      {/* ─── Sort Toggle — apenas no Global ─── */}
+      {feedTab === "global" && <View style={styles.sortRow}>
         <TouchableOpacity
           testID="sort-recent"
           style={[styles.sortBtn, sort === "recent" && styles.sortBtnActive]}
@@ -518,7 +572,7 @@ export default function FeedScreen() {
           <Ionicons name="star" size={12} color={sort === "styles" ? colors.text : colors.textSecondary} />
           <Text style={[styles.sortText, sort === "styles" && styles.sortTextActive]}>ESTILOS</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
 
       {/* ——— Scope Picker Modal ——— */}
       <Modal visible={showScopePicker} transparent animationType="fade" onRequestClose={() => setShowScopePicker(false)}>
@@ -562,12 +616,31 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* ─── Time-Gate Warning Banner ─── */}
+      {showTimeGateWarning && (
+        <View style={styles.timeGateBanner}>
+          <Ionicons name="time-outline" size={16} color={colors.text} />
+          <Text style={styles.timeGateText}>
+            {dailyRemaining === 0
+              ? "O mundo já te deu o suficiente por hoje. Vá viver."
+              : `Restam ${dailyRemaining} interacção${dailyRemaining !== 1 ? "ões" : ""} hoje.`}
+          </Text>
+          <TouchableOpacity onPress={() => setShowTimeGateWarning(false)}>
+            <Ionicons name="close" size={16} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       <FlatList
-        data={posts}
+        data={feedTab === "admired" ? admiredPosts : posts}
         keyExtractor={(item) => item.post_id}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.text} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={feedTab === "admired" ? loadAdmired : onRefresh}
+            tintColor={colors.text}
+          />
         }
         ListHeaderComponent={
           <View>
@@ -639,9 +712,74 @@ export default function FeedScreen() {
             onReport={onReport}
             onDeletePost={onDeletePost}
             onWordPress={onWordPress}
+            onAuthorPress={(userId) => router.push(`/user/${userId}`)}
+            dailyRemaining={dailyRemaining}
           />
         )}
       />
+
+      {/* ─── Word Links Bottom Sheet ─── */}
+      <Modal
+        visible={wordSheetWord !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setWordSheetWord(null)}
+      >
+        <TouchableOpacity
+          style={styles.wordSheetOverlay}
+          activeOpacity={1}
+          onPress={() => setWordSheetWord(null)}
+        />
+        <View style={styles.wordSheetContainer}>
+          <View style={styles.wordSheetHandle} />
+          <View style={styles.wordSheetHeader}>
+            <Text style={styles.wordSheetTitle}>#{wordSheetWord}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setWordSheetWord(null);
+                if (wordSheetWord) router.push(`/word/${encodeURIComponent(wordSheetWord)}`);
+              }}
+              style={styles.wordSheetFullBtn}
+            >
+              <Ionicons name="expand-outline" size={14} color={colors.text} />
+              <Text style={styles.wordSheetFullText}>VER TUDO</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setWordSheetWord(null)} style={styles.wordSheetCloseBtn}>
+              <Ionicons name="close" size={20} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          {wordSheetLoading ? (
+            <ActivityIndicator color={colors.text} style={{ marginTop: 40 }} />
+          ) : (
+            <FlatList
+              data={wordSheetPosts}
+              keyExtractor={(item) => item.post_id}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              ListEmptyComponent={
+                <View style={{ alignItems: "center", paddingTop: 40 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textSecondary }}>
+                    Nenhum post com esta palavra ainda.
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <PostCard
+                  post={item}
+                  currentUserId={user?.user_id || null}
+                  onVote={onVote}
+                  onComment={onComment}
+                  onDeleteComment={onDeleteComment}
+                  onReport={onReport}
+                  onDeletePost={onDeletePost}
+                  onWordPress={onWordPress}
+                  onAuthorPress={(userId) => { setWordSheetWord(null); router.push(`/user/${userId}`); }}
+                  dailyRemaining={dailyRemaining}
+                />
+              )}
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -672,6 +810,27 @@ const styles = StyleSheet.create({
     ...brutalShadow,
   },
   trendsText: { fontSize: 11, fontWeight: "900", letterSpacing: 1.2, color: colors.text },
+
+  // ─── Subtabs Global | Admirados ───
+  subtabRow: {
+    flexDirection: "row",
+    borderBottomWidth: 4,
+    borderBottomColor: colors.border,
+  },
+  subtab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 10,
+    backgroundColor: colors.bg,
+    borderRightWidth: 2,
+    borderRightColor: colors.border,
+  },
+  subtabActive: { backgroundColor: colors.neutral },
+  subtabText: { fontSize: 12, fontWeight: "900", letterSpacing: 1.2, color: colors.textSecondary },
+  subtabTextActive: { color: colors.text },
 
   // ─── Filter bar (Scope + Hype + Trends numa linha) ───
   filterBar: {
@@ -863,6 +1022,75 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   listContent: { paddingBottom: 40, gap: 0 },
+  // ─── Time-Gate Banner ───
+  timeGateBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.neutral,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.border,
+  },
+  timeGateText: { flex: 1, fontSize: 12, fontWeight: "900", color: colors.text },
+
+  // ─── Word Links Bottom Sheet ───
+  wordSheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  wordSheetContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "75%",
+    backgroundColor: colors.bg,
+    borderTopWidth: 4,
+    borderTopColor: colors.border,
+    ...brutalShadow,
+  },
+  wordSheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 4,
+    borderRadius: 2,
+  },
+  wordSheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.border,
+    gap: 8,
+  },
+  wordSheetTitle: { flex: 1, fontSize: 20, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
+  wordSheetFullBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: colors.bgSubtle,
+  },
+  wordSheetFullText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.text },
+  wordSheetCloseBtn: {
+    width: 36,
+    height: 36,
+    borderWidth: 3,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bg,
+  },
+
   empty: { paddingTop: 80, alignItems: "center", gap: 8 },
   emptyTitle: { fontSize: 28, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
   emptySub: {

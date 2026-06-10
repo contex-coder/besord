@@ -12,10 +12,9 @@ import {
   Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { colors, brutalShadow } from "@/src/theme";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-
-import { colors, brutalShadow } from "@/src/theme";
 
 export type CommentItem = {
   comment_id: string;
@@ -59,6 +58,8 @@ type Props = {
   onReport: (id: string) => void;
   onDeletePost: (id: string) => void;
   onWordPress: (word: string) => void;
+  onAuthorPress?: (userId: string) => void;
+  dailyRemaining?: number;
 };
 
 function sanitizeWord(input: string): string {
@@ -77,9 +78,12 @@ export default function PostCard({
   onReport,
   onDeletePost,
   onWordPress,
+  onAuthorPress,
+  dailyRemaining = 10,
 }: Props) {
   const total = post.aprovo_count + post.desaprovo_count;
   const aprovoPct = total === 0 ? 50 : Math.round((post.aprovo_count / total) * 100);
+  const voteBlocked = dailyRemaining === 0 && !post.user_vote && !post.is_sponsored;
   const [commentInput, setCommentInput] = useState("");
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -166,16 +170,22 @@ export default function PostCard({
       )}
 
       <View style={styles.authorRow}>
-        {post.author_picture ? (
-          <Image source={{ uri: post.author_picture }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text style={styles.avatarFallbackText}>{post.author_name.charAt(0).toUpperCase()}</Text>
-          </View>
-        )}
-        <Text style={styles.authorName} numberOfLines={1}>
-          {post.author_name.toUpperCase()}
-        </Text>
+        <TouchableOpacity
+          style={styles.authorIdentity}
+          activeOpacity={onAuthorPress ? 0.7 : 1}
+          onPress={() => onAuthorPress?.(post.author_id)}
+        >
+          {post.author_picture ? (
+            <Image source={{ uri: post.author_picture }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Text style={styles.avatarFallbackText}>{post.author_name.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <Text style={styles.authorName} numberOfLines={1}>
+            {post.author_name.toUpperCase()}
+          </Text>
+        </TouchableOpacity>
         {isOwn ? (
           <TouchableOpacity
             testID={`btn-delete-${post.post_id}`}
@@ -263,8 +273,10 @@ export default function PostCard({
             { backgroundColor: colors.aprovo },
             post.user_vote === "aprovo" && styles.voteBtnActive,
             post.user_vote === "aprovo" && styles.voteBtnVoted,
+            voteBlocked && styles.voteBtnDisabled,
           ]}
           onPress={() => onVote(post.post_id, "aprovo")}
+          disabled={voteBlocked}
           activeOpacity={0.8}
         >
           <Ionicons name="thumbs-up" size={20} color={colors.text} />
@@ -281,8 +293,10 @@ export default function PostCard({
             { backgroundColor: colors.desaprovo },
             post.user_vote === "desaprovo" && styles.voteBtnActive,
             post.user_vote === "desaprovo" && styles.voteBtnVoted,
+            voteBlocked && styles.voteBtnDisabled,
           ]}
           onPress={() => onVote(post.post_id, "desaprovo")}
+          disabled={voteBlocked}
           activeOpacity={0.8}
         >
           <Ionicons name="thumbs-down" size={20} color={colors.text} />
@@ -449,6 +463,7 @@ const styles = StyleSheet.create({
   },
   eventBadgeText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.text },
   authorRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  authorIdentity: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
   avatar: { width: 36, height: 36, borderWidth: 3, borderColor: colors.border, backgroundColor: colors.bgSubtle },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   avatarFallbackText: { fontWeight: "900", color: colors.text },
@@ -533,6 +548,7 @@ const styles = StyleSheet.create({
   },
   voteBtnActive: { transform: [{ translateY: 2 }, { translateX: 2 }], shadowOpacity: 0, elevation: 0 },
   voteBtnVoted: { position: "relative", overflow: "visible" },
+  voteBtnDisabled: { opacity: 0.4, borderStyle: "dashed" },
   voteBtnText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5, color: colors.text },
   voteCount: { fontSize: 15, fontWeight: "900", color: colors.text, marginLeft: 4 },
 
