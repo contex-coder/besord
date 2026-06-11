@@ -8,6 +8,19 @@
 - **Verificação:** `curl -X POST .../api/stripe/webhook -H "stripe-signature: invalid"` → retorna `400 {"detail":"Invalid signature"}`
 - ✅ **Corrigido**
 
+### 14. Expo Router — ecrã "Start by creating a file in the src/app directory"
+- **Sintoma:** App mostrava ecrã de fallback do Expo Router em web e mobile (Expo Go via QR)
+- **Causa confirmada:** Pasta `frontend/besord/` era um segundo projecto Expo aninhado que interferia com a resolução de rotas do Metro
+- **Solução aplicada (11/jun/2026):** Pasta `frontend/besord/` removida do disco (`rm -rf`) — não estava versionada no git
+- **`.metro-cache/` adicionado ao `.gitignore`** — 5060 ficheiros de cache removidos do histórico git
+- ✅ **Resolvido — commit `ab88c66`**
+
+### 15. `yarn` não instalado no sistema
+- **Problema:** `package.json` especifica `"packageManager": "yarn@1.22.22+..."` mas `yarn` não existe no PATH
+- **Mitigação:** `npm install` usado como fallback — instalou 1048 pacotes
+- **Risco:** `yarn.lock` e `package-lock.json` podem divergir
+- 🟡 **Mitigado** — instalar yarn quando possível
+
 ### 2. Deploys "update_failed" no Render
 - **Problema:** Render faz rolling update; se o container crasha ao iniciar (SyntaxError), o deploy falha
 - **Solução:** **Sempre compilar antes de push:**

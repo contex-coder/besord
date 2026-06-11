@@ -1,5 +1,5 @@
 # ⚙️ Regras de Negócio
-## Actualizado: 10 Junho 2026
+## Actualizado: 11 Junho 2026
 
 ---
 
@@ -57,6 +57,128 @@
 - `personality_snapshot` — compacto, max 500 chars — é o que vai para a IA
 - Histórico de 30 sessões guardado
 - `ai_summary` — resumo evolutivo gerado pela IA, actualizado semanalmente
+
+---
+
+## 📊 Métricas e Analytics (NOVO — 11 Jun 2026)
+
+### North Star Metric
+> **Daily Active Words** — número de palavras únicas publicadas por dia.
+
+Captura actividade real, qualidade do asset de dados e saúde do produto.
+
+### Thresholds de decisão
+| Métrica | Verde | Amarelo | Vermelho |
+|---|---|---|---|
+| Retenção D7 | ≥ 35% | 20–35% | < 20% |
+| Taxa de partilha Veredito | ≥ 25% | 10–25% | < 10% |
+| Abertura notif. Sincronia | ≥ 40% | 25–40% | < 25% |
+| Conversão brand manager → Primeiro Olhar | ≥ 1/3 | 1/5 | 0 |
+
+**Regra:** abaixo de 35% de retenção D7, não escalar. Resolver o produto primeiro.
+
+**Ferramenta:** PostHog (open source, self-hosted no Render, custo €0)
+
+---
+
+## 🃏 Veredito Card (NOVO — 11 Jun 2026)
+
+### O que é
+Card visual gerado automaticamente quando o Time-Gate fecha (10 interacções atingidas). Partilhável para Instagram Stories e WhatsApp Status.
+
+### Conteúdo
+- Palavra publicada pelo utilizador nesse dia
+- Taxa de aprovação que a palavra recebeu
+- Tema dominante nos votos do utilizador
+- Data + marca Besord
+
+### Regras
+- Gerado **sempre** que o Time-Gate fecha — não é opcional
+- Mostrado no ecrã de encerramento de sessão
+- Utilizador pode escolher partilhar ou fechar
+- Design: Neo-Brutalist puro, preto/branco, sem gradientes
+
+### Porquê existe
+É o mecanismo de crescimento orgânico. Alguém que partilha o card convida implicitamente amigos ao criar FOMO: "Como sabes a tua palavra de hoje?"
+
+---
+
+## 🔔 Sincronia (NOVO — 11 Jun 2026)
+
+### O que é
+Quando dois utilizadores que se admiram mutuamente completam a sessão no mesmo dia, o sistema compara os seus padrões de voto e notifica ambos.
+
+### Tipos de resultado
+| Tipo | Condição | Mensagem |
+|---|---|---|
+| Convergência | ≥ 6 votos iguais em 10 | *"Tu e [Nome] estiveram em sincronia hoje."* |
+| Divergência | ≥ 7 votos opostos em 10 | *"Tu e [Nome] viram o mundo de forma completamente diferente hoje."* |
+| Neutro | Entre 4–6 coincidências | Sem notificação |
+
+### Condições de activação
+- Apenas entre admiradores **mútuos** (ambos se admiram)
+- Ambos completaram sessão (10 votos) no mesmo dia UTC
+- Máximo 3 notificações Sincronia por dia por utilizador
+- Activar apenas quando ≥ 50 utilizadores activos com ≥ 3 admiradores mútuos em média
+
+### Porquê existe
+Esta notificação leva o utilizador a falar ao amigo fora da app (WhatsApp). Essa conversa privada converte em novos utilizadores mais do que qualquer story público.
+
+---
+
+## 💼 Besord Primeiro Olhar — Produto B2B (NOVO — 11 Jun 2026)
+
+### O que é
+Evento B2B simplificado de 48 horas. Uma marca sobe 5 imagens, a comunidade Besord vota e escolhe palavras, a marca recebe o Relatório de Sincronia.
+
+### Regras
+- Duração fixa: 48 horas
+- Máximo 5 imagens por evento
+- Sem mapa, sem QR code, sem check-in físico — apenas link directo
+- Criado pelo admin (semi-manual inicialmente)
+- Relatório entregue em PDF por email
+
+### Conteúdo do Relatório de Sincronia — Primeiro Olhar
+1. Imagem com maior taxa de aprovação
+2. Top 10 palavras escolhidas pela comunidade
+3. **Diagnóstico de desalinhamento** — palavra pretendida pela marca vs. palavra escolhida pelo público
+4. Distribuição geográfica dos votantes
+
+O diagnóstico de desalinhamento é a linha que fecha a venda:
+> *"A marca pretendia transmitir 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
+
+### Tabela de preços aprovada (11 Jun 2026)
+| Produto | Preço | Condição |
+|---|---|---|
+| Primeiro Olhar — 1º cliente | **€500** | Troca por testemunho escrito + autorização dados anónimos |
+| Primeiro Olhar — 2º–3º cliente | **€1.200** | Com case study do 1º cliente |
+| Evento Singular completo | **€2.500** | Com dashboard Sincronia Reports |
+| Evento Plural (por expositor) | **€800/slot** | Feiras, congressos |
+
+### Argumento de venda
+> *"Focus group tradicional: €5.000–€20.000, 3 semanas. Besord Primeiro Olhar: €800, 48 horas, com público que foi forçado a pensar."*
+
+---
+
+## 👥 Estratégia dos 100 Fundadores (NOVO — 11 Jun 2026)
+
+### Conceito
+100 convites pessoais (não link público) para a primeira vaga de utilizadores.
+
+### Perfis alvo
+| Perfil | Qtd | Quem | Canal |
+|---|---|---|---|
+| A — Criativos | 40 | Copywriters e directores criativos | LinkedIn + grupos WhatsApp publicidade |
+| B — Criadores | 30 | Criadores 2k–30k seguidores, estética conceptual | Instagram DM |
+| C — Brand Managers | 30 | Gestores de marcas moda/design/cultura | LinkedIn + referências Perfil A |
+
+O Perfil C é simultaneamente utilizador e futuro cliente B2B.
+
+### Badge de Fundador
+Badge permanente no perfil — visível mesmo quando a plataforma tiver 1 milhão de utilizadores.
+
+### Mensagem de convite
+> *"Estamos a criar a única app que te dá 10 votos por dia — e depois fecha. Não é para toda a gente. Achei que eras das pessoas certas para os primeiros 100. Queres ser fundador?"*
 
 ---
 

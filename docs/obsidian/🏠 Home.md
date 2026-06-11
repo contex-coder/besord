@@ -30,6 +30,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | [[📋 Checklist Deploy]] | Passos antes de cada deploy |
 | [[🔧 Setup Local]] | Como desenvolver no PC |
 | [[📅 Sessão 10 Junho 2026]] | Relatório da sessão de onboarding |
+| [[📅 Sessão 11 Junho 2026]] | Revisão estratégica Red Team + redesenho Fase 2 + decisões de produto |
 
 ---
 
@@ -49,11 +50,11 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 
 | Fase | Objectivo | Estado |
 |---|---|---|
-| **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída |
-| **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Onboarding, Modo Neutro | ⏳ A seguir |
-| **Fase 2** — Eventos + Editorial | Painel de eventos magistral, Word of the Day, 3 tipos | ⏳ Pendente |
-| **Fase 3** — Camada de IA | Espelho de Empatia, memória por utilizador, Printable Effect | ⏳ Pendente |
-| **Fase 4** — B2B + Escala | Sincronia Reports, Sintonizados, Besord como Filtro | ⏳ Pendente |
+| **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída (10 Jun 2026) |
+| **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Word Links, Onboarding, Modo Neutro, CDN | ✅ Concluída (11 Jun 2026) |
+| **Fase 2** — Crescimento + Primeiro €€€ | PostHog, Veredito Card, Sincronia, Besord Primeiro Olhar, Word of the Day | 🔄 Em curso |
+| **Fase 3** — Camada de IA + Mapa | Espelho de Empatia, user_memory, Efeito Printável completo, Mapa de eventos | ⏳ Pendente |
+| **Fase 4** — B2B Escala | Sincronia Reports dashboard, Sintonizados, Besord como Filtro do Instagram | ⏳ Pendente |
 
 ---
 
@@ -88,4 +89,4 @@ EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform andro
 
 ---
 
-> **Última actualização:** 10 Junho 2026 (APK confirmado às 15:37)
+> **Última actualização:** 11 Junho 2026 — Fase 1 concluída, Fase 2 em curso

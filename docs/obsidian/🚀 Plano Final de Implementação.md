@@ -143,98 +143,194 @@
 
 ---
 
-## ⏳ FASE 2 — Motor de Eventos + Conteúdo Editorial
-### Semanas 6-9 | Objectivo: O painel de eventos funciona com magistralidade
+## 🔄 FASE 2 — Crescimento + Primeiro Revenue
+### Semanas 6-9 | Objectivo: 100 utilizadores diários activos e primeira receita B2B
 
-**Princípio da fase**: o painel de eventos é o produto físico do Besord — leva o utilizador ao mundo real. Tem de funcionar sem fricção. O conteúdo editorial resolve o Cold Start.
-
----
-
-### 2.1 Painel de Eventos Redesenhado
-
-**Mapa com filtros de intenção** (não apenas por proximidade):
-- "Quero ganhar prémios"
-- "Quero conhecer novidades"
-- "Quero networking"
-- "Quero experiências culturais"
-
-**QR Code de entrada** gerado automaticamente para cada evento.
-
-**Fluxo de participação via QR**:
-```
-Scan QR → Deep link besord://evento/{id} → App abre directamente no evento → Utilizador vota e participa
-```
-
-**Barra de progresso** do evento: "Faltam 2 dias" / "47 participantes"
-
-**Notificação push** quando evento abre perto de ti (raio configurável pelo utilizador)
-
-**Ficheiros críticos**:
-- `frontend/src/app/(tabs)/mapa.tsx` — redesign do mapa
-- `backend/server.py` — endpoint QR Code + filtros de intenção
+> **ATENÇÃO — Fase 2 foi redesenhada em 11 Jun 2026** após revisão estratégica Red Team.
+> Ver documento completo: [[📅 Sessão 11 Junho 2026]]
+>
+> **Princípio da nova Fase 2**: cada feature deve fazer uma de duas coisas — trazer utilizadores ou gerar receita. O que não faz nenhuma das duas, adia.
+>
+> **O que foi movido para Fase 3**: mapa com geolocalização, filtros de intenção, notificações push de proximidade, ranking dinâmico de Hypes, fluxo B2B self-serve completo. Estes itens requerem massa crítica que ainda não existe.
 
 ---
 
-### 2.2 Fluxo B2B de Criação de Evento (4 passos, ≤ 3 minutos)
+### 2.1 Instrumentação Analytics (PostHog) — FAZER PRIMEIRO
 
-**CONSTRAINT IMUTÁVEL: máximo 4 passos, zero campos opcionais obrigatórios, QR Code gerado automaticamente no fim.**
+**Porquê antes de tudo:** sem dados, não sabemos o que está a funcionar. A D7 retention é a única métrica que valida se o produto tem futuro.
 
+**Ferramenta:** PostHog (open source, self-hosted no Render, custo €0)
+
+**Eventos críticos a instrumentar:**
 ```
-Passo 1: Nome + Tipo (Personal / Singular / Plural)
-Passo 2: Subir foto (Filtro Besord aplicado automaticamente)
-Passo 3: Definir prémio do sorteio (opcional mas sugerido)
-Passo 4: Confirmar → QR Code gerado → Partilhar
+install → onboarding_complete → first_vote → session_complete
+→ veredito_viewed → veredito_shared → sincronia_received
+→ d2_open → d7_open (MÉTRICA NORTE)
 ```
 
-**Ficheiro**: `frontend/src/app/business/create-event.tsx`
+**North Star Metric:** `daily_active_words` — número de palavras únicas publicadas por dia.
+
+**Thresholds de decisão:**
+- D7 retention ≥ 35% → produto saudável, escalar
+- D7 retention < 20% → problema de produto, não escalar antes de resolver
+
+**Ficheiros críticos:**
+- `frontend/src/app/_layout.tsx` — inicialização PostHog
+- `backend/server.py` — eventos server-side nos endpoints críticos
+
+**Critérios de aceitação:**
+- [ ] Dashboard PostHog mostra funil completo de activação
+- [ ] D7 retention é calculável após 7 dias de utilizadores reais
 
 ---
 
-### 2.3 3 Tipos de Evento no Schema
+### 2.2 Veredito Card — Motor de Crescimento Orgânico
 
-**Campo novo em `events`**: `type: "personal" | "enterprise_singular" | "enterprise_plural"`
+**O que é:** Card visual gerado automaticamente quando o Time-Gate fecha. Partilhável com um toque para Instagram Stories e WhatsApp.
 
-**Campo novo em `events`**: `escrow_status: "pending" | "held" | "released" | null`
+**Porquê é prioritário:** é o mecanismo de crescimento orgânico. Sem isto, os utilizadores chegam mas não trazem amigos.
 
-**Regras de escrow para eventos Pessoais**:
-- Pagamento retido pelo Besord até conclusão do evento
-- Repasse ao criador após: evento terminado + relatório entregue
-- Split: 70-80% criador / 20-30% Besord
+**Conteúdo do card:**
+```
+┌─────────────────────────────────┐
+│   A MINHA PALAVRA DE HOJE       │
+│                                 │
+│   S I L Ê N C I O              │
+│                                 │
+│   73% APROVARAM                 │
+│   8 em 10 votos: Natureza       │
+│                                 │
+│   BESORD — 10 VOTOS. UM DIA.   │
+└─────────────────────────────────┘
+```
+
+**Implementação:**
+- Trigger: quando `daily_interactions.count` atinge 10
+- Overlay de encerramento de sessão mostra o card + botão "PARTILHAR"
+- Partilha: React Native `Share.share()` + `react-native-view-shot` para capturar o card como imagem
+- Backend: `GET /api/users/me/veredito` — retorna `{ word, approval_rate, dominant_theme, date }`
+
+**Ficheiros críticos:**
+- `frontend/src/components/VeredictCard.tsx` (novo)
+- `frontend/src/app/(tabs)/feed.tsx` — overlay de sessão encerrada
+- `backend/server.py` — endpoint `/api/users/me/veredito`
+
+**Critérios de aceitação:**
+- [ ] Card aparece automaticamente quando Time-Gate fecha
+- [ ] Partilha abre Instagram Stories / WhatsApp com o card como imagem
+- [ ] Design é Neo-Brutalist e distinguível num feed de Instagram
 
 ---
 
-### 2.4 Conteúdo Seed
+### 2.3 Sincronia — Motor de Retenção Social
 
-**Script admin**: `backend/scripts/seed_content.py`
-- Ingere 200 imagens do banco curado (Unsplash/Pexels, filtro Besord aplicado)
-- Publica como posts da conta `@besord`
-- Distribuídas pelos principais temas/hypes
+**O que é:** Quando dois utilizadores que se admiram mutuamente completam sessão no mesmo dia, o sistema compara os seus padrões de voto e notifica ambos.
 
-**Critério**: no dia de lançamento, o feed global tem ≥ 50 posts activos
+**Tipos de notificação:**
+- Convergência (≥ 6 votos iguais): *"Tu e [Nome] estiveram em sincronia hoje."*
+- Divergência (≥ 7 votos opostos): *"Tu e [Nome] viram o mundo de forma completamente diferente hoje."*
+
+**Porquê é poderoso:** esta notificação leva o utilizador a abrir o WhatsApp e falar ao amigo. Essa conversa privada converte em novos utilizadores muito mais do que um story público.
+
+**Condições:**
+- Apenas entre admiradores mútuos
+- Ambos completaram sessão no mesmo dia (UTC)
+- Máximo 3 notificações Sincronia por dia por utilizador
+- Activar apenas quando ≥ 50 utilizadores activos com ≥ 3 admiradores mútuos em média
+
+**Implementação:**
+- Nova collection: `sincronia_logs { user_a, user_b, date, type, score }`
+- Função `calculate_sincronia(user_id)` chamada após session complete
+- Backend: lógica em `backend/server.py` ou novo `backend/sincronia.py`
+
+**Critérios de aceitação:**
+- [ ] Notificação enviada quando dois admiradores mútuos completam sessão no mesmo dia
+- [ ] Taxa de abertura da notificação Sincronia ≥ 40%
 
 ---
 
-### 2.5 Word of the Day
+### 2.4 Besord Primeiro Olhar — Primeiro Produto Comercial B2B
+
+**O que é:** Evento B2B simplificado de 48 horas. Uma marca sobe 5 imagens, a comunidade vota e escolhe palavras, a marca recebe o Relatório de Sincronia.
+
+**Posicionamento:**
+> "Em 48 horas, sabe que palavra o teu público escolheria para a tua nova colecção."
+
+**Target:** Marcas de moda portuguesa e brasileira a lançar colecções.
+
+**Preços aprovados:**
+| Produto | Preço |
+|---|---|
+| Primeiro cliente | €500 (troca por testemunho) |
+| 2º–3º cliente | €1.200 |
+| Evento Singular completo | €2.500 |
+
+**Fluxo (semi-manual inicialmente):**
+1. Admin cria evento via painel admin
+2. Partilha link com a marca
+3. 48 horas de votação
+4. Relatório entregue por email (PDF gerado por `backend/reports.py`)
+
+**Relatório inclui:**
+- Imagem com maior aprovação
+- Top 10 palavras escolhidas pela comunidade
+- **Diagnóstico de desalinhamento** (chave de venda): *"A marca pretendia transmitir 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
+
+**Ficheiros críticos:**
+- `backend/server.py` — novo tipo de evento `"primeiro_olhar"`
+- `backend/reports.py` (novo) — geração do relatório PDF
+- `backend/server.py` — endpoint `GET /api/events/{id}/primeiro-olhar-report`
+
+**Critérios de aceitação:**
+- [ ] Admin consegue criar evento "Primeiro Olhar" em menos de 5 minutos
+- [ ] Relatório PDF gerado automaticamente após 48h
+- [ ] Diagnóstico de desalinhamento aparece no relatório
+- [ ] Primeiro cliente paga e recebe relatório
+
+---
+
+### 2.5 Word of the Day + Conteúdo Seed
+
+**Word of the Day:**
 
 **Endpoint admin**: `POST /api/editorial/word-of-day { image_url, suggested_theme, bw_bonus }`
 
-**Frontend**: card especial no topo do feed com label "Palavra do Dia"
+**Frontend**: card especial no topo do feed com label "PALAVRA DO DIA"
 
 **Mecânica**:
 - Qualquer utilizador pode votar
-- Best Word mais votada às 23:59 recebe BW bónus (configurável pelo admin)
+- Best Word mais votada às 23:59 UTC recebe +5 B$
 - Razão diária para abrir o app
+
+**Conteúdo Seed:**
+
+**Script**: `backend/scripts/seed_content.py`
+- 50 imagens curadas (Unsplash/Pexels — regras do Filtro Besord: sem texto, sem poses, espaço de respiro)
+- Publicadas pela conta `@besord`
+- Distribuídas pelos principais temas
+
+**Critério**: feed global tem ≥ 30 posts activos antes de convidar os primeiros Fundadores.
+
+**Ficheiros críticos:**
+- `backend/server.py` — endpoint word-of-day
+- `frontend/src/app/(tabs)/feed.tsx` — card especial no topo
+- `backend/scripts/seed_content.py` (novo)
+
+**Critérios de aceitação:**
+- [ ] Word of the Day aparece no topo do feed com destaque visual
+- [ ] Feed tem ≥ 30 posts antes do lançamento aos Fundadores
 
 ---
 
-### 2.6 Hypes com Ranking Dinâmico
+### O que foi movido para Fase 3
 
-**Score temporal** (substituir lógica actual de `is_hype: bool`):
-```python
-hype_score = (votes_last_48h * 2) + total_votes
-```
-
-**Distinção visual**: Hypes "em chamas" (últimas 48h) vs. Hypes "clássicos" (all-time)
+| Item | Razão do adiamento |
+|---|---|
+| Mapa com geolocalização completa | Requer eventos reais existentes |
+| Filtros de intenção no mapa | Requer massa crítica |
+| Notificações push de proximidade | Requer eventos físicos reais |
+| Ranking dinâmico de Hypes | Requer volume de votos suficiente |
+| Fluxo B2B self-serve (4 passos automatizados) | Automatizar só após 3 clientes validados |
 
 ---
 
