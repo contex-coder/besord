@@ -119,6 +119,10 @@ async def startup():
         await db.admirers.create_index(
             [("user_id", 1), ("admired_user_id", 1)], unique=True
         )
+        # Índices para sincronia_logs
+        await db.sincronia_logs.create_index([("pair_id", 1), ("date", 1)], unique=True)
+        await db.sincronia_logs.create_index("user_id_a")
+        await db.sincronia_logs.create_index("user_id_b")
     except Exception:
         pass  # Índices já existem
 
@@ -265,6 +269,108 @@ def track_event(event: str, distinct_id: str, properties: dict = {}) -> None:
         asyncio.create_task(_posthog_send(event, distinct_id, properties))
     except RuntimeError:
         pass
+
+# ---------- Groq / Sincronia ----------
+async def _groq_insight(agreement_rate: int, posts_in_common: int) -> str:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key or posts_in_common == 0:
+        return ""
+    prompt = (
+        f"Em 1 frase curta e poética (máximo 12 palavras em português), descreve "
+        f"uma sincronia de {agreement_rate}% de concordância em {posts_in_common} "
+        f"posts entre dois admiradores mútuos. Sem aspas, sem explicações."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 40,
+                    "temperature": 0.8,
+                },
+            )
+            data = r.json()
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return ""
+
+async def calculate_sincronia(user_id: str, date: str) -> None:
+    """Calculates convergence between mutual admirers after session complete."""
+    # Find users that current user admires
+    admiring_cursor = db.admirers.find({"user_id": user_id}, {"_id": 0, "admired_user_id": 1})
+    admiring_docs = await admiring_cursor.to_list(length=200)
+    admiring_ids = {d["admired_user_id"] for d in admiring_docs}
+    if not admiring_ids:
+        return
+
+    # Find mutual admirers (they also admire back)
+    mutual_cursor = db.admirers.find(
+        {"user_id": {"$in": list(admiring_ids)}, "admired_user_id": user_id},
+        {"_id": 0, "user_id": 1},
+    )
+    mutual_docs = await mutual_cursor.to_list(length=200)
+    mutual_ids = [d["user_id"] for d in mutual_docs]
+    if not mutual_ids:
+        return
+
+    # Get current user's votes today
+    votes_a = await db.votes.find(
+        {"user_id": user_id, "created_at": {"$gte": datetime.fromisoformat(date)}},
+        {"_id": 0, "post_id": 1, "vote": 1},
+    ).to_list(length=20)
+    votes_a_map = {v["post_id"]: v["vote"] for v in votes_a}
+
+    for other_id in mutual_ids:
+        pair_id = "__".join(sorted([user_id, other_id]))
+        # Skip if already calculated today
+        existing = await db.sincronia_logs.find_one({"pair_id": pair_id, "date": date})
+        if existing:
+            continue
+
+        # Check if other user completed session today
+        other_user = await db.users.find_one({"user_id": other_id}, {"_id": 0, "daily_interactions": 1})
+        if not other_user:
+            continue
+        di = other_user.get("daily_interactions") or {}
+        if di.get("reset_date") != date or int(di.get("count", 0)) < 10:
+            continue  # Other user hasn't completed session yet
+
+        # Get other user's votes today
+        votes_b = await db.votes.find(
+            {"user_id": other_id, "created_at": {"$gte": datetime.fromisoformat(date)}},
+            {"_id": 0, "post_id": 1, "vote": 1},
+        ).to_list(length=20)
+        votes_b_map = {v["post_id"]: v["vote"] for v in votes_b}
+
+        # Find common posts and calculate agreement
+        common_posts = set(votes_a_map.keys()) & set(votes_b_map.keys())
+        posts_in_common = len(common_posts)
+        if posts_in_common == 0:
+            continue
+
+        agreements = sum(1 for pid in common_posts if votes_a_map[pid] == votes_b_map[pid])
+        agreement_rate = round(agreements / posts_in_common * 100)
+
+        insight = await _groq_insight(agreement_rate, posts_in_common)
+
+        await db.sincronia_logs.update_one(
+            {"pair_id": pair_id, "date": date},
+            {"$set": {
+                "pair_id": pair_id,
+                "user_id_a": min(user_id, other_id),
+                "user_id_b": max(user_id, other_id),
+                "date": date,
+                "agreement_rate": agreement_rate,
+                "posts_in_common": posts_in_common,
+                "agreements": agreements,
+                "insight_text": insight,
+                "created_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
 
 # ---------- Helpers ----------
 async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
@@ -775,6 +881,33 @@ async def get_veredito(authorization: Optional[str] = Header(None)):
     }
 
 
+@api_router.get("/users/me/sincronia")
+async def get_sincronia(authorization: Optional[str] = Header(None)):
+    """Returns today's sincronia records for the current user."""
+    user = await get_current_user(authorization)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    uid = user["user_id"]
+    cursor = db.sincronia_logs.find(
+        {"date": today, "$or": [{"user_id_a": uid}, {"user_id_b": uid}]},
+        {"_id": 0},
+    )
+    docs = await cursor.to_list(length=50)
+    results = []
+    for doc in docs:
+        other_id = doc["user_id_b"] if doc["user_id_a"] == uid else doc["user_id_a"]
+        other = await db.users.find_one({"user_id": other_id}, {"_id": 0, "name": 1, "user_id": 1})
+        results.append({
+            "other_user_id": other_id,
+            "other_name": other.get("name", "?") if other else "?",
+            "agreement_rate": doc["agreement_rate"],
+            "posts_in_common": doc["posts_in_common"],
+            "agreements": doc.get("agreements", 0),
+            "insight_text": doc.get("insight_text", ""),
+            "date": doc["date"],
+        })
+    return results
+
+
 @api_router.get("/feed/admired")
 async def feed_admired(
     skip: int = 0,
@@ -1062,6 +1195,10 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
     })
     if remaining == 0:
         track_event("session_complete", user["user_id"], {"date": today_str2})
+        try:
+            asyncio.create_task(calculate_sincronia(user["user_id"], today_str2))
+        except RuntimeError:
+            pass
     return {**post_out.model_dump(), "daily_interactions_remaining": remaining}
 
 
