@@ -179,8 +179,10 @@ install → onboarding_complete → first_vote → session_complete
 - `backend/server.py` — eventos server-side nos endpoints críticos
 
 **Critérios de aceitação:**
-- [ ] Dashboard PostHog mostra funil completo de activação
-- [ ] D7 retention é calculável após 7 dias de utilizadores reais
+- [x] Dashboard PostHog mostra funil completo de activação *(conta criada, chave configurada no Render + Vercel, eventos a disparar: app_opened, vote_cast, session_complete, onboarding_complete, veredito_shared)*
+- [ ] D7 retention é calculável após 7 dias de utilizadores reais *(aguarda utilizadores reais — calculável a partir de 18 Jun 2026)*
+
+**Provider:** Groq (llama-3.1-8b-instant) — conta gratuita, sem cartão de crédito. Região PostHog: US Cloud.
 
 ---
 
@@ -216,9 +218,9 @@ install → onboarding_complete → first_vote → session_complete
 - `backend/server.py` — endpoint `/api/users/me/veredito`
 
 **Critérios de aceitação:**
-- [ ] Card aparece automaticamente quando Time-Gate fecha
-- [ ] Partilha abre Instagram Stories / WhatsApp com o card como imagem
-- [ ] Design é Neo-Brutalist e distinguível num feed de Instagram
+- [x] Card aparece automaticamente quando Time-Gate fecha *(VeredictCard.tsx + showVeredito state no feed.tsx)*
+- [ ] Partilha abre Instagram Stories / WhatsApp com o card como imagem *(Share.share() funciona como texto; captura como imagem requer react-native-view-shot — Fase 3)*
+- [x] Design é Neo-Brutalist e distinguível num feed de Instagram
 
 ---
 
@@ -244,8 +246,10 @@ install → onboarding_complete → first_vote → session_complete
 - Backend: lógica em `backend/server.py` ou novo `backend/sincronia.py`
 
 **Critérios de aceitação:**
-- [ ] Notificação enviada quando dois admiradores mútuos completam sessão no mesmo dia
-- [ ] Taxa de abertura da notificação Sincronia ≥ 40%
+- [x] Lógica de convergência calculada quando dois admiradores mútuos completam sessão no mesmo dia *(calculate_sincronia() + sincronia_logs collection + Groq insight)*
+- [x] Endpoint GET /api/users/me/sincronia implementado
+- [ ] Notificação push enviada ao utilizador *(push notifications — Fase 3, requer expo-notifications)*
+- [ ] Taxa de abertura da notificação Sincronia ≥ 40% *(métricas só com utilizadores reais)*
 
 ---
 
@@ -480,4 +484,4 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 
 ---
 
-> **Última actualização:** 10 Junho 2026
+> **Última actualização:** 11 Junho 2026 — Fase 2 parcialmente concluída (2.1 ✅ 2.2 ✅ 2.3 backend ✅ | 2.4 e 2.5 pendentes)

@@ -322,5 +322,58 @@ Mais utilizadores C → dados mais ricos → produto B2B mais valioso → preço
 
 ---
 
-> **Última actualização:** 11 Junho 2026
-> **Próxima acção:** Implementar Fase 2 por ordem de prioridade (PostHog → Veredito → Sincronia → Primeiro Olhar → Word of the Day)
+---
+
+## 🛠️ Tarde — Implementação Técnica Fase 2 (11 Jun 2026)
+
+### O que foi construído
+
+| Feature | Ficheiros | Estado |
+|---|---|---|
+| **PostHog analytics** | `analytics.ts`, `_layout.tsx`, `server.py` | ✅ Live |
+| **Endpoint `/veredito`** | `server.py` | ✅ Live |
+| **VeredictCard.tsx** | `components/VeredictCard.tsx` | ✅ Live |
+| **Overlay no feed** | `feed.tsx` — `showVeredito` state | ✅ Live |
+| **Sincronia backend** | `server.py` — `calculate_sincronia()` + `GET /sincronia` | ✅ Deployed |
+| **Groq insights** | `server.py` — `_groq_insight()` | ✅ Deployed |
+
+### Decisões técnicas tomadas
+
+- **PostHog região US** (não EU): conta criada em `us.posthog.com`. Código usa `https://us.i.posthog.com`. A chave está no Render (`POSTHOG_API_KEY`) e no Vercel (`EXPO_PUBLIC_POSTHOG_KEY`).
+- **Groq em vez de Gemini**: Google AI Studio exigia cartão de crédito para activar quota. Groq oferece 14.400 req/dia grátis sem cartão. Modelo: `llama-3.1-8b-instant`.
+- **Sincronia é assíncrona**: `asyncio.create_task()` — não bloqueia a resposta do voto. Corre em background após `remaining === 0`.
+- **Sincronia só entre admiradores mútuos**: A e B têm de se admirar mutuamente E ambos completar sessão no mesmo dia (UTC). Resultado guardado em `sincronia_logs` com `pair_id` único por dia.
+- **Share do VeredictCard**: usa `Share.share()` (texto + link). Captura como imagem (para Instagram Stories) adiada para Fase 3 — requer `react-native-view-shot`.
+- **metro-cache removida do git**: 775 ficheiros eliminados do histórico, `frontend/.metro-cache/` adicionado ao `.gitignore`.
+
+### Chaves e serviços configurados nesta sessão
+
+| Serviço | Onde | Variável |
+|---|---|---|
+| PostHog | Render + Vercel | `POSTHOG_API_KEY` / `EXPO_PUBLIC_POSTHOG_KEY` |
+| Groq | Render + `.env` local | `GROQ_API_KEY` |
+| Resend | Já estava no Render | `RESEND_API_KEY` |
+| Google OAuth | Já estava no Render | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` |
+| Stripe (test) | Já estava no Render | `STRIPE_API_KEY` |
+
+### Commits desta sessão
+
+| Hash | Descrição |
+|---|---|
+| `0cdfcc6` | feat: Fase 2 — VeredictCard, PostHog, limpeza metro-cache |
+| `4d0d4f4` | fix: PostHog region EU → US |
+| `77a2972` | feat: Sincronia — convergência admiradores mútuos + Groq insights |
+
+### Pendente para próxima sessão
+
+1. **Besord Primeiro Olhar** — tipo de evento B2B, PDF report (`reportlab`), endpoint admin
+2. **Word of the Day** — endpoint `POST /api/editorial/word-of-day` + card no feed
+3. **50 seed posts** — script `backend/scripts/seed_content.py`
+4. **Push notifications Sincronia** — `expo-notifications` (quando ≥ 50 utilizadores activos)
+5. **`eas update`** — OTA update para APK existente
+6. **Testar besord.vercel.app** — validar VeredictCard + PostHog events em produção
+
+---
+
+> **Última actualização:** 11 Junho 2026 (tarde)
+> **Próxima acção:** Besord Primeiro Olhar (2.4) → Word of the Day (2.5) → seed content

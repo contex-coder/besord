@@ -42,6 +42,8 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | **Frontend Web** | 🟢 Live | https://besord.vercel.app |
 | **MongoDB Atlas** | 🟢 Online | Cluster: Besord (M0 Free) |
 | **Stripe Webhook** | 🟢 Validado | Assina e rejeita inválidos ✓ |
+| **PostHog Analytics** | 🟢 Activo | us.posthog.com — Projecto 465827 |
+| **Groq AI** | 🟢 Activo | console.groq.com — llama-3.1-8b-instant (free) |
 | **APK Android** | ✅ Build concluído | [Descarregar APK](https://expo.dev/artifacts/eas/jHhZhUnWDr8W5gWAxJfRGk8BDH92QnVEOwFIPISC8mY.apk) |
 
 ---
@@ -52,7 +54,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 |---|---|---|
 | **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída (10 Jun 2026) |
 | **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Word Links, Onboarding, Modo Neutro, CDN | ✅ Concluída (11 Jun 2026) |
-| **Fase 2** — Crescimento + Primeiro €€€ | PostHog, Veredito Card, Sincronia, Besord Primeiro Olhar, Word of the Day | 🔄 Em curso |
+| **Fase 2** — Crescimento + Primeiro €€€ | PostHog ✅ Veredito Card ✅ Sincronia (backend) ✅ — Primeiro Olhar + Word of the Day pendentes | 🔄 Em curso |
 | **Fase 3** — Camada de IA + Mapa | Espelho de Empatia, user_memory, Efeito Printável completo, Mapa de eventos | ⏳ Pendente |
 | **Fase 4** — B2B Escala | Sincronia Reports dashboard, Sintonizados, Besord como Filtro do Instagram | ⏳ Pendente |
 
@@ -89,4 +91,4 @@ EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform andro
 
 ---
 
-> **Última actualização:** 11 Junho 2026 — Fase 1 concluída, Fase 2 em curso
+> **Última actualização:** 11 Junho 2026 (tarde) — PostHog ✅ Groq ✅ VeredictCard ✅ Sincronia backend ✅ — faltam: Primeiro Olhar, Word of the Day, push notifications
