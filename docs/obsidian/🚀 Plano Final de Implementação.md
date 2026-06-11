@@ -22,7 +22,7 @@
 
 ---
 
-## ⏳ FASE 1 — Identidade + Social Graph + Hooks de Retenção
+## ✅ FASE 1 — Identidade + Social Graph + Hooks de Retenção (CONCLUÍDA — 11 Jun 2026)
 ### Semanas 3-5 | Objectivo: Razão para voltar todos os dias
 
 **Princípio da fase**: sem grafo social (Admiradores) e sem Time-Gate, o Besord é apenas uma app de votação. Estas duas peças são a fundação de tudo o que se segue.
@@ -228,9 +228,14 @@ install → onboarding_complete → first_vote → session_complete
 
 **O que é:** Quando dois utilizadores que se admiram mutuamente completam sessão no mesmo dia, o sistema compara os seus padrões de voto e notifica ambos.
 
-**Tipos de notificação:**
-- Convergência (≥ 6 votos iguais): *"Tu e [Nome] estiveram em sincronia hoje."*
-- Divergência (≥ 7 votos opostos): *"Tu e [Nome] viram o mundo de forma completamente diferente hoje."*
+**Tipos de resultado (conf. ⚙️ Regras de Negócio):**
+| Tipo | Condição | Acção |
+|---|---|---|
+| Convergência | ≥ 6 votos iguais | Notificar ambos |
+| Divergência | ≥ 7 votos opostos | Notificar ambos |
+| Neutro | 4–6 coincidências | Sem notificação — registo guardado mas silencioso |
+
+> ⚠️ **Gap actual**: a implementação de 11 Jun guarda todos os resultados (incluindo Neutro) em `sincronia_logs`. O filtro Neutro deve ser aplicado na Fase 3 quando as notificações push forem activadas.
 
 **Porquê é poderoso:** esta notificação leva o utilizador a abrir o WhatsApp e falar ao amigo. Essa conversa privada converte em novos utilizadores muito mais do que um story público.
 
@@ -240,10 +245,11 @@ install → onboarding_complete → first_vote → session_complete
 - Máximo 3 notificações Sincronia por dia por utilizador
 - Activar apenas quando ≥ 50 utilizadores activos com ≥ 3 admiradores mútuos em média
 
-**Implementação:**
-- Nova collection: `sincronia_logs { user_a, user_b, date, type, score }`
-- Função `calculate_sincronia(user_id)` chamada após session complete
-- Backend: lógica em `backend/server.py` ou novo `backend/sincronia.py`
+**Implementação (realizada 11 Jun 2026):**
+- Collection: `sincronia_logs { pair_id, user_id_a, user_id_b, date, agreement_rate, posts_in_common, agreements, insight_text, created_at }`
+- `calculate_sincronia(user_id, date)` — chamada como `asyncio.create_task()` em `vote_post` quando `remaining == 0`
+- `_groq_insight(agreement_rate, posts_in_common)` — gera frase poética via Groq `llama-3.1-8b-instant`
+- `GET /api/users/me/sincronia` — devolve registos do dia com nome do outro utilizador
 
 **Critérios de aceitação:**
 - [x] Lógica de convergência calculada quando dois admiradores mútuos completam sessão no mesmo dia *(calculate_sincronia() + sincronia_logs collection + Groq insight)*
@@ -262,12 +268,13 @@ install → onboarding_complete → first_vote → session_complete
 
 **Target:** Marcas de moda portuguesa e brasileira a lançar colecções.
 
-**Preços aprovados:**
-| Produto | Preço |
-|---|---|
-| Primeiro cliente | €500 (troca por testemunho) |
-| 2º–3º cliente | €1.200 |
-| Evento Singular completo | €2.500 |
+**Preços aprovados (conf. ⚙️ Regras de Negócio — 11 Jun 2026):**
+| Produto | Preço | Condição |
+|---|---|---|
+| Primeiro Olhar — 1º cliente | €500 | Troca por testemunho + autorização dados anónimos |
+| Primeiro Olhar — 2º–3º cliente | €1.200 | Com case study do 1º cliente |
+| Evento Singular completo | €2.500 | Com dashboard Sincronia Reports |
+| Evento Plural (por expositor) | €800/slot | Feiras, congressos |
 
 **Fluxo (semi-manual inicialmente):**
 1. Admin cria evento via painel admin
@@ -381,7 +388,7 @@ personality_snapshot + sessão_de_hoje (palavras vistas, votos, padrões)
 **Prompt do sistema** (imutável):
 > "Atue como analista comportamental estoico. Analise as escolhas do utilizador nesta sessão e escreva um feedback de no máximo 3 frases. Tom directo, desprovido de sentimentalismo, focado em contradições lógicas ou padrões de valor observados. Não use palavras como 'esperança', 'coração' ou 'bem-estar'. Seja clínico e assertivo."
 
-**Provider**: `backend/ai_provider.py` (Gemini 1.5 Flash → Groq fallback)
+**Provider**: `backend/ai_provider.py` (Groq llama-3.1-8b-instant → Gemini fallback quando disponível)
 
 **Frontend**: botão "Ver o meu Espelho de hoje" no ecrã de encerramento de sessão (Time-Gate)
 
@@ -396,7 +403,9 @@ async def generate_insight(prompt: str, context: dict) -> str:
     # Retorna string com o insight
 ```
 
-**Providers suportados**: Gemini 1.5 Flash, Groq + Llama 3.1, Mistral
+**Providers suportados**: Groq + Llama 3.1 (✅ configurado, primário), Gemini 1.5 Flash (pendente activação), Mistral (reserva)
+
+> **Decisão 11 Jun 2026**: Gemini exige cartão de crédito para activar quota. Groq adoptado como provider primário — 14.400 req/dia grátis, sem cartão.
 
 ---
 
