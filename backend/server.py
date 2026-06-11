@@ -253,7 +253,7 @@ async def _posthog_send(event: str, distinct_id: str, properties: dict) -> None:
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             await client.post(
-                "https://eu.i.posthog.com/capture/",
+                "https://us.i.posthog.com/capture/",
                 json={"api_key": api_key, "event": event,
                       "distinct_id": distinct_id, "properties": properties},
             )

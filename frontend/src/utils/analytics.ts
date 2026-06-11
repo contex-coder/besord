@@ -1,5 +1,5 @@
 const POSTHOG_KEY = process.env.EXPO_PUBLIC_POSTHOG_KEY;
-const POSTHOG_HOST = "https://eu.i.posthog.com";
+const POSTHOG_HOST = "https://us.i.posthog.com";
 
 export async function track(
   event: string,
