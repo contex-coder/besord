@@ -175,8 +175,9 @@ class PostOut(BaseModel):
     image_base64: str
     images_base64: Optional[List[str]] = None  # carrossel (até 3)
     video_base64: Optional[str] = None  # vídeo 30s
-    is_hype: bool = False  # hype toggle
+    is_hype: bool = False
     is_sponsored: bool = False
+    is_polarized: bool = False
     author_id: str
     author_name: str
     author_picture: Optional[str] = None
@@ -339,6 +340,7 @@ async def serialize_post(doc: dict, current_user_id: Optional[str]) -> PostOut:
         user_comment=user_comment,
         top_comments=[comment_doc_to_out(c) for c in top_comments_docs],
         is_sponsored=bool(doc.get("is_sponsored")),
+        is_polarized=bool(doc.get("is_polarized")),
         campaign_id=doc.get("campaign_id"),
     )
 
@@ -864,6 +866,7 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
         "desaprovo_count": 0,
         "comments_count": 0,
         "is_sponsored": False,
+        "is_polarized": False,
         "theme": payload.theme if payload.theme in THEME_KEYS else None,
         "hidden": False,
     }
@@ -1521,6 +1524,19 @@ async def admin_list_campaigns(authorization: Optional[str] = Header(None)):
     cursor = db.campaigns.find({}, {"_id": 0}).sort("created_at", -1).limit(100)
     docs = await cursor.to_list(length=100)
     return [serialize_campaign(c) for c in docs]
+
+
+@api_router.put("/admin/posts/{post_id}/polarize")
+async def admin_toggle_polarized(post_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administradores.")
+    doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0, "is_polarized": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Post não encontrado.")
+    new_value = not bool(doc.get("is_polarized"))
+    await db.posts.update_one({"post_id": post_id}, {"$set": {"is_polarized": new_value}})
+    return {"post_id": post_id, "is_polarized": new_value}
 
 
 # ==============================

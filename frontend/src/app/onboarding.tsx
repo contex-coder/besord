@@ -9,31 +9,31 @@ import { onboardingState } from "@/src/utils/onboardingState";
 import { colors, brutalShadow } from "@/src/theme";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const BEETLE = "https://customer-assets.emergentagent.com/job_image-feedback-app/artifacts/k8o964dp_image_e8c30e18-dee9-4061-a6d7-7a53ae2d2b32.png";
+const BEETLE = require("../../assets/images/beetle.png");
 
 const SLIDES = [
   {
-    icon: "image" as const,
-    title: "UMA IMAGEM,\nUMA PALAVRA",
-    sub: "Publica uma foto e descreve com APENAS uma palavra. Simples. Brutalmente honesto.",
+    icon: "eye" as const,
+    title: "CHEGA\nDE RUÍDO.",
+    sub: "Cada dia, uma palavra. Cada palavra, uma percepção. O Besord é o teu diário de como vês o mundo.",
     color: colors.neutral,
   },
   {
-    icon: "thumbs-up" as const,
-    title: "APROVO\nOU DESAPROVO?",
-    sub: "Vota nas imagens dos outros. Vê o veredito coletivo em tempo real. Clica numa palavra para descobrir tudo com essa hashtag.",
+    icon: "heart" as const,
+    title: "NÃO SEGUES\nPESSOAS.",
+    sub: "Admiras olhares. Encontras quem vê o mundo como tu — não quem tem mais seguidores.",
     color: colors.aprovo,
   },
   {
-    icon: "wallet" as const,
-    title: "VOTAS, GANHAS\nBW",
-    sub: "Cada voto que dás vale +1 BW. Acumula 100 BW e podes promover um post teu — 300 pessoas da tua cidade durante 24h. BW é XP, não dinheiro.",
+    icon: "hourglass" as const,
+    title: "10 VOTOS\nPOR DIA.",
+    sub: "Só tens 10 interacções. Isso obriga-te a escolher com intenção. 5 minutos que valem mais do que 5 horas no TikTok.",
     color: colors.bg,
   },
   {
     icon: "rocket" as const,
-    title: "PROMOVE\nA TUA MARCA",
-    sub: "Empresas: testem nomes, embalagens, ideias com pessoas reais. Recebem relatório por país, região e cidade.",
+    title: "AS TUAS\nPERCEPÇÕES\nVALEM.",
+    sub: "Empresas pagam para saber o que pessoas reais pensam. Os teus votos têm valor — e tu recebes parte disso.",
     color: colors.desaprovo,
   },
 ];
@@ -69,7 +69,7 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.skipRow}>
-        <Image source={{ uri: BEETLE }} style={styles.miniBeetle} resizeMode="contain" />
+        <Image source={BEETLE} style={styles.miniBeetle} resizeMode="contain" />
         <Text style={styles.brand}>BESORD</Text>
         <TouchableOpacity testID="btn-skip" onPress={finish}>
           <Text style={styles.skip}>SALTAR</Text>

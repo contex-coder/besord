@@ -51,7 +51,7 @@ export default function AccountTypeScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <Image
-          source={{ uri: "https://customer-assets.emergentagent.com/job_image-feedback-app/artifacts/k8o964dp_image_e8c30e18-dee9-4061-a6d7-7a53ae2d2b32.png" }}
+          source={require("../../assets/images/beetle.png")}
           style={styles.beetle}
           resizeMode="contain"
         />

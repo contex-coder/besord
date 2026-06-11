@@ -85,3 +85,6 @@ memory/test_credentials.md
 android-sdk/
 # Lock files
 package-lock.json
+
+# Metro bundler cache
+frontend/.metro-cache/

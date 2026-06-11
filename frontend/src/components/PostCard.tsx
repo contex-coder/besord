@@ -44,6 +44,7 @@ export type PostItem = {
   user_comment?: string | null;
   top_comments: CommentItem[];
   is_sponsored?: boolean;
+  is_polarized?: boolean;
   campaign_id?: string | null;
   // Event badge — posts within an event context
   event_badge?: { event_id: string; event_title: string } | null;
@@ -324,7 +325,14 @@ export default function PostCard({
         <Text style={styles.voteStatText}>{100 - aprovoPct}% DESAPROVO</Text>
       </View>
 
-      <View style={styles.commentsBlock}>
+      {post.is_polarized && (
+        <View style={styles.neutralBadge}>
+          <Ionicons name="shield-checkmark-outline" size={14} color={colors.text} />
+          <Text style={styles.neutralBadgeText}>MODO NEUTRO — SÓ PERCEPÇÕES AQUI.</Text>
+        </View>
+      )}
+
+      {!post.is_polarized && <View style={styles.commentsBlock}>
         <View style={styles.commentsHeader}>
           <Ionicons name="chatbubble-outline" size={14} color={colors.text} />
           <Text style={styles.commentsTitle}>
@@ -416,13 +424,30 @@ export default function PostCard({
             )}
           </View>
         )}
-      </View>
+      </View>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: { gap: 6, marginHorizontal: 4, paddingLeft: 8, paddingRight: 8 },
+  neutralBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 3,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.bgSubtle,
+    marginTop: 4,
+  },
+  neutralBadgeText: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    color: colors.text,
+  },
   sponsoredBadge: {
     alignSelf: "flex-start",
     flexDirection: "row",
