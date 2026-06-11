@@ -7,6 +7,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { storage } from "@/src/utils/storage";
 import { onboardingState } from "@/src/utils/onboardingState";
 import { colors, brutalShadow } from "@/src/theme";
+import { useAuth } from "@/src/contexts/AuthContext";
+import { track } from "@/src/utils/analytics";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const BEETLE = require("../../assets/images/beetle.png");
@@ -40,13 +42,15 @@ const SLIDES = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [idx, setIdx] = useState(0);
   const listRef = useRef<FlatList>(null);
 
   const finish = async () => {
-    // Set both storage AND in-memory state synchronously, so the navigator
-    // guard in _layout doesn't bounce us back here on the next render.
     onboardingState.set(true);
+    if (user?.user_id) {
+      track("onboarding_complete", user.user_id);
+    }
     try {
       await storage.setItem("besord_onboarded", "1");
     } catch {}

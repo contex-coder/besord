@@ -169,3 +169,52 @@ EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main -
 ---
 
 > **Última atualização:** 10 Junho 2026
+
+---
+
+## 🔧 2ª Sessão (10 Junho 2026, tarde) — Debug Expo Router (NÃO RESOLVIDO)
+
+### Contexto
+Fundador reportou que ao fazer scan do QR code no Expo Go, a app mostrava o ecrã "Start by creating a file in the src/app directory" em vez da Landing page.
+
+### Diagnóstico
+
+| Teste | Resultado |
+|---|---|
+| Metro inicia? | Sim, `Using src/app as the root directory for Expo Router` |
+| Bundle compila (web)? | Sim, HTTP 200, 773 módulos, 5403ms |
+| Bundle compila (Android)? | Sim, HTTP 200, 1109 módulos, 9410ms |
+| Manifest acessível via IP? | Sim, `http://192.168.1.202:8081` responde JSON correto |
+| HTML shell carrega? | Sim, `<title>Besord</title>`, `<div id="root">` |
+| Código da app no bundle? | Sim, 35+ matches para strings do projeto |
+| `node_modules` reinstalados? | Sim, `npm install` (1048 pacotes, 14s) |
+| Cache Metro limpo? | Sim, `.metro-cache` apagado + `--clear` |
+| `_layout.tsx` mínimo funciona? | Não — mesmo com `<Stack>` vazio, mesmo problema |
+| `index.tsx` mínimo funciona? | Não — mesmo com `<Text>BESORD</Text>`, mesmo problema |
+
+### Hipótese principal
+Existe um segundo projeto Expo em `frontend/besord/src/app/` com rotas próprias. O `metro.config.js` tenta bloqueá-lo:
+```js
+const nestedProject = path.join(__dirname, 'besord'); // path ABSOLUTO
+config.resolver.blockList = [
+  new RegExp(`^${nestedProject.replace(...)}.*`),
+];
+```
+Se o Metro espera paths **relativos** no `blockList`, o regex absoluto nunca faz match → projeto aninhado interfere com a resolução de rotas.
+
+### Outras notas
+- `yarn` não está instalado no sistema → `npm install` usado como fallback
+- `.env.local`: `EXPO_PUBLIC_FRONTEND_URL=http://localhost:8083` mas Metro corre em 8081
+- Backend responde em `http://192.168.1.202:8000` (ping OK: `{"status":"ok"}`)
+
+### Próximo passo
+Mover/remover `frontend/besord/` ou corrigir regex do `blockList` para `^\.\/besord\/.*`, limpar tudo e testar de novo.
+
+### Arquivos alterados nesta sessão
+- `frontend/app.json`: removido `newArchEnabled: false`, adicionado `checkAutomatically: "ON_ERROR_RECOVERY"` (revertido no final)
+- `frontend/src/app/_layout.tsx`: testado versão mínima (revertido)
+- `frontend/src/app/index.tsx`: testado versão mínima (revertido)
+- `frontend/.metro-cache`: apagado
+- `frontend/node_modules`: apagado e reinstalado via npm
+
+> **Ficheiros restaurados** com `git checkout` no final da sessão.

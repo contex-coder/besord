@@ -1,4 +1,5 @@
 import sys
+import asyncio
 
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import RedirectResponse
@@ -243,6 +244,27 @@ class CampaignOut(BaseModel):
     ends_at: Optional[str] = None
     checkout_url: Optional[str] = None
 
+
+# ---------- Analytics ----------
+async def _posthog_send(event: str, distinct_id: str, properties: dict) -> None:
+    api_key = os.getenv("POSTHOG_API_KEY")
+    if not api_key:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            await client.post(
+                "https://eu.i.posthog.com/capture/",
+                json={"api_key": api_key, "event": event,
+                      "distinct_id": distinct_id, "properties": properties},
+            )
+    except Exception:
+        pass
+
+def track_event(event: str, distinct_id: str, properties: dict = {}) -> None:
+    try:
+        asyncio.create_task(_posthog_send(event, distinct_id, properties))
+    except RuntimeError:
+        pass
 
 # ---------- Helpers ----------
 async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
@@ -702,6 +724,57 @@ async def my_admiring(authorization: Optional[str] = Header(None)):
     return {"admiring": [d["admired_user_id"] for d in docs]}
 
 
+@api_router.get("/users/me/veredito")
+async def get_veredito(authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    uid = user["user_id"]
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Post publicado hoje pelo utilizador
+    user_post = await db.posts.find_one(
+        {"author_id": uid, "created_at": {"$gte": today_start}},
+        {"_id": 0, "word": 1, "post_id": 1, "aprovo_count": 1, "desaprovo_count": 1},
+    )
+
+    # Votos lançados hoje pelo utilizador
+    votes_cursor = db.votes.find(
+        {"user_id": uid, "created_at": {"$gte": today_start}},
+        {"_id": 0, "post_id": 1, "vote": 1},
+    )
+    votes_today = await votes_cursor.to_list(length=10)
+
+    # Tema dominante dos posts votados
+    dominant_theme = None
+    if votes_today:
+        voted_ids = [v["post_id"] for v in votes_today]
+        voted_posts = await db.posts.find(
+            {"post_id": {"$in": voted_ids}},
+            {"_id": 0, "theme": 1},
+        ).to_list(length=10)
+        themes = [p["theme"] for p in voted_posts if p.get("theme")]
+        if themes:
+            dominant_theme = max(set(themes), key=themes.count)
+
+    aprovo_count = sum(1 for v in votes_today if v["vote"] == "aprovo")
+    total = int(user.get("daily_interactions", {}).get("count", len(votes_today)))
+
+    approval_rate = None
+    if user_post:
+        total_votes = user_post["aprovo_count"] + user_post["desaprovo_count"]
+        if total_votes > 0:
+            approval_rate = round(user_post["aprovo_count"] / total_votes * 100)
+
+    return {
+        "word": user_post["word"] if user_post else None,
+        "post_id": user_post["post_id"] if user_post else None,
+        "approval_rate": approval_rate,
+        "aprovo_votes_cast": aprovo_count,
+        "total_votes_cast": total,
+        "dominant_theme": dominant_theme,
+        "date": datetime.now(timezone.utc).strftime("%d %b %Y").upper(),
+    }
+
+
 @api_router.get("/feed/admired")
 async def feed_admired(
     skip: int = 0,
@@ -982,7 +1055,14 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
     di = (fresh_user or {}).get("daily_interactions") or {}
     today_str2 = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     count_today = int(di.get("count", 0)) if di.get("reset_date") == today_str2 else 0
-    return {**post_out.model_dump(), "daily_interactions_remaining": max(0, 10 - count_today)}
+    remaining = max(0, 10 - count_today)
+    track_event("vote_cast", user["user_id"], {
+        "vote": payload.vote, "post_id": post_id,
+        "daily_remaining": remaining, "is_sponsored": is_sponsored_post,
+    })
+    if remaining == 0:
+        track_event("session_complete", user["user_id"], {"date": today_str2})
+    return {**post_out.model_dump(), "daily_interactions_remaining": remaining}
 
 
 # ---------- COMMENT ----------

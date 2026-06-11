@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
   Platform,
   ScrollView,
   Image,
-  Animated,
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,8 +24,8 @@ import { colors, brutalShadow } from "@/src/theme";
 
 import PostCard, { PostItem } from "@/src/components/PostCard";
 import EventCard, { EventItem } from "@/src/components/EventCard";
-import BeetleMascot from "@/src/components/BeetleMascot";
 import ProfileSwitcher from "@/src/components/ProfileSwitcher";
+import VeredictCard from "@/src/components/VeredictCard";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const IS_SMALL = SCREEN_W < 380;
@@ -34,8 +33,6 @@ const IS_SMALL = SCREEN_W < 380;
 type SortMode = "recent" | "trending" | "styles";
 type ScopeMode = "world" | "country" | "city";
 type FeedTab = "global" | "admired";
-
-type Theme = { key: string; name: string; emoji: string; covers: string };
 
 const COUNTRIES = [
   { code: "PT", name: "Portugal" },
@@ -67,12 +64,9 @@ export default function FeedScreen() {
   const [scope, setScope] = useState<ScopeMode>("world");
   const [scopeCountry, setScopeCountry] = useState<string | null>(null);
   const [scopeCity, setScopeCity] = useState<string | null>(null);
-  const [themes, setThemes] = useState<Theme[]>([]);
-  const [activeTheme, setActiveTheme] = useState<string | null>(null);
-  const [mascotTapCount, setMascotTapCount] = useState(0);
+  const activeTheme = null;
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLon, setUserLon] = useState<number | null>(null);
-  const scrollY = useRef(new Animated.Value(0)).current;
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [activeWsId, setActiveWsId] = useState<string | null>(null);
   const [showScopePicker, setShowScopePicker] = useState(false);
@@ -85,24 +79,11 @@ export default function FeedScreen() {
   // Time-Gate
   const [dailyRemaining, setDailyRemaining] = useState<number>(10);
   const [showTimeGateWarning, setShowTimeGateWarning] = useState(false);
+  const [showVeredito, setShowVeredito] = useState(false);
   // Word Links bottom sheet
   const [wordSheetWord, setWordSheetWord] = useState<string | null>(null);
   const [wordSheetPosts, setWordSheetPosts] = useState<PostItem[]>([]);
   const [wordSheetLoading, setWordSheetLoading] = useState(false);
-
-  const mascotPhrases = [
-    "BESORD!",
-    "VOTA! ✅",
-    "🔥 EM ALTA!",
-    "BW +1!",
-    "BOOST! 🚀",
-    "👑 REI!",
-  ];
-  const mascotPhrase = mascotPhrases[mascotTapCount % mascotPhrases.length];
-
-  const handleMascotPress = () => {
-    setMascotTapCount((prev) => prev + 1);
-  };
 
   // Load geo info on mount + request device location
   useEffect(() => {
@@ -126,16 +107,6 @@ export default function FeedScreen() {
             { enableHighAccuracy: true, timeout: 10000 }
           );
         }
-      } catch {}
-    })();
-  }, [apiFetch]);
-
-  // Load themes once
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await apiFetch("/api/themes");
-        if (r.ok) setThemes(await r.json());
       } catch {}
     })();
   }, [apiFetch]);
@@ -261,11 +232,13 @@ export default function FeedScreen() {
           const remaining = updated.daily_interactions_remaining ?? 10;
           setDailyRemaining(remaining);
           if (remaining <= 3) setShowTimeGateWarning(true);
+          if (remaining === 0) setShowVeredito(true);
         } else if (r.status === 429) {
           // Time-Gate reached — revert optimistic update
           load(sort, scope, activeTheme, hypeActive);
           setDailyRemaining(0);
           setShowTimeGateWarning(true);
+          setShowVeredito(true);
         } else {
           load(sort, scope, activeTheme, hypeActive);
         }
@@ -780,6 +753,9 @@ export default function FeedScreen() {
           )}
         </View>
       </Modal>
+
+      {/* ─── Veredito Card — abre quando Time-Gate fecha ─── */}
+      <VeredictCard visible={showVeredito} onClose={() => setShowVeredito(false)} />
     </SafeAreaView>
   );
 }
