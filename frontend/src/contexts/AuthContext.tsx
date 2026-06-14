@@ -55,15 +55,15 @@ type AuthState = {
     name?: string;
   }) => Promise<void>;
   signInWithPassword: (
-    email,
-    password
+    email: string,
+    password: string
   ) => Promise<{ ok: boolean; error?: string }>;
   registerWithPassword: (
-    email,
-    password,
-    name
+    email: string,
+    password: string,
+    name: string
   ) => Promise<{ ok: boolean; error?: string }>;
-  requestPasswordReset: (email) => Promise<{ ok: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
 // --- CONTEXT ---
@@ -303,10 +303,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   },[token, signOut]);
 
   // Dummy implementations
-  const finishPasswordAuth = async (data) => {};
-  const signInWithPassword = async (email, password) => ({ ok: false, error: "Not implemented" });
-  const registerWithPassword = async (email, password, name) => ({ ok: false, error: "Not implemented" });
-  const requestPasswordReset = async (email) => ({ ok: false, error: "Not implemented" });
+  const finishPasswordAuth = async (_data: unknown) => {};
+  const signInWithPassword = async (_email: string, _password: string) => ({ ok: false, error: "Not implemented" });
+  const registerWithPassword = async (_email: string, _password: string, _name: string) => ({ ok: false, error: "Not implemented" });
+  const requestPasswordReset = async (_email: string) => ({ ok: false, error: "Not implemented" });
 
   return (
     <AuthContext.Provider
