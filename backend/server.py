@@ -456,10 +456,17 @@ async def serialize_post(doc: dict, current_user_id: Optional[str]) -> PostOut:
     cursor = db.comments.find({"post_id": doc["post_id"]}, {"_id": 0}).sort("created_at", -1).limit(3)
     top_comments_docs = await cursor.to_list(length=3)
 
+    # Suporta posts antigos/seed com campo 'media' (URLs) em vez de 'image_base64'
+    img = doc.get("image_base64") or ""
+    if not img:
+        media = doc.get("media", [])
+        if media and isinstance(media, list) and isinstance(media[0], dict):
+            img = media[0].get("url", "")
+
     return PostOut(
         post_id=doc["post_id"],
         word=doc["word"],
-        image_base64=doc["image_base64"],
+        image_base64=img,
         images_base64=doc.get("images_base64"),  # carrossel
         video_base64=doc.get("video_base64"),    # vídeo 30s
         is_hype=bool(doc.get("is_hype")),

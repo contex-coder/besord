@@ -143,7 +143,8 @@ export default function FeedScreen() {
         const r = await apiFetch("/api/editorial/word-of-day/today");
         if (r.ok) {
           const data = await r.json();
-          if (data.word) setWordOfDay({ word: data.word, image_url: data.image_url });
+          const wotd = data.word_of_day;
+          if (wotd?.word) setWordOfDay({ word: wotd.word, image_url: wotd.image_url });
         }
       } catch {}
     })();
