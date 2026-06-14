@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -20,15 +20,12 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 
 const MAX_IMAGES = 3; // até 3 imagens (1 principal + 2 extra)
-const MAX_VIDEO_SECONDS = 30;
 
 export default function CriarScreen() {
   const { apiFetch, user, refreshUser } = useAuth();
   const router = useRouter();
   const [mainImage, setMainImage] = useState<string | null>(null);
   const [extraImages, setExtraImages] = useState<string[]>([]);
-  const [videoBase64, setVideoBase64] = useState<string | null>(null);
-  const [isHype, setIsHype] = useState(false);
   const [word, setWord] = useState("");
   const [themes, setThemes] = useState<{ key: string; name: string; emoji: string }[]>([]);
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
@@ -141,45 +138,6 @@ export default function CriarScreen() {
     }
   }, []);
 
-  const pickVideo = useCallback(async () => {
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "video/*";
-      input.onchange = async (e: any) => {
-        const file = e.target?.files?.[0];
-        if (!file) return;
-        // Verificar duração
-        const video = document.createElement("video");
-        video.preload = "metadata";
-        video.onloadedmetadata = () => {
-          if (video.duration > MAX_VIDEO_SECONDS) {
-            Alert.alert("Vídeo muito longo", `Máximo de ${MAX_VIDEO_SECONDS} segundos.`);
-            return;
-          }
-          readFileAsBase64(file).then(setVideoBase64);
-        };
-        video.src = URL.createObjectURL(file);
-      };
-      input.click();
-      return;
-    }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 0.8,
-      base64: true,
-    });
-    if (!res.canceled && res.assets[0]) {
-      const a = res.assets[0];
-      if (a.base64) {
-        const mime = a.mimeType || "video/mp4";
-        setVideoBase64(`data:${mime};base64,${a.base64}`);
-      }
-    }
-  }, []);
-
   const onWordChange = (txt: string) => {
     const cleaned = txt.replace(/\s+/g, "").replace(/[^A-Za-zÀ-ÿ0-9]/g, "").slice(0, 20);
     setWord(cleaned.toUpperCase());
@@ -196,9 +154,9 @@ export default function CriarScreen() {
     }
     setSubmitting(true);
     try {
-      const payload: any = { word, image_base64: mainImage, is_hype: isHype };
+      const payload: any = { word, image_base64: mainImage };
       if (extraImages.length > 0) payload.images_base64 = extraImages;
-      if (videoBase64) payload.video_base64 = videoBase64;
+      if (selectedTheme) { payload.theme = selectedTheme; payload.is_hype = true; }
 
       const r = await apiFetch("/api/posts", {
         method: "POST",
@@ -208,8 +166,7 @@ export default function CriarScreen() {
         const created = await r.json().catch(() => ({}));
         setMainImage(null);
         setExtraImages([]);
-        setVideoBase64(null);
-        setIsHype(false);
+        setSelectedTheme(null);
         setWord("");
         if (created?.post_id) {
           offerBoost(created.post_id);
@@ -225,7 +182,7 @@ export default function CriarScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mainImage, extraImages, videoBase64, isHype, word, apiFetch, router, offerBoost]);
+  }, [mainImage, extraImages, selectedTheme, word, apiFetch, router, offerBoost]);
 
   const totalImages = (mainImage ? 1 : 0) + extraImages.length;
   const canAddMoreImages = totalImages < MAX_IMAGES;
@@ -280,42 +237,27 @@ export default function CriarScreen() {
           )}
         </View>
 
-        {/* ─── Vídeo (opcional) ─── */}
-        <TouchableOpacity style={styles.videoPicker} onPress={pickVideo}>
-          <Ionicons name="videocam" size={24} color={colors.text} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.videoPickerTitle}>
-              {videoBase64 ? "✅ VÍDEO SELECIONADO (30s)" : "ADICIONAR VÍDEO (OPCIONAL)"}
-            </Text>
-            <Text style={styles.videoPickerSub}>Máx. 30 segundos</Text>
-          </View>
-          {videoBase64 && (
-            <TouchableOpacity onPress={() => setVideoBase64(null)}>
-              <Ionicons name="close-circle" size={22} color={colors.text} />
-            </TouchableOpacity>
+        {/* ─── Hype — Tema (opcional) ─── */}
+        <View style={styles.themeBlock}>
+          <Text style={styles.label}>🔥 HYPE — SELECIONA UM TEMA (OPCIONAL)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+            {themes.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={[styles.themeChip, selectedTheme === t.key && styles.themeChipActive]}
+                onPress={() => setSelectedTheme(selectedTheme === t.key ? null : t.key)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.themeChipText, selectedTheme === t.key && styles.themeChipTextActive]}>
+                  {t.emoji} {t.name.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          {selectedTheme && (
+            <Text style={styles.hypeHint}>✅ POST CLASSIFICADO COMO HYPE</Text>
           )}
-        </TouchableOpacity>
-
-        {/* ─── Hype Toggle ─── */}
-        <TouchableOpacity
-          style={[styles.hypeToggle, isHype && styles.hypeToggleActive]}
-          onPress={() => setIsHype(!isHype)}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name={isHype ? "flame" : "flame-outline"}
-            size={24}
-            color={isHype ? "#FFF" : colors.text}
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.hypeToggleTitle, isHype && { color: "#FFF" }]}>
-              {isHype ? "✅ HYPE ATIVO" : "🔥 ATIVAR HYPE"}
-            </Text>
-            <Text style={[styles.hypeToggleSub, isHype && { color: "rgba(255,255,255,0.7)" }]}>
-              O teu post aparece na secção HYPES do feed (mais visibilidade)
-            </Text>
-          </View>
-        </TouchableOpacity>
+        </View>
 
         {/* ─── Palavra ─── */}
         <View style={styles.wordBlock}>
@@ -414,33 +356,19 @@ const styles = StyleSheet.create({
   },
   addExtraText: { fontSize: 10, fontWeight: "900", color: colors.text, marginTop: 2 },
 
-  // ─── Vídeo ───
-  videoPicker: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 14,
+  // ─── Tema / Hype ───
+  themeBlock: { gap: 8 },
+  themeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderWidth: 3,
     borderColor: colors.border,
     backgroundColor: colors.bgSubtle,
   },
-  videoPickerTitle: { fontSize: 13, fontWeight: "900", color: colors.text },
-  videoPickerSub: { fontSize: 10, fontWeight: "700", color: colors.textSecondary, marginTop: 2 },
-
-  // ─── Hype Toggle ───
-  hypeToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 14,
-    borderWidth: 3,
-    borderColor: colors.border,
-    backgroundColor: colors.bgSubtle,
-    ...brutalShadow,
-  },
-  hypeToggleActive: { backgroundColor: colors.neutral, borderWidth: 4 },
-  hypeToggleTitle: { fontSize: 14, fontWeight: "900", color: colors.text },
-  hypeToggleSub: { fontSize: 10, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
+  themeChipActive: { backgroundColor: colors.neutral, borderWidth: 4 },
+  themeChipText: { fontSize: 12, fontWeight: "900", color: colors.text, letterSpacing: 0.5 },
+  themeChipTextActive: { color: colors.text },
+  hypeHint: { fontSize: 10, fontWeight: "900", color: colors.text, letterSpacing: 1 },
 
   // ─── Word ───
   wordBlock: { gap: 6 },

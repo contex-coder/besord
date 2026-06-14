@@ -492,9 +492,9 @@ export default function FeedScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
           {/* Scope chips */}
           {[
-            { key: "world" as ScopeMode, label: "🌍" },
-            { key: "country" as ScopeMode, label: scopeCountry ? `🇵🇹` : "📍" },
-            { key: "city" as ScopeMode, label: scopeCity ? "📍CIDADE" : "📍" },
+            { key: "world" as ScopeMode, label: "🌍 MUNDO", chevron: false },
+            { key: "country" as ScopeMode, label: scopeCountry ? `🇵🇹 PAÍS` : "📍 PAÍS", chevron: true },
+            { key: "city" as ScopeMode, label: scopeCity ? `📍 ${scopeCity.toUpperCase()}` : "📍 CIDADE", chevron: true },
           ].map((s) => (
             <TouchableOpacity
               key={s.key}
@@ -510,7 +510,7 @@ export default function FeedScreen() {
               <Text style={[styles.scopeChipText, scope === s.key && styles.scopeChipTextActive]}>
                 {s.label}
               </Text>
-              <Ionicons name="chevron-down" size={10} color={scope === s.key ? "#FFF" : colors.text} />
+              {s.chevron && <Ionicons name="chevron-down" size={10} color={scope === s.key ? "#FFF" : colors.text} />}
             </TouchableOpacity>
           ))}
 
@@ -530,15 +530,6 @@ export default function FeedScreen() {
             <Text style={[styles.hypeChipText, hypeActive && styles.hypeChipTextActive]}>
               HYPES
             </Text>
-          </TouchableOpacity>
-
-          {/* Trends button (ao lado do Hype) */}
-          <TouchableOpacity
-            style={styles.trendChip}
-            onPress={() => router.push("/trends")}
-          >
-            <Ionicons name="trending-up" size={14} color={colors.text} />
-            <Text style={styles.trendChipText}>TRENDS</Text>
           </TouchableOpacity>
 
           {/* Explorar Eventos */}

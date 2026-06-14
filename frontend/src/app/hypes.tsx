@@ -23,7 +23,7 @@ export default function HypesScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ sort: "trending", source: "styles", ...(activeTheme ? { theme: activeTheme } : {}) }).toString();
+      const qs = new URLSearchParams({ sort: "trending", ...(activeTheme ? { theme: activeTheme } : {}) }).toString();
       const [pr, th] = await Promise.all([
         apiFetch(`/api/posts?${qs}`),
         themes.length ? Promise.resolve(null) : apiFetch("/api/themes"),

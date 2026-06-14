@@ -59,7 +59,9 @@ export default function OnboardingScreen() {
 
   const next = () => {
     if (idx < SLIDES.length - 1) {
-      listRef.current?.scrollToIndex({ index: idx + 1, animated: true });
+      const newIdx = idx + 1;
+      setIdx(newIdx);
+      listRef.current?.scrollToIndex({ index: newIdx, animated: true });
     } else {
       finish();
     }

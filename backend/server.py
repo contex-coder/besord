@@ -957,6 +957,7 @@ async def list_posts(
     sort: Literal["recent", "trending"] = Query("recent"),
     source: Optional[str] = Query(None),
     theme: Optional[str] = Query(None),
+    word: Optional[str] = Query(None),
     scope: Literal["world", "country", "city"] = Query("world"),
     country_code: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
@@ -984,6 +985,10 @@ async def list_posts(
         if not words:
             return []
         match["word"] = {"$in": words}
+
+    # Word filter (for word links from feed — overrides source=styles if both set)
+    if word:
+        match["word"] = word.upper()
 
     # Theme filter
     if theme and theme in THEME_KEYS:
@@ -1091,6 +1096,86 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
     }
     await db.posts.insert_one(doc)
     return await serialize_post(doc, user["user_id"])
+
+
+# ---------- TRENDS ----------
+@api_router.get("/trends")
+async def get_trends(
+    scope: Literal["world", "country"] = Query("world"),
+    period: Literal["24h", "7d", "30d"] = Query("24h"),
+    country_code: Optional[str] = Query(None),
+    theme: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    delta_map = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+    since = now - delta_map[period]
+
+    # Match votes within the time window
+    vote_match: dict = {"created_at": {"$gte": since}}
+    if scope == "country" and country_code:
+        vote_match["geo.country_code"] = country_code.upper()
+
+    # Get post_ids with votes in this window
+    vote_pipeline = [
+        {"$match": vote_match},
+        {"$group": {
+            "_id": "$post_id",
+            "total": {"$sum": 1},
+            "aprovo": {"$sum": {"$cond": [{"$eq": ["$vote", "aprovo"]}, 1, 0]}},
+        }},
+        {"$sort": {"total": -1}},
+        {"$limit": 200},
+    ]
+    voted = await db.votes.aggregate(vote_pipeline).to_list(length=200)
+    if not voted:
+        # Fallback: use all posts sorted by total votes (for new apps with no vote timestamps)
+        post_match: dict = {"hidden": {"$ne": True}}
+        if theme and theme in THEME_KEYS:
+            post_match["theme"] = theme
+        posts = await db.posts.find(post_match, {"_id": 0, "word": 1, "theme": 1, "aprovo_count": 1, "desaprovo_count": 1}).sort("aprovo_count", -1).limit(50).to_list(length=50)
+        items = []
+        for p in posts:
+            total = (p.get("aprovo_count") or 0) + (p.get("desaprovo_count") or 0)
+            items.append({
+                "word": p["word"],
+                "theme": p.get("theme"),
+                "votes": total,
+                "aprovo_pct": round(((p.get("aprovo_count") or 0) / max(1, total)) * 100),
+            })
+        return {"items": items, "period": period, "scope": scope}
+
+    post_ids = [v["_id"] for v in voted]
+    vote_map = {v["_id"]: v for v in voted}
+
+    # Fetch those posts
+    post_match = {"post_id": {"$in": post_ids}, "hidden": {"$ne": True}}
+    if theme and theme in THEME_KEYS:
+        post_match["theme"] = theme
+
+    posts = await db.posts.find(post_match, {"_id": 0, "post_id": 1, "word": 1, "theme": 1}).to_list(length=200)
+
+    # Build trend items grouped by word
+    word_map: dict = {}
+    for p in posts:
+        w = p["word"]
+        v = vote_map.get(p["post_id"], {})
+        if w not in word_map:
+            word_map[w] = {"word": w, "theme": p.get("theme"), "votes": 0, "aprovo": 0}
+        word_map[w]["votes"] += v.get("total", 0)
+        word_map[w]["aprovo"] += v.get("aprovo", 0)
+
+    items = []
+    for entry in sorted(word_map.values(), key=lambda x: x["votes"], reverse=True)[:50]:
+        items.append({
+            "word": entry["word"],
+            "theme": entry["theme"],
+            "votes": entry["votes"],
+            "aprovo_pct": round((entry["aprovo"] / max(1, entry["votes"])) * 100),
+        })
+
+    return {"items": items, "period": period, "scope": scope}
 
 
 # ---------- GET SINGLE POST ----------
