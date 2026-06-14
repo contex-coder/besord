@@ -2871,6 +2871,338 @@ def serialize_event(doc: dict, current_user_id: Optional[str] = None) -> EventOu
 # END — EVENTOS PRESENCIAIS
 # ==============================
 
+# ==============================
+# FASE 2 — EDITORIAL / WORD OF THE DAY
+# ==============================
+
+class WordOfDayCreate(BaseModel):
+    image_url: str
+    word: str
+    theme: Optional[str] = None
+    bw_bonus: int = 5
+
+@api_router.post("/editorial/word-of-day")
+async def create_word_of_day(payload: WordOfDayCreate, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    if user.get("email", "").lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin only")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    doc = {
+        "type": "word_of_day",
+        "word": payload.word.upper().strip(),
+        "image_url": payload.image_url,
+        "theme": payload.theme,
+        "bw_bonus": payload.bw_bonus,
+        "active_date": today,
+        "winning_post_id": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.editorial_posts.replace_one({"active_date": today, "type": "word_of_day"}, doc, upsert=True)
+    return {"ok": True, "word": doc["word"], "date": today}
+
+@api_router.get("/editorial/word-of-day/today")
+async def get_word_of_day_today():
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    doc = await db.editorial_posts.find_one({"active_date": today, "type": "word_of_day"}, {"_id": 0})
+    if not doc:
+        return {"word_of_day": None}
+    return {"word_of_day": doc}
+
+
+# ==============================
+# FASE 2 — ESPELHO DE SESSÃO SIMPLIFICADO
+# ==============================
+
+async def _groq_session_insight(words_seen: list, approval_rate: int, dominant_theme: Optional[str]) -> str:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return ""
+    words_sample = ", ".join(words_seen[:6]) if words_seen else "variadas"
+    theme_note = f" O tema dominante foi {dominant_theme}." if dominant_theme else ""
+    prompt = (
+        f"Analisa em 1-2 frases curtas (máximo 25 palavras em português) as escolhas de alguém "
+        f"que aprovou {approval_rate}% do que viu hoje, cujas palavras foram: {words_sample}.{theme_note} "
+        f"Tom: analista comportamental estoico. Directo. Sem sentimentalismo. "
+        f"Sem 'jornada', 'luz', 'coração', 'bem-estar'. Sem aspas. Sem explicações."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 60,
+                    "temperature": 0.75,
+                },
+            )
+            data = r.json()
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return ""
+
+@api_router.get("/insights/session")
+async def get_session_insight(authorization: Optional[str] = Header(None)):
+    """Espelho de Sessão Simplificado — usa só dados da sessão do dia, sem user_memory."""
+    user = await get_current_user(authorization)
+    uid = user["user_id"]
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    votes_cursor = db.votes.find(
+        {"user_id": uid, "created_at": {"$gte": today_start}},
+        {"_id": 0, "post_id": 1, "vote": 1},
+    )
+    votes_today = await votes_cursor.to_list(length=10)
+    if not votes_today:
+        return {"insight": None}
+
+    voted_ids = [v["post_id"] for v in votes_today]
+    voted_posts = await db.posts.find(
+        {"post_id": {"$in": voted_ids}},
+        {"_id": 0, "word": 1, "theme": 1},
+    ).to_list(length=10)
+
+    words_seen = [p["word"] for p in voted_posts if p.get("word")]
+    themes = [p["theme"] for p in voted_posts if p.get("theme")]
+    dominant_theme = max(set(themes), key=themes.count) if themes else None
+    aprovo_count = sum(1 for v in votes_today if v["vote"] == "aprovo")
+    approval_rate = round(aprovo_count / len(votes_today) * 100) if votes_today else 0
+
+    insight = await _groq_session_insight(words_seen, approval_rate, dominant_theme)
+    return {"insight": insight or None}
+
+
+# ==============================
+# FASE 2 — SISTEMA DE CONVITE FUNDADOR
+# ==============================
+
+@api_router.post("/founders/invite")
+async def create_founder_invite(authorization: Optional[str] = Header(None)):
+    """Admin cria código de convite para um Fundador."""
+    user = await get_current_user(authorization)
+    if user.get("email", "").lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    total = await db.founder_invites.count_documents({})
+    if total >= 100:
+        raise HTTPException(status_code=400, detail="Limite de 100 Fundadores atingido")
+
+    code = f"BESORD-{uuid.uuid4().hex[:8].upper()}"
+    doc = {
+        "code": code,
+        "invited_by_user_id": user["user_id"],
+        "used_by_user_id": None,
+        "used_at": None,
+        "founder_number": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.founder_invites.insert_one(doc)
+    return {"code": code, "total_invites_created": total + 1}
+
+@api_router.get("/founders/validate/{code}")
+async def validate_founder_code(code: str):
+    """Valida código e retorna info do convidante (sem auth — usada na página pública)."""
+    invite = await db.founder_invites.find_one({"code": code.upper()}, {"_id": 0})
+    if not invite:
+        raise HTTPException(status_code=404, detail="Código inválido")
+    if invite.get("used_by_user_id"):
+        raise HTTPException(status_code=410, detail="Código já utilizado")
+
+    used_count = await db.founder_invites.count_documents({"used_by_user_id": {"$ne": None}})
+    inviter = await db.users.find_one(
+        {"user_id": invite["invited_by_user_id"]}, {"_id": 0, "name": 1, "avatar": 1}
+    )
+    return {
+        "valid": True,
+        "invited_by_name": inviter.get("name", "Besord") if inviter else "Besord",
+        "invited_by_avatar": inviter.get("avatar") if inviter else None,
+        "next_founder_number": used_count + 1,
+        "remaining_spots": 100 - used_count,
+    }
+
+@api_router.post("/founders/redeem/{code}")
+async def redeem_founder_code(code: str, authorization: Optional[str] = Header(None)):
+    """Utilizador que acabou de se registar usa o código para receber badge Fundador."""
+    user = await get_current_user(authorization)
+    uid = user["user_id"]
+
+    if user.get("founder_number"):
+        raise HTTPException(status_code=400, detail="Já és Fundador")
+
+    invite = await db.founder_invites.find_one({"code": code.upper()}, {"_id": 0})
+    if not invite:
+        raise HTTPException(status_code=404, detail="Código inválido")
+    if invite.get("used_by_user_id"):
+        raise HTTPException(status_code=410, detail="Código já utilizado")
+
+    used_count = await db.founder_invites.count_documents({"used_by_user_id": {"$ne": None}})
+    founder_number = used_count + 1
+
+    await db.founder_invites.update_one(
+        {"code": code.upper()},
+        {"$set": {"used_by_user_id": uid, "used_at": datetime.now(timezone.utc).isoformat(), "founder_number": founder_number}}
+    )
+    await db.users.update_one({"user_id": uid}, {"$set": {"founder_number": founder_number}})
+
+    return {"ok": True, "founder_number": founder_number}
+
+@api_router.get("/founders/stats")
+async def get_founder_stats(authorization: Optional[str] = Header(None)):
+    """Admin vê estado dos convites."""
+    user = await get_current_user(authorization)
+    if user.get("email", "").lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin only")
+    total_created = await db.founder_invites.count_documents({})
+    total_used = await db.founder_invites.count_documents({"used_by_user_id": {"$ne": None}})
+    return {"total_invites_created": total_created, "total_redeemed": total_used, "remaining_spots": 100 - total_used}
+
+
+# ==============================
+# FASE 2 — BESORD PRIMEIRO OLHAR (B2B)
+# ==============================
+
+class PrimeiroOlharCreate(BaseModel):
+    name: str
+    brand_name: str
+    brand_intended_word: str
+    image_urls: List[str]
+    duration_hours: int = 48
+
+@api_router.post("/events/primeiro-olhar")
+async def create_primeiro_olhar(payload: PrimeiroOlharCreate, authorization: Optional[str] = Header(None)):
+    """Admin cria evento Primeiro Olhar para uma marca."""
+    user = await get_current_user(authorization)
+    if user.get("email", "").lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin only")
+    if len(payload.image_urls) > 5:
+        raise HTTPException(status_code=400, detail="Máximo 5 imagens por Primeiro Olhar")
+
+    event_id = f"po_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    end_time = now + timedelta(hours=payload.duration_hours)
+
+    event_doc = {
+        "event_id": event_id,
+        "type": "primeiro_olhar",
+        "name": payload.name,
+        "brand_name": payload.brand_name,
+        "brand_intended_word": payload.brand_intended_word.upper().strip(),
+        "image_urls": payload.image_urls,
+        "status": "active",
+        "date_start": now.isoformat(),
+        "date_end": end_time.isoformat(),
+        "created_by": user["user_id"],
+        "created_at": now.isoformat(),
+    }
+    await db.events.insert_one(event_doc)
+
+    # Criar posts individuais para cada imagem
+    posts_created = []
+    for i, img_url in enumerate(payload.image_urls):
+        post_id = f"po_post_{event_id}_{i}"
+        post_doc = {
+            "post_id": post_id,
+            "author_id": user["user_id"],
+            "author_name": payload.brand_name,
+            "author_picture": None,
+            "word": payload.brand_intended_word.upper().strip(),
+            "media": [{"type": "image", "url": img_url}],
+            "vote_count": {"aprovo": 0, "desaprovo": 0},
+            "aprovo_count": 0,
+            "desaprovo_count": 0,
+            "hype": 0,
+            "theme": None,
+            "is_polarized": False,
+            "event_id": event_id,
+            "is_primeiro_olhar": True,
+            "image_index": i,
+            "created_at": now.isoformat(),
+        }
+        await db.posts.insert_one(post_doc)
+        posts_created.append(post_id)
+
+    return {
+        "ok": True,
+        "event_id": event_id,
+        "posts": posts_created,
+        "ends_at": end_time.isoformat(),
+        "share_link": f"/eventos/{event_id}",
+    }
+
+@api_router.get("/events/{event_id}/primeiro-olhar-report")
+async def get_primeiro_olhar_report(event_id: str, authorization: Optional[str] = Header(None)):
+    """Gera relatório de dados do Primeiro Olhar. PDF gerado via /reports.py."""
+    user = await get_current_user(authorization)
+    if user.get("email", "").lower() != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    event = await db.events.find_one({"event_id": event_id, "type": "primeiro_olhar"}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    posts = await db.posts.find({"event_id": event_id}, {"_id": 0}).to_list(length=10)
+    if not posts:
+        return {"error": "Sem posts neste evento"}
+
+    results = []
+    for post in posts:
+        pid = post["post_id"]
+        total_votes = post.get("aprovo_count", 0) + post.get("desaprovo_count", 0)
+        approval = round(post.get("aprovo_count", 0) / total_votes * 100) if total_votes > 0 else 0
+
+        votes_cursor = db.votes.find({"post_id": pid}, {"_id": 0, "geo": 1})
+        vote_docs = await votes_cursor.to_list(length=500)
+        countries = [v.get("geo", {}).get("country", "Desconhecido") for v in vote_docs if v.get("geo")]
+
+        results.append({
+            "image_url": post.get("media", [{}])[0].get("url", ""),
+            "image_index": post.get("image_index", 0),
+            "total_votes": total_votes,
+            "approval_rate": approval,
+            "top_countries": list(set(countries))[:5],
+        })
+
+    results.sort(key=lambda x: x["approval_rate"], reverse=True)
+    best_image = results[0] if results else None
+
+    all_vote_words_cursor = db.votes.aggregate([
+        {"$match": {"post_id": {"$in": [p["post_id"] for p in posts]}}},
+        {"$lookup": {"from": "posts", "localField": "post_id", "foreignField": "post_id", "as": "post"}},
+        {"$unwind": "$post"},
+        {"$group": {"_id": "$post.word", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ])
+    top_words = [{"word": d["_id"], "count": d["count"]} async for d in all_vote_words_cursor]
+
+    brand_word = event.get("brand_intended_word", "")
+    community_word = top_words[0]["word"] if top_words else "N/A"
+    alignment = "alinhada" if brand_word.upper() == community_word.upper() else "desalinhada"
+
+    diagnosis = (
+        f"A marca pretendia transmitir '{brand_word}'. "
+        f"O público respondeu '{community_word}'. "
+        f"Percepção {alignment}."
+    )
+
+    total_participants = sum(r["total_votes"] for r in results)
+
+    return {
+        "event_id": event_id,
+        "brand_name": event.get("brand_name"),
+        "brand_intended_word": brand_word,
+        "total_participants": total_participants,
+        "best_image": best_image,
+        "top_words": top_words,
+        "diagnosis": diagnosis,
+        "community_top_word": community_word,
+        "alignment": alignment,
+        "images_ranked": results,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 # Mount sub‑routers from other modules
 app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
 app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")

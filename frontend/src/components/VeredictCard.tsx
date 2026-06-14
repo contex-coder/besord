@@ -20,9 +20,10 @@ type VeredictData = {
 type Props = {
   visible: boolean;
   onClose: () => void;
+  sessionInsight?: string | null;
 };
 
-export default function VeredictCard({ visible, onClose }: Props) {
+export default function VeredictCard({ visible, onClose, sessionInsight }: Props) {
   const { user, apiFetch } = useAuth();
   const [data, setData] = useState<VeredictData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,6 +128,13 @@ export default function VeredictCard({ visible, onClose }: Props) {
 
               <View style={styles.divider} />
               <Text style={styles.tagline}>O MUNDO JÁ TE DEU O SUFICIENTE POR HOJE. VÁ VIVER.</Text>
+
+              {sessionInsight && (
+                <View style={styles.insightBox}>
+                  <Text style={styles.insightLabel}>★ ESPELHO DE SESSÃO</Text>
+                  <Text style={styles.insightText}>{sessionInsight}</Text>
+                </View>
+              )}
             </>
           )}
 
@@ -254,6 +262,26 @@ const styles = StyleSheet.create({
     height: 120,
     justifyContent: "center",
     alignItems: "center",
+  },
+  insightBox: {
+    borderWidth: 3,
+    borderColor: "#FFD700",
+    backgroundColor: "#FFFBE6",
+    padding: 12,
+    gap: 6,
+  },
+  insightLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+    color: "#B8860B",
+  },
+  insightText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1A1A1A",
+    lineHeight: 19,
+    fontStyle: "italic",
   },
   actions: {
     gap: 10,

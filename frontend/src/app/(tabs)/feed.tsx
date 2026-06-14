@@ -84,6 +84,10 @@ export default function FeedScreen() {
   const [wordSheetWord, setWordSheetWord] = useState<string | null>(null);
   const [wordSheetPosts, setWordSheetPosts] = useState<PostItem[]>([]);
   const [wordSheetLoading, setWordSheetLoading] = useState(false);
+  // Word of the Day
+  const [wordOfDay, setWordOfDay] = useState<{ word: string; image_url: string } | null>(null);
+  // Espelho de Sessão Simplificado
+  const [sessionInsight, setSessionInsight] = useState<string | null>(null);
 
   // Load geo info on mount + request device location
   useEffect(() => {
@@ -131,6 +135,33 @@ export default function FeedScreen() {
       setActiveWsId(wsId);
     }
   };
+
+  // Load Word of the Day
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await apiFetch("/api/editorial/word-of-day/today");
+        if (r.ok) {
+          const data = await r.json();
+          if (data.word) setWordOfDay({ word: data.word, image_url: data.image_url });
+        }
+      } catch {}
+    })();
+  }, [apiFetch]);
+
+  // Load Espelho de Sessão when Time-Gate closes
+  useEffect(() => {
+    if (!showVeredito) return;
+    (async () => {
+      try {
+        const r = await apiFetch("/api/insights/session");
+        if (r.ok) {
+          const data = await r.json();
+          setSessionInsight(data.insight ?? null);
+        }
+      } catch {}
+    })();
+  }, [showVeredito, apiFetch]);
 
   // Load nearby events
   useEffect(() => {
@@ -617,6 +648,21 @@ export default function FeedScreen() {
         }
         ListHeaderComponent={
           <View>
+            {/* ─── Palavra do Dia ─── */}
+            {wordOfDay && (
+              <TouchableOpacity
+                style={styles.wotdCard}
+                activeOpacity={0.85}
+                onPress={() => onWordPress(wordOfDay.word)}
+              >
+                <Image source={{ uri: wordOfDay.image_url }} style={styles.wotdImage} />
+                <View style={styles.wotdOverlay}>
+                  <Text style={styles.wotdLabel}>★ PALAVRA DO DIA</Text>
+                  <Text style={styles.wotdWord}>{wordOfDay.word}</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {/* ─── Event Bar (horizontal scroll) ─── */}
             {events.length > 0 && (
               <View style={styles.eventBar}>
@@ -755,7 +801,7 @@ export default function FeedScreen() {
       </Modal>
 
       {/* ─── Veredito Card — abre quando Time-Gate fecha ─── */}
-      <VeredictCard visible={showVeredito} onClose={() => setShowVeredito(false)} />
+      <VeredictCard visible={showVeredito} onClose={() => setShowVeredito(false)} sessionInsight={sessionInsight} />
     </SafeAreaView>
   );
 }
@@ -1075,5 +1121,48 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: "center",
     paddingHorizontal: 40,
+  },
+
+  // ─── Palavra do Dia ───
+  wotdCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 8,
+    borderWidth: 4,
+    borderColor: "#FFD700",
+    height: 160,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 8,
+  },
+  wotdImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  wotdOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  wotdLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+    color: "#FFD700",
+  },
+  wotdWord: {
+    fontSize: 30,
+    fontWeight: "900",
+    letterSpacing: -1,
+    color: "#FFFFFF",
   },
 });
