@@ -1,5 +1,5 @@
 # ⚙️ Regras de Negócio
-## Actualizado: 11 Junho 2026
+## Actualizado: 14 Junho 2026
 
 ---
 
@@ -41,7 +41,34 @@
 
 ---
 
-## 🤖 Espelho de Empatia — IA (NOVO)
+## ✨ Espelho de Sessão Simplificado (NOVO — 14 Jun 2026)
+
+> Movido da Fase 3 para Fase 2. Versão sem user_memory — usa apenas dados da sessão do dia.
+> **Justificativa:** O produto precisa de valor solitário. Este é o único elemento que funciona com um único utilizador.
+
+### Regras
+- **Activação:** Automática, no fim de cada sessão (quando Time-Gate atinge 10 interacções)
+- **Input:** Dados da sessão actual — palavras dos posts votados, taxa de aprovação, tema dominante
+- **Output:** 1–2 frases geradas por Groq (llama-3.1-8b-instant), tom estoico
+- **Visibilidade:** Exibido no ecrã de encerramento de sessão, abaixo de "O mundo já te deu o suficiente"
+- **Fallback:** Se Groq falhar — silêncio. Nunca mostrar mensagem de erro ao utilizador.
+- **Privacidade:** Análise é privada. Utilizador pode partilhar se quiser (via VeredictCard).
+
+### Tom obrigatório
+Igual ao Espelho de Empatia completo:
+> Analista comportamental estoico. Máximo 2 frases. Directo. Sem sentimentalismo. Foca em contradições ou padrões. Nunca usa: "jornada", "luz", "coração", "bem-estar", "caminho".
+
+### Diferença em relação ao Espelho de Empatia completo (Fase 3)
+| | Espelho de Sessão (Fase 2) | Espelho de Empatia (Fase 3) |
+|---|---|---|
+| Input | Apenas sessão do dia | Sessão + user_memory (histórico 30 sessões) |
+| Padrões detectados | Não | Sim (≥ 5 sessões) |
+| Arquétipo comportamental | Não | Sim |
+| Custo Groq | 1 req/sessão | 1 req/sessão |
+
+---
+
+## 🤖 Espelho de Empatia — IA (Fase 3)
 
 ### Regras
 - **Activação**: opcional, pelo utilizador, no fim da sessão diária
@@ -160,12 +187,51 @@ O diagnóstico de desalinhamento é a linha que fecha a venda:
 
 ---
 
-## 👥 Estratégia dos 100 Fundadores (NOVO — 11 Jun 2026)
+## 🏷️ Sistema de Convite Fundador (NOVO — 14 Jun 2026)
+
+### O que é
+Sistema de código de convite com badge permanente e página de entrada exclusiva. Tracking de origem de cada Fundador.
+
+### Regras
+- Cada Fundador recebe um **código único** para partilhar
+- Utilizador que entra via código recebe badge permanente "Fundador #N" no perfil (número sequencial, 1–100)
+- Badge é visível mesmo quando a plataforma tiver 1 milhão de utilizadores
+- Fundadores são os primeiros 100 utilizadores com código válido
+
+### Fluxo de entrada
+1. Rodrigo gera código via endpoint admin: `POST /api/founders/invite`
+2. Rodrigo partilha o código por mensagem pessoal
+3. Convidado acede a `besord://fundador/{code}` ou `/fundador/{code}` na web
+4. Página mostra: "Foste convidado por [Nome]. Entras como Fundador #47 de 100."
+5. Convidado faz registo normal — badge é atribuído automaticamente
+
+### Dados guardados
+- `founder_invites`: `{ code, invited_by_user_id, used_by_user_id, used_at, founder_number }`
+- Campo em `users`: `founder_number: int | null`
+
+### Porquê esta regra existe
+"100 convites pessoais" sem mecanismo é uma intenção. "Fundador #47" com badge permanente é identidade. O Facebook começou em Harvard com este princípio de exclusividade percebida.
+
+---
+
+## 👥 Estratégia dos 100 Fundadores — ACTUALIZADA (14 Jun 2026)
+
+> **Decisão de 14 Jun 2026:** Em vez de 100 indivíduos dispersos, seleccionar 4–6 grupos sociais densos.
+> **Justificativa:** A Sincronia precisa de density social. Dois desconhecidos raramente se admiram mutuamente na primeira semana. Dentro de um grupo existente, a Sincronia activa-se desde o Dia 1 — como o Facebook começou em Harvard.
 
 ### Conceito
-100 convites pessoais (não link público) para a primeira vaga de utilizadores.
+100 convites pessoais (não link público), organizados em **grupos sociais existentes** — não indivíduos dispersos.
 
-### Perfis alvo
+### Grupos alvo (nova estrutura)
+| Grupo | Qtd | Quem | Porquê funciona |
+|---|---|---|---|
+| 1 agência de publicidade Lisboa | 15–20 | Equipa criativa que já se conhece | Sincronia activa Dia 1 |
+| 1 grupo fotógrafos/directores criativos | 10–15 | Profissionais com estética similar | Admiram-se naturalmente |
+| 1 grupo copywriters (LinkedIn/WhatsApp) | 10–15 | Profissionais da palavra | Produto ressoa directamente com o trabalho deles |
+| 1 turma mestrado design/comunicação | 15–20 | Estudantes avançados | Densidade social máxima |
+| 1 redacção revista ou media cultural | 10–15 | Editores, jornalistas culturais | Perfil C (futuro cliente B2B) |
+
+### Perfis individuais (mantidos para convites fora de grupos)
 | Perfil | Qtd | Quem | Canal |
 |---|---|---|---|
 | A — Criativos | 40 | Copywriters e directores criativos | LinkedIn + grupos WhatsApp publicidade |
@@ -173,9 +239,6 @@ O diagnóstico de desalinhamento é a linha que fecha a venda:
 | C — Brand Managers | 30 | Gestores de marcas moda/design/cultura | LinkedIn + referências Perfil A |
 
 O Perfil C é simultaneamente utilizador e futuro cliente B2B.
-
-### Badge de Fundador
-Badge permanente no perfil — visível mesmo quando a plataforma tiver 1 milhão de utilizadores.
 
 ### Mensagem de convite
 > *"Estamos a criar a única app que te dá 10 votos por dia — e depois fecha. Não é para toda a gente. Achei que eras das pessoas certas para os primeiros 100. Queres ser fundador?"*

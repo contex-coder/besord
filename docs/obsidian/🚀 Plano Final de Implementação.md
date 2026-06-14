@@ -333,6 +333,92 @@ install → onboarding_complete → first_vote → session_complete
 
 ---
 
+### 2.6 Espelho de Sessão Simplificado — Diferenciador Crítico
+
+> **⚠️ MOVIDO DA FASE 3 — Decisão aprovada em 14 Jun 2026**
+> **Justificativa:** O "momento Jobs" do produto estava na Fase 3. Um utilizador nas Fases 1 e 2 não percebia porque o Besord era diferente de qualquer app de votação. O produto precisa de valor solitário — o Espelho funciona com um único utilizador, ao contrário de Sincronia e Admiradores.
+
+**O que é:** Versão simplificada do Espelho de Empatia — sem `user_memory`, usando apenas dados da sessão do dia. 1 chamada Groq. 3 frases no ecrã de encerramento do Time-Gate.
+
+**Dados de input (apenas sessão actual):**
+- Palavras vistas (lista dos posts votados)
+- Taxa de aprovação (% Aprovo vs. Desaprovo)
+- Tema dominante nos votos
+
+**Output:** Frase gerada por Groq no tom do Espelho de Empatia (estoico, directo, sem sentimentalismo).
+
+**Ficheiros críticos:**
+- `backend/server.py` — endpoint `GET /api/insights/session`
+- `frontend/src/app/(tabs)/feed.tsx` — exibir frase no overlay de encerramento
+- `frontend/src/components/VeredictCard.tsx` — opcionalmente incluir no card
+
+**Critérios de aceitação:**
+- [ ] Frase gerada por Groq aparece no ecrã de encerramento (após 10 votos)
+- [ ] Tom é estoico e directo (não usa "jornada", "coração", "bem-estar")
+- [ ] Fallback silencioso se Groq falhar (sem mensagem de erro)
+
+---
+
+### 2.7 Sistema de Convite Fundador — Tracking & Cerimónia
+
+> **⚠️ ADICIONADO EM 14 Jun 2026 — Não estava no plano original**
+> **Justificativa:** "100 convites pessoais" sem mecanismo de tracking é uma intenção, não um plano. Badge "Fundador #47" cria efeito de pertença muito superior a um link público. Tracking de origem permite perceber qual grupo social converte melhor.
+
+**O que é:** Sistema mínimo de código de convite + badge permanente + página de entrada.
+
+**Backend:**
+- Nova collection: `founder_invites { code, invited_by_user_id, used_by_user_id, used_at, founder_number }`
+- `POST /api/founders/invite` (admin) — gera código único
+- `GET /api/founders/validate/{code}` — valida e retorna info do convidante
+- Campo novo em `users`: `founder_number: int | null`
+
+**Frontend:**
+- `frontend/src/app/fundador/[code].tsx` — página de entrada: "Foste convidado por [Nome]. Entra nos primeiros 100."
+- Badge "Fundador #47" visível no perfil (permanente, mesmo com 1M utilizadores)
+
+**Critérios de aceitação:**
+- [ ] Admin consegue gerar código de convite em < 30 segundos
+- [ ] Utilizador que entra via código recebe badge permanente com número sequencial
+- [ ] Página de convite mostra nome do convidante e número disponível ("Entras como Fundador #47")
+
+---
+
+### Estratégia de Aquisição dos 100 Fundadores — ACTUALIZADA (14 Jun 2026)
+
+> **Decisão aprovada:** Em vez de 100 indivíduos dispersos, seleccionar 4–6 grupos sociais densos.
+
+**Porquê grupos e não indivíduos:** Dois desconhecidos raramente se admiram mutuamente na primeira semana. A Sincronia precisa de densidade social. Dentro de um grupo existente, a Sincronia activa-se na primeira semana — exactamente como o Facebook começou em Harvard.
+
+**Grupos alvo:**
+- 1 agência de publicidade em Lisboa (15–20 pessoas que já se conhecem)
+- 1 grupo de fotógrafos/directores criativos
+- 1 grupo de copywriters (LinkedIn ou WhatsApp)
+- 1 turma de mestrado de design ou comunicação
+- 1 redacção de revista ou media cultural
+
+### Build iOS TestFlight — ADICIONADO (14 Jun 2026)
+
+> **Decisão aprovada:** Gerar build iOS antes de lançar convites. O utilizador-alvo (criativos, copywriters) tem taxa de iPhone muito acima da média.
+
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"
+cd frontend
+EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform ios --profile preview
+```
+
+### Primeira Venda B2B — NÃO AGUARDAR 100 FUNDADORES (14 Jun 2026)
+
+> **Decisão aprovada:** O Primeiro Olhar pode ser vendido com 15–20 utilizadores testadores.
+
+**Sequência:**
+1. Instalar app em 15–20 pessoas conhecidas (Semana 1)
+2. Contactar 1 marca pequena com proposta Primeiro Olhar (Semana 1 — simultaneamente)
+3. Fazer evento com os 15–20 (Semana 2)
+4. Entregar relatório PDF manual (Semana 2)
+5. Usar caso para convencer segundo cliente (Semana 3)
+
+---
+
 ### O que foi movido para Fase 3
 
 | Item | Razão do adiamento |
@@ -342,6 +428,7 @@ install → onboarding_complete → first_vote → session_complete
 | Notificações push de proximidade | Requer eventos físicos reais |
 | Ranking dinâmico de Hypes | Requer volume de votos suficiente |
 | Fluxo B2B self-serve (4 passos automatizados) | Automatizar só após 3 clientes validados |
+| Espelho de Empatia completo (com user_memory) | Versão simplificada entra na Fase 2 (2.6) |
 
 ---
 
@@ -493,4 +580,4 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 
 ---
 
-> **Última actualização:** 11 Junho 2026 — Fase 2 parcialmente concluída (2.1 ✅ 2.2 ✅ 2.3 backend ✅ | 2.4 e 2.5 pendentes)
+> **Última actualização:** 14 Junho 2026 — Análise estratégica unicórnio + retificações aprovadas. Fase 2 recalibrada: 2.1 ✅ 2.2 ✅ 2.3 ✅ | 2.4, 2.5, 2.6 (novo), 2.7 (novo) pendentes. Ver [[📅 Sessão 14 Junho 2026]] para justificativas completas.
