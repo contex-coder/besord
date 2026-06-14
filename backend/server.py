@@ -1125,7 +1125,7 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
     doc = await db.posts.find_one({"post_id": post_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Post não encontrado.")
-    if doc["hidden"]:
+    if doc.get("hidden"):
         raise HTTPException(status_code=404, detail="Post não encontrado.")
 
     existing = await db.votes.find_one({"post_id": post_id, "user_id": user["user_id"]}, {"_id": 0})

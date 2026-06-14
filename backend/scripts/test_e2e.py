@@ -344,8 +344,8 @@ async def run():
         # ──────────────────────────────────────────────────────────────────
 
         # Perfil de outro utilizador
-        r = await get(c, f"/api/users/{user_id_b}", token_a)
-        if check(f"GET /api/users/{'{user_id_b}'} (perfil público)", r):
+        r = await get(c, f"/api/users/{user_id_b}/profile", token_a)
+        if check(f"GET /api/users/{{id}}/profile (perfil público)", r):
             p = r.json()
             ok("Perfil público", f"name={p.get('name','?')}, admirers={p.get('admirers_count','?')}")
 
@@ -381,8 +381,8 @@ async def run():
         # GET Sincronia (pode estar vazia pois é calculada por job)
         r = await get(c, "/api/users/me/sincronia", token_a)
         if r.status_code == 200:
-            d = r.json()
-            ok("GET /api/users/me/sincronia", f"registos={len(d.get('sincronia', []))}")
+            sync_list = r.json()  # retorna lista directamente
+            ok("GET /api/users/me/sincronia", f"{len(sync_list)} registo(s) de sincronia hoje")
         else:
             warn("GET /api/users/me/sincronia", f"HTTP {r.status_code}")
 
