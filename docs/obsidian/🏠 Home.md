@@ -32,6 +32,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | [[📅 Sessão 10 Junho 2026]] | Relatório da sessão de onboarding |
 | [[📅 Sessão 11 Junho 2026]] | Revisão estratégica Red Team + redesenho Fase 2 + decisões de produto |
 | [[📅 Sessão 14 Junho 2026]] | Análise unicórnio (lente dos visionários) + auditoria estabilidade + retificações aprovadas |
+| [[📅 Sessão 14 Junho 2026 — Fase 2 Completa + Testes]] | Fase 2 entregue + E2E testing + 9 bugs corrigidos + DB limpa |
 
 ---
 
@@ -55,7 +56,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 |---|---|---|
 | **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída (10 Jun 2026) |
 | **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Word Links, Onboarding, Modo Neutro, CDN | ✅ Concluída (11 Jun 2026) |
-| **Fase 2** — Crescimento + Primeiro €€€ | PostHog ✅ Veredito Card ✅ Sincronia ✅ — Primeiro Olhar + Word of Day + Espelho Sessão + Sistema Fundador pendentes | 🔄 Em curso |
+| **Fase 2** — Crescimento + Primeiro €€€ | PostHog ✅ VeredictCard ✅ Sincronia ✅ WotD ✅ Espelho Sessão ✅ Sistema Fundador ✅ Primeiro Olhar (backend ✅, 1ª venda pendente Rodrigo) | ✅ Tecnicamente completa |
 | **Fase 3** — Camada de IA + Mapa | Espelho de Empatia completo (user_memory), Efeito Printável completo, Mapa de eventos | ⏳ Pendente |
 | **Fase 4** — B2B Escala | Sincronia Reports dashboard, Sintonizados, Besord como Filtro do Instagram | ⏳ Pendente |
 
@@ -92,4 +93,6 @@ EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform andro
 
 ---
 
-> **Última actualização:** 14 Junho 2026 — Auditoria de estabilidade ✅ (3 bugs corrigidos) | Análise unicórnio ✅ | Retificações aprovadas ✅ | A construir: Primeiro Olhar, Word of Day, Espelho Sessão, Sistema Fundador
+> **Última actualização:** 14 Junho 2026 (tarde) — **Fase 2 tecnicamente completa** ✅ | 9 bugs corrigidos ✅ | DB limpa ✅ | E2E 31/41 passaram ✅
+> **Próximas acções Rodrigo:** publicar palavras do dia · gerar convites Fundador · build iOS TestFlight · primeira venda B2B (Primeiro Olhar)
+> **Próxima sessão código:** Fase 3 — user_memory + Espelho de Empatia completo

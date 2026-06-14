@@ -421,6 +421,26 @@ EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform ios -
 
 ### O que foi movido para Fase 3
 
+### Estado final da Fase 2 (14 Jun 2026)
+
+| Item | Estado |
+|---|---|
+| 2.1 PostHog analytics | ✅ Live |
+| 2.2 VeredictCard + overlay Time-Gate | ✅ Live |
+| 2.3 Sincronia (backend + Groq insight) | ✅ Live |
+| 2.4 Besord Primeiro Olhar | ✅ Backend live — 1ª venda pendente (Rodrigo) |
+| 2.5 Word of the Day + 50 posts seed | ✅ Código live — calendário editorial pendente (Rodrigo) |
+| 2.6 Espelho de Sessão Simplificado | ✅ Live (Groq, VeredictCard) |
+| 2.7 Sistema de Convite Fundador | ✅ Live (endpoints + página /fundador/[code]) |
+| iOS TestFlight | ⏳ Pendente — `eas build --platform ios --profile preview` |
+| Word Links (filtro por palavra) | ✅ Corrigido 14 Jun — `?word=` agora funciona no backend |
+| GET /api/trends | ✅ Implementado 14 Jun — 24h/7d/30d + scope |
+| Hypes tab | ✅ Corrigido 14 Jun — removido source=styles |
+
+---
+
+### O que foi movido para Fase 3
+
 | Item | Razão do adiamento |
 |---|---|
 | Mapa com geolocalização completa | Requer eventos reais existentes |
@@ -580,4 +600,6 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 
 ---
 
-> **Última actualização:** 14 Junho 2026 — Análise estratégica unicórnio + retificações aprovadas. Fase 2 recalibrada: 2.1 ✅ 2.2 ✅ 2.3 ✅ | 2.4, 2.5, 2.6 (novo), 2.7 (novo) pendentes. Ver [[📅 Sessão 14 Junho 2026]] para justificativas completas.
+> **Última actualização:** 14 Junho 2026 (tarde) — **Fase 2 tecnicamente completa.** Todos os items 2.1–2.7 entregues. 9 bugs corrigidos. DB limpa.
+> Ver [[📅 Sessão 14 Junho 2026 — Fase 2 Completa + Testes]] para relatório completo.
+> **Próxima sessão código:** Fase 3 — `user_memory` collection + Espelho de Empatia completo + Printable Effect.
