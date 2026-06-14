@@ -299,9 +299,10 @@ async def run():
             else:
                 warn("Time-Gate", f"Ainda restam {remaining} interacções — Time-Gate não fechou")
 
-            # Tentar votar depois do gate (deve receber 429)
+            # Tentar votar depois do gate num post NOVO (deve receber 429)
             if remaining == 0 or gate_closed:
-                pid = all_posts[0]["post_id"]
+                unvoted = [p for p in all_posts[10:] if p["post_id"] not in {p2["post_id"] for p2 in all_posts[:10]}]
+                pid = unvoted[0]["post_id"] if unvoted else all_posts[-1]["post_id"]
                 r = await post(c, f"/api/posts/{pid}/vote", token_a, json={"vote": "aprovo"})
                 if r.status_code == 429:
                     ok("Voto após gate → 429 (bloqueado correctamente)")

@@ -3210,12 +3210,6 @@ async def get_primeiro_olhar_report(event_id: str, authorization: Optional[str] 
     }
 
 
-# Mount sub‑routers from other modules
-app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
-app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
-app.include_router(api_router)
-
-
 # ==============================
 # GDPR / DATA EXPORT & DELETE
 # ==============================
@@ -3290,4 +3284,10 @@ async def delete_my_account(authorization: Optional[str] = Header(None)):
     await db.users.delete_one({"user_id": uid})
 
     return {"ok": True, "message": "Conta apagada. Os teus posts e comentários permanecem anonimizados."}
+
+
+# Mount sub‑routers — deve ficar DEPOIS de todas as rotas do api_router
+app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
+app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
+app.include_router(api_router)
 
