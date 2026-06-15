@@ -94,7 +94,7 @@ export default function NewCampaignScreen() {
 
     setSubmitting(true);
     try {
-      const r = await apiFetch("/api/business/campaigns", {
+      const r = await apiFetch("/api/campaigns", {
         method: "POST",
         body: JSON.stringify({
           word, image_base64: image, tier_key: selectedTier.key,

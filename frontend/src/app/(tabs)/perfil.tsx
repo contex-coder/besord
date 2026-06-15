@@ -149,24 +149,45 @@ export default function PerfilScreen() {
             {(() => {
               const bw = Number(user.bw_balance || 0);
               const canBoost = bw >= 100;
+              const canEvent = bw >= 1000;
               return (
-                <TouchableOpacity
-                  testID="btn-personal-ad"
-                  style={[styles.advertiseBtn, !canBoost && styles.advertiseBtnLocked]}
-                  onPress={() => router.push("/personal-ad")}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="megaphone" size={20} color={colors.text} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.advertiseTitle}>PROMOVER POST (BW)</Text>
-                    <Text style={styles.advertiseSub}>
-                      {canBoost
-                        ? `Tens ${bw} BW — promove um post teu`
-                        : `Precisas de ${100 - bw} BW para promover (vota mais!)`}
-                    </Text>
-                  </View>
-                  <Ionicons name={canBoost ? "chevron-forward" : "lock-closed"} size={20} color={colors.text} />
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    testID="btn-personal-ad"
+                    style={[styles.advertiseBtn, !canBoost && styles.advertiseBtnLocked]}
+                    onPress={() => router.push("/personal-ad")}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="megaphone" size={20} color={colors.text} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.advertiseTitle}>PROMOVER POST (BW)</Text>
+                      <Text style={styles.advertiseSub}>
+                        {canBoost
+                          ? `Tens ${bw} BW — promove um post teu`
+                          : `Precisas de ${100 - bw} BW para promover (vota mais!)`}
+                      </Text>
+                    </View>
+                    <Ionicons name={canBoost ? "chevron-forward" : "lock-closed"} size={20} color={colors.text} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    testID="btn-personal-event"
+                    style={[styles.advertiseBtn, !canEvent && styles.advertiseBtnLocked]}
+                    onPress={() => canEvent && router.push("/pessoal/evento/novo")}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="calendar" size={20} color={colors.text} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.advertiseTitle}>CRIAR EVENTO PESSOAL</Text>
+                      <Text style={styles.advertiseSub}>
+                        {canEvent
+                          ? `Tens ${bw} BW — cria o teu evento com portfolio`
+                          : `Precisas de ${1000 - bw} BW para criar um evento (vota mais!)`}
+                      </Text>
+                    </View>
+                    <Ionicons name={canEvent ? "chevron-forward" : "lock-closed"} size={20} color={colors.text} />
+                  </TouchableOpacity>
+                </>
               );
             })()}
 

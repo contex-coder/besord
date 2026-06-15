@@ -17,6 +17,8 @@ type Campaign = {
   aprovo_count: number; desaprovo_count: number;
   starts_at: string | null; ends_at: string | null;
   checkout_url: string | null;
+  top_words_approved: { word: string; count: number }[];
+  top_words_rejected: { word: string; count: number }[];
 };
 
 type RegionRow = { label: string; aprovo: number; desaprovo: number; total: number; aprovo_pct: number };
@@ -48,7 +50,7 @@ export default function CampaignDetailScreen() {
     if (cancelConfirmText.trim().toUpperCase() !== "ELIMINAR") return;
     setCancelling(true);
     try {
-      const r = await apiFetch(`/api/business/campaigns/${id}/cancel`, { method: "POST" });
+      const r = await apiFetch(`/api/campaigns/${id}/cancel`, { method: "POST" });
       if (r.ok) {
         const c = await r.json();
         setCampaign(c);
@@ -69,12 +71,12 @@ export default function CampaignDetailScreen() {
 
   const load = useCallback(async () => {
     try {
-      const r = await apiFetch(`/api/business/campaigns/${id}`);
+      const r = await apiFetch(`/api/campaigns/${id}`);
       if (r.ok) {
         const c = await r.json();
         setCampaign(c);
         if (c.status === "active" || c.status === "completed") {
-          const rep = await apiFetch(`/api/business/campaigns/${id}/report`);
+          const rep = await apiFetch(`/api/campaigns/${id}/report`);
           if (rep.ok) setReport(await rep.json());
         }
       }
@@ -84,7 +86,7 @@ export default function CampaignDetailScreen() {
   const checkPayment = useCallback(async () => {
     setChecking(true);
     try {
-      const r = await apiFetch(`/api/business/campaigns/${id}/check-payment`, { method: "POST" });
+      const r = await apiFetch(`/api/campaigns/${id}/check-payment`, { method: "POST" });
       if (r.ok) { setCampaign(await r.json()); load(); }
     } finally { setChecking(false); }
   }, [apiFetch, id, load]);
@@ -165,6 +167,38 @@ export default function CampaignDetailScreen() {
                 <View style={[styles.progressFill, { width: `${progress}%` }]} />
               </View>
             </View>
+
+            {((campaign.top_words_approved?.length ?? 0) > 0 || (campaign.top_words_rejected?.length ?? 0) > 0) && (
+              <View style={{ marginTop: 18 }} testID="top-words-section">
+                <Text style={styles.section}>PALAVRAS MAIS COMENTADAS</Text>
+                {campaign.top_words_approved?.length > 0 && (
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={styles.wordsSentimentLabel}>QUEM APROVOU DISSE:</Text>
+                    <View style={styles.wordsRow}>
+                      {campaign.top_words_approved.map((w, i) => (
+                        <View key={w.word + i} style={[styles.wordPill, styles.wordPillAprovo]}>
+                          <Text style={styles.wordPillText}>{w.word}</Text>
+                          <Text style={styles.wordPillCount}>{w.count}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                {campaign.top_words_rejected?.length > 0 && (
+                  <View>
+                    <Text style={[styles.wordsSentimentLabel, { color: colors.desaprovo }]}>QUEM DESAPROVOU DISSE:</Text>
+                    <View style={styles.wordsRow}>
+                      {campaign.top_words_rejected.map((w, i) => (
+                        <View key={w.word + i} style={[styles.wordPill, styles.wordPillDesaprovo]}>
+                          <Text style={styles.wordPillText}>{w.word}</Text>
+                          <Text style={styles.wordPillCount}>{w.count}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
 
             {report && report.total_votes > 0 && (
               <>
@@ -252,7 +286,7 @@ export default function CampaignDetailScreen() {
                 <TouchableOpacity testID="btn-export-csv" style={styles.exportBtn} onPress={async () => {
                   const token = (await import("@/src/utils/storage")).storage;
                   const t = await token.secureGet<string>("besord_token", "");
-                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.csv`;
+                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/campaigns/${campaign.campaign_id}/report.csv`;
                   if (Platform.OS === "web" && typeof window !== "undefined") {
                     const r = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
                     const blob = await r.blob();
@@ -271,7 +305,7 @@ export default function CampaignDetailScreen() {
                 <TouchableOpacity testID="btn-export-pdf" style={[styles.exportBtn, { backgroundColor: colors.desaprovo, marginTop: 10 }]} onPress={async () => {
                   const token = (await import("@/src/utils/storage")).storage;
                   const t = await token.secureGet<string>("besord_token", "");
-                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/business/campaigns/${campaign.campaign_id}/report.pdf`;
+                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/campaigns/${campaign.campaign_id}/report.pdf`;
                   if (Platform.OS === "web" && typeof window !== "undefined") {
                     const r = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
                     const blob = await r.blob();
@@ -289,7 +323,7 @@ export default function CampaignDetailScreen() {
 
                 <TouchableOpacity testID="btn-share-report" style={[styles.exportBtn, { backgroundColor: colors.neutral, marginTop: 10 }]} onPress={async () => {
                   try {
-                    const r = await apiFetch(`/api/business/campaigns/${campaign.campaign_id}/share`, {
+                    const r = await apiFetch(`/api/campaigns/${campaign.campaign_id}/share`, {
                       method: "POST",
                       body: JSON.stringify({ expires_days: 30 }),
                     });
@@ -532,6 +566,14 @@ const styles = StyleSheet.create({
   paceBox: { flex: 1, borderWidth: 3, borderColor: colors.border, padding: 12, alignItems: "center", backgroundColor: colors.bg, ...brutalShadow },
   paceValue: { fontSize: 22, fontWeight: "900", color: colors.text },
   paceLabel: { fontSize: 9, fontWeight: "900", letterSpacing: 1.5, color: colors.text, marginTop: 2 },
+
+  wordsSentimentLabel: { fontSize: 10, fontWeight: "900", letterSpacing: 2, color: colors.aprovo, marginBottom: 6 },
+  wordsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  wordPill: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 3, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, ...brutalShadow },
+  wordPillAprovo: { backgroundColor: colors.aprovo },
+  wordPillDesaprovo: { backgroundColor: colors.desaprovo },
+  wordPillText: { fontSize: 14, fontWeight: "900", color: colors.text, letterSpacing: -0.3 },
+  wordPillCount: { fontSize: 11, fontWeight: "800", color: colors.text, opacity: 0.7 },
 
   exportBtn: { marginTop: 24, height: 56, borderWidth: 4, borderColor: colors.border, backgroundColor: colors.text, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, ...brutalShadow },
   exportText: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.textInverse },

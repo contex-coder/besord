@@ -11,7 +11,7 @@
 |---|---|
 | **Limite diário** | 10 interacções por utilizador |
 | **Reset** | Meia-noite UTC |
-| **Mensagem de encerramento** | *"O mundo já te deu o suficiente por hoje. Vá viver."* |
+| **Mensagem de encerramento** | *"O mundo ainda tem muito para lhe dar e podes sair para encontrar ainda hoje."* |
 | **O que conta como interacção** | Voto (Aprovo/Desaprovo) |
 | **O que não conta** | Navegar, ver perfis, abrir eventos |
 
@@ -153,37 +153,42 @@ Esta notificação leva o utilizador a falar ao amigo fora da app (WhatsApp). Es
 
 ---
 
-## 💼 Besord Primeiro Olhar — Produto B2B (NOVO — 11 Jun 2026)
+## 💼 Besord Primeiro Olhar — Produto B2B (ACTUALIZADO — 15 Jun 2026)
 
 ### O que é
-Evento B2B simplificado de 48 horas. Uma marca sobe 5 imagens, a comunidade Besord vota e escolhe palavras, a marca recebe o Relatório de Sincronia.
+Evento B2B simplificado de 48 horas. Uma marca sobe 5 imagens, a comunidade Besord vota e escolhe palavras, a marca recebe o Relatório de Sincronia com **diagnóstico de desalinhamento gerado por IA**.
 
 ### Regras
 - Duração fixa: 48 horas
 - Máximo 5 imagens por evento
 - Sem mapa, sem QR code, sem check-in físico — apenas link directo
-- Criado pelo admin (semi-manual inicialmente)
-- Relatório entregue em PDF por email
+- Criado pelo admin (semi-manual, venda feita por Rodrigo directamente)
+- Relatório entregue via página web partilhável (URL única) — PDF em Fase 4
 
 ### Conteúdo do Relatório de Sincronia — Primeiro Olhar
 1. Imagem com maior taxa de aprovação
-2. Top 10 palavras escolhidas pela comunidade
-3. **Diagnóstico de desalinhamento** — palavra pretendida pela marca vs. palavra escolhida pelo público
+2. Top 10 palavras escolhidas pela comunidade (agregadas de todos os comentários)
+3. **Diagnóstico de desalinhamento** — gerado por Groq comparando `brand_intended_word` (palavra que a marca pretendia transmitir) com as palavras mais votadas pelo público
 4. Distribuição geográfica dos votantes
 
-O diagnóstico de desalinhamento é a linha que fecha a venda:
+O diagnóstico de desalinhamento é **o argumento de venda central** e **obrigatório** no relatório:
 > *"A marca pretendia transmitir 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
 
-### Tabela de preços aprovada (11 Jun 2026)
+### Tabela de preços aprovada (15 Jun 2026)
 | Produto | Preço | Condição |
 |---|---|---|
-| Primeiro Olhar — 1º cliente | **€500** | Troca por testemunho escrito + autorização dados anónimos |
-| Primeiro Olhar — 2º–3º cliente | **€1.200** | Com case study do 1º cliente |
-| Evento Singular completo | **€2.500** | Com dashboard Sincronia Reports |
-| Evento Plural (por expositor) | **€800/slot** | Feiras, congressos |
+| Primeiro Olhar — 1.º cliente | **€79,90** | Troca por testemunho escrito + autorização dados anónimos |
+| Primeiro Olhar — sessão avulso | **€149** | Sem case study (clientes recorrentes) |
+| Primeiro Olhar — 2.º–3.º cliente | **€299** | Com case study do 1.º cliente |
 
 ### Argumento de venda
-> *"Focus group tradicional: €5.000–€20.000, 3 semanas. Besord Primeiro Olhar: €800, 48 horas, com público que foi forçado a pensar."*
+> *"Focus group tradicional: €5.000–€20.000, 3 semanas. Besord Primeiro Olhar: €79,90, 48 horas, com público que foi forçado a pensar."*
+
+### Estratégia de lançamento
+1. Vender 1.º cliente a €79,90 → obter testemunho
+2. Usar testemunho para vender 2.º e 3.º clientes a €299
+3. Usar case study para justificar sessão avulso a €149
+4. Após 3 clientes: self-serve na app (Fase 4)
 
 ---
 
@@ -245,41 +250,86 @@ O Perfil C é simultaneamente utilizador e futuro cliente B2B.
 
 ---
 
-## 🗓️ Eventos — 3 Tipos (ACTUALIZADO)
+## 🗓️ Eventos — 3 Tipos (ACTUALIZADO — 15 Jun 2026)
 
 ### Tipo 1 — Evento Pessoal ("O Clube de Sentido")
-| Regra | Valor |
+
+**Quem pode criar:** utilizador com ≥ 1.000 B$ (meritocracia cognitiva — garante audiência mínima)
+
+**Criação:** gratuita.
+
+**Feed exclusivo do evento:**
+- O criador publica até **30 imagens de portfolio** no feed do evento
+- Cada imagem recebe: comentário de uma palavra (Best Word) + Aprovo/Desaprovo — mecânica idêntica ao feed global
+- O feed do evento aparece no feed de quem segue/admira o criador como um **card de evento único** (não como 30 posts individuais), com scroll horizontal de prévia das últimas imagens
+- Toque no card → entra no feed exclusivo do evento
+
+**Duração:** 1 a 7 dias, à escolha do criador.
+
+**Sorteio:** opcional — o criador decide se associa um item a um sorteio no fim do evento.
+
+**Patrocínios:** opcionais — o criador pode aceitar patrocínios de empresas em 3 faixas:
+| Faixa | Inclui |
 |---|---|
-| **Quem cria** | Utilizador com ≥ 1.000 B$ |
-| **Financiamento** | Empresas patrocinam em faixas (Bronze/Prata/Ouro) |
-| **Split de receita** | 70-80% para o criador / 20-30% para o Besord |
-| **Condição de repasse** | Evento concluído + Relatório de Sincronia entregue |
-| **Sistema de escrow** | Besord retém o pagamento até condições cumpridas |
+| Bronze | Slot básico de imagem no feed do evento |
+| Prata | Slot + destaque no card do feed |
+| Ouro | Slot + destaque + Relatório de Sincronia individual |
+
+**Revenue split (quando há patrocínios):** 70–80% para o criador / 20–30% para o Besord. Besord retém em escrow até evento concluído.
+
+**Check-in:** raio máximo de 2 km da localização declarada.
+
+---
 
 ### Tipo 2 — Evento Empresarial Singular ("O Espaço de Imersão")
-| Regra | Valor |
+
+**Quem pode criar:** empresa com workspace activo.
+
+**Criação:** **gratuita** — a empresa cria o evento sem pagar nada.
+
+**Monetização por publicação de imagem:**
+| Opção | Preço |
 |---|---|
-| **Quem cria** | Empresa |
-| **Modelo de pagamento** | Por slots de posts/sorteios |
-| **Qualificação para sorteio** | Voto + permanência mínima de 5 segundos |
-| **Relatório** | Sincronia Report entregue após conclusão |
-| **Receita** | 100% Besord |
+| 1 publicação avulso | €9,99 |
+| Pacote de 10 publicações | €49,99 (**poupa 50%**) — **opção recomendada** |
+
+- Cada publicação de imagem = mecânica de Best Word + Aprovo/Desaprovo para o público do evento
+- Cada publicação dá direito a associar 1 item de sorteio (opcional, à escolha da empresa)
+- Sem publicações, o evento não tem conteúdo — a criação gratuita é o gancho de entrada
+
+**Duração:** até 7 dias.
+
+**Relatório de Sincronia:** entregue automaticamente ao final do evento (ver secção [[Relatório de Sincronia]]).
+
+**Receita:** 100% Besord.
+
+---
 
 ### Tipo 3 — Evento Empresarial Plural ("O Ecossistema Avalizado")
-| Regra | Valor |
-|---|---|
-| **Quem cria** | Promotor (feira, congresso) |
-| **Modelo de pagamento** | Múltiplas empresas expositoras pagam slots |
-| **Relatório do promotor** | Apenas se o evento gerou receita de anúncios |
-| **Relatório por empresa** | Individual, independente do promotor |
-| **Receita** | 100% Besord |
+
+**Quem cria:** promotor (feira, congresso, festival).
+
+**Criação:** gratuita para o promotor.
+
+**Empresas expositoras:**
+- Cada empresa entra como expositora via botão "ENTRAR COMO EXPOSITOR" no detalhe do evento
+- Cada expositora paga as suas publicações independentemente: €9,99/imagem ou pacote de 10 por €49,99
+- Cada publicação pode ter item de sorteio associado (opcional)
+- Relatório de Sincronia individual por empresa ao final
+
+**Relatório do promotor:** agregado de todos os expositores, disponível se o evento gerou receita de anúncios.
+
+**Receita:** 100% Besord.
+
+---
 
 ### Regras Gerais de Eventos
-- **Check-in físico**: raio máximo de 2km da localização do evento
+- **Check-in físico**: raio máximo de 2 km da localização do evento
 - **QR Code**: gerado automaticamente no momento da criação
 - **Barra de progresso**: visível para todos os participantes
-- **Sorteio**: participantes = todos os votantes (Aprovo + Desaprovo)
-- **Fluxo de criação B2B**: máximo 4 passos, máximo 3 minutos
+- **Sorteio**: participantes elegíveis = todos que fizeram check-in (ou, quando sem check-in, todos que votaram)
+- **Fluxo de criação**: máximo 3 passos, máximo 3 minutos
+- **Feed de evento no feed global**: aparece como card único (não posts individuais) — evita saturação
 
 ---
 
@@ -341,17 +391,32 @@ O Perfil C é simultaneamente utilizador e futuro cliente B2B.
 
 ---
 
-## 🏢 Campanhas de Empresa (Actualizado)
+## 🏢 Campanhas de Empresa — Palavra Patrocinada (Actualizado — 15 Jun 2026)
 
-### Faixas para Eventos (substituem tiers antigos de campanha)
-| Faixa | Inclui |
+### O que é
+A empresa escolhe uma palavra e uma imagem. O post patrocinado aparece no feed dos utilizadores com filtro geográfico. Os utilizadores votam (Aprovo/Desaprovo) **e comentam com uma palavra** — exactamente como nos posts normais.
+
+### Dashboard da campanha (obrigatório)
+| Métrica | O que mostra |
 |---|---|
-| **Bronze** | Slot básico de post num evento |
-| **Prata** | Post + destaque no mapa + notificação regional |
-| **Ouro** | Post + destaque + Relatório de Sincronia completo |
+| Votos totais | Número total de interacções |
+| Taxa de aprovação | % Aprovo |
+| Alcance estimado | Utilizadores únicos que viram o post |
+| **Palavras mais comentadas** | Top 5 palavras de quem aprovou + top 5 de quem desaprovou |
 
-### Relatório de Sincronia (NOVO — Fase 4)
-- Nuvem de palavras dos votantes
+As **palavras mais comentadas** são o diferenciador central vs. Google/Meta Ads. Exemplo:
+> "68% aprovaram. Palavras de quem aprovou: CONFIANÇA, FUTURO, QUALIDADE. Palavras de quem desaprovou: CARO, DISTANTE, GENÉRICO."
+
+### Faixas geográficas
+| Faixa | Scope | Preço |
+|---|---|---|
+| Local | Cidade | Conforme `pricing.py` |
+| Regional | Região | Conforme `pricing.py` |
+| Nacional | País | Conforme `pricing.py` |
+| Global | Mundial | Conforme `pricing.py` |
+
+### Relatório de Sincronia completo (Fase 4)
+- Nuvem de palavras visual dos votantes
 - Índice de sentimento: % aprovação + palavras dominantes
 - Heatmap geolocalizado de votos
 - Diagnóstico de alinhamento de percepção

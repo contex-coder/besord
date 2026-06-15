@@ -49,7 +49,7 @@
 
 | Ficheiro | Descrição |
 |---|---|
-| `backend/server.py` | Todo o backend FastAPI (~2000 linhas) |
+| `backend/server.py` | Todo o backend FastAPI (~3000+ linhas) |
 | `backend/workspaces.py` | Lógica de empresas, VIES, CNPJ, NIF |
 | `backend/pricing.py` | Tiers de preços (Bronze/Silver/Gold/Platinum) |
 | `backend/email_alerts.py` | Notificações por email via Resend |
@@ -57,3 +57,68 @@
 | `frontend/src/theme.ts` | Tema global: cores, brutalShadow |
 | `Dockerfile` | Build Docker do backend (Python 3.11) |
 | `render.yaml` | Configuração do Render |
+
+---
+
+## Collections MongoDB (estado 15 Jun 2026)
+
+| Collection | Campos-chave | Notas |
+|---|---|---|
+| `users` | `user_id`, `email`, `bw_balance`, `bw_total_earned`, `daily_interactions`, `has_business`, `is_admin`, `founder_number` | `daily_interactions: {count, reset_date}` |
+| `posts` | `post_id`, `author_id`, `word`, `image_base64`, `aprovo_count`, `desaprovo_count`, `is_sponsored`, `campaign_id`, `event_id`, `is_primeiro_olhar`, `theme` | |
+| `votes` | `post_id`, `user_id`, `vote_type`, `best_word`, `created_at` | `best_word` = palavra comentada pelo votante |
+| `events` | `event_id`, `company_id`, `title`, `event_type`, `status`, `lat`, `lon`, `date`, `duration_days`, `has_raffle`, `sponsorships_enabled`, `image_slots_used`, `image_slots_paid`, `participants`, `checkins`, `exhibitors`, `escrow_status` | `event_type`: `pessoal` / `singular` / `plural` / `primeiro_olhar` |
+| `campaigns` | `campaign_id`, `workspace_id`, `post_id`, `word`, `tier_key`, `status`, `target_country_code`, `target_region`, `target_city` | |
+| `workspaces` | `workspace_id`, `owner_user_id`, `company_name`, `nif`, `verified` | |
+| `admirers` | `user_id`, `admired_user_id`, `followed_at` | |
+| `sincronia_logs` | `pair_id`, `user_id_a`, `user_id_b`, `date`, `agreement_rate`, `insight_text` | |
+| `founder_invites` | `code`, `invited_by_user_id`, `used_by_user_id`, `founder_number` | |
+| `editorial_posts` | `type`, `word`, `image_url`, `active_date`, `bw_bonus` | Word of the Day |
+| `user_memory` | `user_id`, `personality_snapshot`, `session_history`, `ai_summary` | Fase 3 |
+
+---
+
+## Tipos de Evento (event_type)
+
+| Tipo | Quem cria | Criação | Pagamento | Revenue |
+|---|---|---|---|---|
+| `pessoal` | Utilizador ≥ 1.000 B$ | Gratuita | Patrocínios opcionais | 70–80% criador |
+| `singular` | Empresa | Gratuita | €9,99/imagem ou pack €49,99 | 100% Besord |
+| `plural` | Promotor | Gratuita | Expositoras pagam por imagem | 100% Besord |
+| `primeiro_olhar` | Admin (B2B) | Manual | €79,90 / €149 / €299 | 100% Besord |
+
+---
+
+## Endpoints Principais (15 Jun 2026)
+
+### Eventos
+| Endpoint | Método | Descrição |
+|---|---|---|
+| `POST /api/events` | POST | Criar evento (pessoal/singular/plural) — gratuito |
+| `GET /api/events` | GET | Listar com filtros |
+| `GET /api/events/{id}` | GET | Detalhe |
+| `GET /api/events/nearby` | GET | Busca geo |
+| `GET /api/events/search` | GET | Pesquisa por cidade |
+| `POST /api/events/{id}/checkin` | POST | Geo check-in (raio 2km) |
+| `POST /api/events/{id}/publish-image` | POST | Publicar imagem (€9,99 ou pack €49,99) |
+| `POST /api/events/{id}/join-as-exhibitor` | POST | Entrar como expositora (plural) |
+| `POST /api/events/{id}/raffle` | POST | Executar sorteio |
+| `POST /api/events/primeiro-olhar` | POST | Admin cria Primeiro Olhar |
+| `GET /api/events/{id}/primeiro-olhar-report` | GET | Relatório com diagnóstico Groq |
+
+### Campanhas
+| Endpoint | Método | Descrição |
+|---|---|---|
+| `POST /api/campaigns` | POST | Criar campanha (Stripe checkout) |
+| `GET /api/campaigns` | GET | Listar minhas campanhas |
+| `GET /api/campaigns/{id}` | GET | Detalhe + top palavras aprovadas/rejeitadas |
+| `POST /api/campaigns/{id}/cancel` | POST | Cancelar |
+
+### Utilizador / Feed
+| Endpoint | Método | Descrição |
+|---|---|---|
+| `GET /api/users/me/daily-status` | GET | Interacções restantes hoje |
+| `GET /api/users/me/veredito` | GET | Dados do Veredito Card |
+| `GET /api/users/me/sincronia` | GET | Logs de sincronia do dia |
+| `GET /api/insights/session` | GET | Espelho de Sessão (Groq) |
+| `GET /api/editorial/word-of-day/today` | GET | Palavra do Dia |

@@ -261,41 +261,41 @@ install → onboarding_complete → first_vote → session_complete
 
 ### 2.4 Besord Primeiro Olhar — Primeiro Produto Comercial B2B
 
-**O que é:** Evento B2B simplificado de 48 horas. Uma marca sobe 5 imagens, a comunidade vota e escolhe palavras, a marca recebe o Relatório de Sincronia.
+**O que é:** Evento B2B simplificado de 48 horas. Uma marca sobe 5 imagens, a comunidade vota e escolhe palavras, a marca recebe o Relatório de Sincronia com **diagnóstico de desalinhamento gerado por Groq**.
 
 **Posicionamento:**
 > "Em 48 horas, sabe que palavra o teu público escolheria para a tua nova colecção."
 
 **Target:** Marcas de moda portuguesa e brasileira a lançar colecções.
 
-**Preços aprovados (conf. ⚙️ Regras de Negócio — 11 Jun 2026):**
+**Preços aprovados (conf. ⚙️ Regras de Negócio — 15 Jun 2026):**
 | Produto | Preço | Condição |
 |---|---|---|
-| Primeiro Olhar — 1º cliente | €500 | Troca por testemunho + autorização dados anónimos |
-| Primeiro Olhar — 2º–3º cliente | €1.200 | Com case study do 1º cliente |
-| Evento Singular completo | €2.500 | Com dashboard Sincronia Reports |
-| Evento Plural (por expositor) | €800/slot | Feiras, congressos |
+| Primeiro Olhar — 1.º cliente | **€79,90** | Troca por testemunho + autorização dados anónimos |
+| Primeiro Olhar — sessão avulso | **€149** | Clientes recorrentes, sem case study |
+| Primeiro Olhar — 2.º–3.º cliente | **€299** | Com case study do 1.º cliente |
 
-**Fluxo (semi-manual inicialmente):**
-1. Admin cria evento via painel admin
+**Fluxo (semi-manual, venda directa por Rodrigo):**
+1. Admin cria evento via endpoint admin
 2. Partilha link com a marca
 3. 48 horas de votação
-4. Relatório entregue por email (PDF gerado por `backend/reports.py`)
+4. Relatório entregue via URL partilhável (página web formatada)
 
 **Relatório inclui:**
 - Imagem com maior aprovação
 - Top 10 palavras escolhidas pela comunidade
-- **Diagnóstico de desalinhamento** (chave de venda): *"A marca pretendia transmitir 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
+- **Diagnóstico de desalinhamento** (gerado por Groq, obrigatório): *"A marca pretendia transmitir 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
+- Distribuição geográfica dos votantes
 
 **Ficheiros críticos:**
-- `backend/server.py` — novo tipo de evento `"primeiro_olhar"`
-- `backend/reports.py` (novo) — geração do relatório PDF
-- `backend/server.py` — endpoint `GET /api/events/{id}/primeiro-olhar-report`
+- `backend/server.py` — tipo de evento `"primeiro_olhar"` (já implementado)
+- `backend/server.py` — endpoint `GET /api/events/{id}/primeiro-olhar-report` (diagnóstico Groq a implementar em Fase 3)
 
 **Critérios de aceitação:**
-- [ ] Admin consegue criar evento "Primeiro Olhar" em menos de 5 minutos
-- [ ] Relatório PDF gerado automaticamente após 48h
-- [ ] Diagnóstico de desalinhamento aparece no relatório
+- [x] Admin consegue criar evento "Primeiro Olhar" via endpoint
+- [x] Relatório JSON gerado após 48h
+- [ ] Diagnóstico de desalinhamento gerado por Groq aparece no relatório *(Fase 3)*
+- [ ] Página web formatada com relatório (URL partilhável) *(Fase 3)*
 - [ ] Primeiro cliente paga e recebe relatório
 
 ---
@@ -600,6 +600,119 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 
 ---
 
-> **Última actualização:** 14 Junho 2026 (tarde) — **Fase 2 tecnicamente completa.** Todos os items 2.1–2.7 entregues. 9 bugs corrigidos. DB limpa.
-> Ver [[📅 Sessão 14 Junho 2026 — Fase 2 Completa + Testes]] para relatório completo.
-> **Próxima sessão código:** Fase 3 — `user_memory` collection + Espelho de Empatia completo + Printable Effect.
+> **Última actualização:** 15 Junho 2026 — **Fase 2 completa + Fase 3 iniciada.**
+> Fase 2 (items 2.1–2.7): entregues. 9 bugs corrigidos. DB limpa.
+> Fase 3 (items 3.A–3.G): em implementação activa — ver secção abaixo.
+> Ver [[📅 Sessão 14 Junho 2026 — Fase 2 Completa + Testes]] para relatório Fase 2.
+
+---
+
+## 🔄 FASE 3 — Eventos Completos + IA Avançada (EM CURSO — 15 Jun 2026)
+### Objectivo: produto completo para utilizadores e B2B
+
+> **Decisão 15 Jun 2026:** Antes de avançar para `user_memory` e Espelho de Empatia completo, implementar os fluxos de eventos para pessoa física e jurídica — são o motor de receita imediato.
+
+---
+
+### 3.A Evento Pessoal — Pessoa Física (NOVO)
+
+**O que é:** Utilizador com ≥ 1.000 B$ cria um evento com feed exclusivo de até 30 imagens de portfolio.
+
+**Backend:**
+- `event_type: "pessoal"` — novo tipo aceite no `POST /api/events`
+- Validação: `bw_balance >= 1000` antes de criar
+- Duração: 1–7 dias (campo `duration_days`)
+- Sorteio: opcional (campo `has_raffle`)
+- Patrocínios: opcional (campo `sponsorships_enabled`)
+- Campo `portfolio_images`: array de ObjectIds dos posts do evento (máx 30)
+
+**Frontend:**
+- `perfil.tsx` — botão "CRIAR EVENTO PESSOAL" na secção "ESPAÇO PESSOAL"
+  - Activo se `bw_balance >= 1000`
+  - Bloqueado com contador se `bw_balance < 1000` ("Faltam X BW")
+- `frontend/src/app/pessoal/evento/novo.tsx` — wizard de criação (3 passos)
+- Feed: evento aparece como card único no feed (não posts individuais)
+
+**Critérios de aceitação:**
+- [ ] Utilizador com ≥ 1.000 B$ vê botão activo em perfil
+- [ ] Utilizador com < 1.000 B$ vê botão bloqueado com contador
+- [ ] Wizard cria evento `pessoal` gratuito
+- [ ] Feed do evento mostra card único no feed global
+
+---
+
+### 3.B Eventos Empresa — Criação Gratuita + Pagamento por Imagem (CORRECÇÃO)
+
+**Problema:** wizard actual cobra €9,99 na criação. O modelo correcto é criação gratuita + pagamento por publicação de imagem.
+
+**Backend:**
+- `POST /api/events` — remover Stripe da criação para tipos `singular` e `plural`
+- `POST /api/events/{id}/publish-image` — novo endpoint, cobra €9,99 por imagem via Stripe
+  - Opção de pacote: 10 imagens por €49,99 (parâmetro `package: bool`)
+- `POST /api/events/{id}/join-as-exhibitor` — para tipo `plural`, empresa entra como expositora (sem pagamento inicial)
+
+**Frontend:**
+- `business/evento/novo.tsx` — remover Stripe da review step, botão "CRIAR EVENTO" (gratuito)
+- `evento/[id].tsx` — botão "PUBLICAR IMAGEM" para owner/expositor activo; apresenta pacote como opção preferida
+- `evento/[id].tsx` — botão "ENTRAR COMO EXPOSITOR" para empresas com `has_business` em eventos `plural`
+
+**Critérios de aceitação:**
+- [ ] Criar evento tipo singular/plural é gratuito (sem Stripe)
+- [ ] Publicar imagem abre checkout (avulso €9,99 ou pacote €49,99)
+- [ ] Empresa pode entrar como expositora em evento plural
+- [ ] Pacote é apresentado em destaque como opção recomendada
+
+---
+
+### 3.C Diagnóstico Groq no Primeiro Olhar (CRÍTICO)
+
+**Problema:** relatório actual retorna dados brutos. O diagnóstico de desalinhamento não existe.
+
+**Backend:**
+- `GET /api/events/{id}/primeiro-olhar-report` — adicionar chamada Groq após calcular top palavras
+- Input Groq: `brand_intended_word` + lista de palavras mais comentadas + taxa de aprovação
+- Output Groq: frase de diagnóstico (máx 2 frases, tom analítico)
+- Exemplo: *"A marca pretendia 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
+
+**Critérios de aceitação:**
+- [ ] Relatório inclui `diagnosis` gerado por Groq
+- [ ] Fallback silencioso se Groq falhar (relatório sem diagnóstico, não erro)
+
+---
+
+### 3.D Palavras no Dashboard de Campanhas
+
+**Problema:** dashboard actual não mostra palavras comentadas — apenas aprovo/desaprovo.
+
+**Backend:**
+- `GET /api/campaigns/{id}` — adicionar `top_words_approved` e `top_words_rejected` ao response
+  - Query: posts da campanha → agregar comentários de palavra, separados por tipo de voto
+
+**Frontend:**
+- `business/campaigns.tsx` / `business/campaign/[id].tsx` — secção "PALAVRAS MAIS COMENTADAS"
+  - Top 5 palavras de quem aprovou (verde)
+  - Top 5 palavras de quem desaprovou (vermelho)
+
+**Critérios de aceitação:**
+- [ ] Detalhe de campanha mostra top palavras aprovadas e rejeitadas
+- [ ] Apresentação visual clara e distinguível
+
+---
+
+### 3.E user_memory Collection (Fase 3 original)
+
+*(Mantém-se como planeado — ver secção 3.1 abaixo)*
+
+---
+
+### 3.F Espelho de Empatia Completo (Fase 3 original)
+
+*(Mantém-se como planeado — ver secção 3.2 abaixo)*
+
+---
+
+### 3.G Printable Effect (Fase 3 original)
+
+*(Mantém-se como planeado — ver secção 3.4 abaixo)*
+
+---

@@ -30,7 +30,7 @@ export default function CampaignsListScreen() {
   const load = useCallback(async () => {
     try {
       const [r1, r2] = await Promise.all([
-        apiFetch("/api/business/campaigns"),
+        apiFetch("/api/campaigns"),
         apiFetch("/api/business/dashboard"),
       ]);
       if (r1.ok) setCampaigns(await r1.json());

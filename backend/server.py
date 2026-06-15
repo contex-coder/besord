@@ -1452,7 +1452,31 @@ async def get_campaign(campaign_id: str, authorization: Optional[str] = Header(N
     doc = await db.campaigns.find_one({"campaign_id": campaign_id, "user_id": user["user_id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Campanha não encontrada.")
-    return serialize_campaign(doc)
+
+    result = serialize_campaign(doc)
+
+    # Agregar palavras comentadas pelos votantes (best_word), separadas por aprovo/desaprovo
+    post_id = doc.get("post_id")
+    if post_id:
+        approved_words_cur = db.votes.aggregate([
+            {"$match": {"post_id": post_id, "vote": "aprovo", "best_word": {"$ne": None, "$nin": ["", "N/A"]}}},
+            {"$group": {"_id": "$best_word", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5},
+        ])
+        rejected_words_cur = db.votes.aggregate([
+            {"$match": {"post_id": post_id, "vote": "desaprovo", "best_word": {"$ne": None, "$nin": ["", "N/A"]}}},
+            {"$group": {"_id": "$best_word", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 5},
+        ])
+        result["top_words_approved"] = [{"word": d["_id"], "count": d["count"]} async for d in approved_words_cur]
+        result["top_words_rejected"] = [{"word": d["_id"], "count": d["count"]} async for d in rejected_words_cur]
+    else:
+        result["top_words_approved"] = []
+        result["top_words_rejected"] = []
+
+    return result
 
 
 # ---------- CREATE CAMPAIGN ----------
@@ -1673,30 +1697,31 @@ async def stripe_webhook(request: Request):
             exhibitor_id = metadata.get("exhibitor_id")
             if event_id and post_id:
                 now = datetime.now(timezone.utc)
-                # Ativar post
                 await db.posts.update_one(
                     {"post_id": post_id},
-                    {"$set": {
-                        "status": "active",
-                        "paid_at": now,
-                    }}
+                    {"$set": {"status": "active", "paid_at": now}}
                 )
-                # Atualizar status do expositor no evento
                 await db.events.update_one(
                     {"event_id": event_id, "exhibitors.exhibitor_id": exhibitor_id},
-                    {"$set": {
-                        "exhibitors.$.status": "active",
-                        "exhibitors.$.paid_at": now,
-                    }}
+                    {"$set": {"exhibitors.$.status": "active", "exhibitors.$.paid_at": now}}
                 )
-                # Notificar organizador
                 org_event = await db.events.find_one({"event_id": event_id}, {"_id": 0, "company_id": 1, "title": 1})
                 if org_event:
                     await notify_user(
                         org_event["company_id"],
                         f"Nova empresa no evento {org_event['title']}!",
-                        f"Uma empresa acabou de publicar um anúncio no teu evento.",
+                        "Uma empresa acabou de publicar um anúncio no teu evento.",
                     )
+
+        # --- Event image slot (publicação avulso/pacote) ---
+        elif event_type == "event_image_slot":
+            event_id = metadata.get("event_id")
+            quantity = int(metadata.get("quantity", "1"))
+            if event_id:
+                await db.events.update_one(
+                    {"event_id": event_id},
+                    {"$inc": {"image_slots_paid": quantity}}
+                )
 
         # --- Save invoice (all types) ---
         if session.get("payment_intent"):
@@ -1878,19 +1903,22 @@ async def admin_toggle_polarized(post_id: str, authorization: Optional[str] = He
 
 class EventCreate(BaseModel):
     title: str
-    description: str
-    image_base64: str
+    description: str = ""
+    image_base64: str = ""
     lat: Optional[float] = None
     lon: Optional[float] = None
     address: Optional[str] = None
     city: Optional[str] = None
     country_code: Optional[str] = None
-    date: str  # ISO datetime string
+    date: Optional[str] = None  # ISO datetime string
     prize: Optional[str] = None
     max_participants: Optional[int] = None
     bw_reward: int = 50
-    event_type: Literal["private", "public"] = "private"
+    event_type: Literal["private", "public", "pessoal", "singular", "plural"] = "singular"
     radius_km: float = 1.0
+    duration_days: int = 7
+    has_raffle: bool = False
+    sponsorships_enabled: bool = False
 
 
 class EventOut(BaseModel):
@@ -1914,11 +1942,16 @@ class EventOut(BaseModel):
     raffle_winner_id: Optional[str] = None
     is_participant: bool = False
     is_owner: bool = False
-    event_type: str = "private"
+    event_type: str = "singular"
     radius_km: float = 1.0
     checkins_count: int = 0
     exhibitors_count: int = 0
     distance_km: Optional[float] = None
+    duration_days: int = 7
+    has_raffle: bool = False
+    sponsorships_enabled: bool = False
+    image_slots_used: int = 0
+    image_slots_paid: int = 0
 
 
 class PushTokenRequest(BaseModel):
@@ -2561,71 +2594,113 @@ async def business_dashboard(authorization: Optional[str] = Header(None)):
 @api_router.post("/events")
 async def create_event(payload: EventCreate, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
+    etype = payload.event_type
 
-    # Requer perfil de empresa
-    if not user.get("business_profile"):
-        raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa primeiro.")
-
-    # Validar imagem
-    if not payload.image_base64 or len(payload.image_base64) < 50:
-        raise HTTPException(status_code=400, detail="Imagem inválida.")
+    # ── Validação por tipo ──────────────────────────────────────────────────
+    if etype == "pessoal":
+        # Pessoa física: requer ≥ 1.000 B$
+        bw = int(user.get("bw_balance") or 0)
+        if bw < 1000:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Precisas de pelo menos 1.000 B$ para criar um evento pessoal. Tens {bw} B$."
+            )
+    elif etype in ("singular", "plural"):
+        # Empresa: requer workspace ativo
+        ws = await db.workspaces.find_one(
+            {"owner_user_id": user["user_id"], "type": "business", "deleted_at": {"$exists": False}}
+        )
+        if not ws:
+            raise HTTPException(status_code=403, detail="Precisas de criar uma empresa primeiro em /workspaces.")
+    else:
+        # Tipos legados (private/public) — requer business_profile
+        if not user.get("business_profile"):
+            raise HTTPException(status_code=403, detail="Precisas de criar um perfil de empresa primeiro.")
 
     # Validar título
     title = (payload.title or "").strip()
     if not title or len(title) < 3:
         raise HTTPException(status_code=400, detail="Título deve ter pelo menos 3 caracteres.")
 
-    # Validar data
-    try:
-        event_date = datetime.fromisoformat(payload.date)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Data inválida. Use formato ISO (ex: 2026-07-15T20:00:00).")
+    # Validar data (opcional para singular/plural — evento pode ser criado sem data)
+    event_date = None
+    if payload.date:
+        try:
+            event_date = datetime.fromisoformat(payload.date)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Data inválida. Use formato ISO (ex: 2026-07-15T20:00:00).")
+
+    # Validar imagem (obrigatória apenas para tipos legados e pessoal)
+    if etype in ("private", "public", "pessoal"):
+        if not payload.image_base64 or len(payload.image_base64) < 50:
+            raise HTTPException(status_code=400, detail="Imagem inválida.")
 
     # Processar localização
     location = {}
     if payload.lat is not None and payload.lon is not None:
         location = {"lat": payload.lat, "lon": payload.lon, "address": payload.address or "", "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
     elif payload.address:
-        # Tentar geocoding automático
         geo = await geocode_address(payload.address)
         if geo:
             location = {"lat": geo["lat"], "lon": geo["lon"], "address": payload.address, "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
         else:
             location = {"lat": None, "lon": None, "address": payload.address, "city": payload.city or "", "country_code": (payload.country_code or "").upper()}
-    else:
+    elif etype not in ("singular", "plural"):
         raise HTTPException(status_code=400, detail="Fornece localização (lat/lon ou endereço).")
 
     event_id = f"event_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(days=7)
+    duration = max(1, min(7, payload.duration_days))
+    expires_at = now + timedelta(days=duration)
 
-    # Preparar dados do evento para criar após pagamento
+    # Resolver company_name
+    if etype in ("singular", "plural"):
+        ws_name = (await db.workspaces.find_one(
+            {"owner_user_id": user["user_id"], "type": "business", "deleted_at": {"$exists": False}},
+            {"_id": 0, "company_name": 1},
+        ) or {}).get("company_name", user.get("name", ""))
+        company_name = ws_name
+    elif etype == "pessoal":
+        company_name = user.get("name", "")
+    else:
+        company_name = user.get("business_profile", {}).get("company_name", user.get("name", ""))
+
     event_data = {
         "event_id": event_id,
         "company_id": user["user_id"],
-        "company_name": user.get("business_profile", {}).get("company_name", user.get("name", "")),
+        "company_name": company_name,
         "title": title,
         "description": (payload.description or "").strip(),
-        "image_base64": payload.image_base64,
+        "image_base64": payload.image_base64 or "",
         "location": location,
         "date": event_date,
         "prize": (payload.prize or "").strip() or None,
         "max_participants": payload.max_participants,
         "bw_reward": max(1, payload.bw_reward),
-        "event_type": payload.event_type,
+        "event_type": etype,
         "radius_km": max(0.1, min(10.0, payload.radius_km)),
+        "duration_days": duration,
+        "has_raffle": payload.has_raffle,
+        "sponsorships_enabled": payload.sponsorships_enabled,
+        "image_slots_used": 0,
+        "image_slots_paid": 0,
         "participants": [],
         "checkins": [],
         "exhibitors": [],
         "created_at": now,
         "expires_at": expires_at,
-        "status": "pending_approval" if payload.event_type == "public" else "pending_payment",
     }
 
-    # Salvar temporariamente como pending_payment
+    # ── Tipos que criam gratuitamente ──────────────────────────────────────
+    if etype in ("pessoal", "singular", "plural"):
+        event_data["status"] = "active"
+        await db.events.insert_one(event_data)
+        return {"event_id": event_id, "status": "active", "checkout_url": None}
+
+    # ── Tipos legados (private/public) — Stripe na criação ─────────────────
+    event_data["status"] = "pending_approval" if etype == "public" else "pending_payment"
     await db.events.insert_one(event_data)
 
-    # Criar Stripe Checkout Session (€9,99)
     try:
         checkout = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -2634,9 +2709,9 @@ async def create_event(payload: EventCreate, authorization: Optional[str] = Head
                     "currency": "eur",
                     "product_data": {
                         "name": f"Evento: {title}",
-                        "description": f"Criação de evento presencial — 7 dias de visibilidade no Besord",
+                        "description": "Criação de evento presencial — 7 dias de visibilidade no Besord",
                     },
-                    "unit_amount": await get_event_post_price(),  # €9,99
+                    "unit_amount": await get_event_post_price(),
                 },
                 "quantity": 1,
             }],
@@ -2644,22 +2719,136 @@ async def create_event(payload: EventCreate, authorization: Optional[str] = Head
             automatic_tax={"enabled": True},
             customer_creation="always",
             client_reference_id=user["user_id"],
-            metadata={
-                "type": "event",
-                "event_id": event_id,
-            },
+            metadata={"type": "event", "event_id": event_id},
             success_url=f"{FRONTEND_URL}/eventos/sucesso?event_id={event_id}",
             cancel_url=f"{FRONTEND_URL}/business/eventos/novo?cancelado=1",
         )
-        # Atualizar com checkout_url
         await db.events.update_one(
             {"event_id": event_id},
             {"$set": {"checkout_url": checkout.url, "stripe_session_id": checkout.id}}
         )
         return {"event_id": event_id, "checkout_url": checkout.url, "status": "pending_payment"}
     except Exception as e:
-        # Se Stripe falhar, remover evento pendente
         await db.events.delete_one({"event_id": event_id})
+        raise HTTPException(status_code=502, detail=f"Erro ao processar pagamento: {str(e)}")
+
+
+# ---------- PUBLISH IMAGE IN EVENT (Tipo 2/3) ----------
+class PublishImageRequest(BaseModel):
+    image_base64: str
+    word: str = ""
+    has_raffle_item: bool = False
+    prize: Optional[str] = None
+    package: bool = False  # True = pacote 10 imagens (€49,99)
+
+
+@api_router.post("/events/{event_id}/publish-image")
+async def publish_image_in_event(event_id: str, payload: PublishImageRequest, authorization: Optional[str] = Header(None)):
+    """Publica uma imagem no feed de um evento singular/plural. Cobra €9,99 ou pacote €49,99."""
+    user = await get_current_user(authorization)
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+
+    etype = event.get("event_type", "")
+    if etype not in ("singular", "plural", "pessoal"):
+        raise HTTPException(status_code=400, detail="Este endpoint é apenas para eventos singular, plural ou pessoal.")
+
+    # Verificar permissão: dono ou expositora
+    uid = user["user_id"]
+    is_owner = event.get("company_id") == uid
+    is_exhibitor = uid in [e if isinstance(e, str) else e.get("user_id", "") for e in event.get("exhibitors", [])]
+    if not is_owner and not is_exhibitor and etype != "pessoal":
+        raise HTTPException(status_code=403, detail="Não tens permissão para publicar neste evento.")
+
+    # Limite de 30 imagens para evento pessoal
+    if etype == "pessoal":
+        used = event.get("image_slots_used", 0)
+        if used >= 30:
+            raise HTTPException(status_code=400, detail="Limite de 30 imagens atingido para este evento pessoal.")
+        # Evento pessoal: publicação gratuita
+        post_id = f"post_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc)
+        post_doc = {
+            "post_id": post_id,
+            "author_id": uid,
+            "author_name": user.get("name", ""),
+            "author_picture": user.get("picture"),
+            "word": (payload.word or "").strip().upper() or "SEM PALAVRA",
+            "image_base64": payload.image_base64,
+            "aprovo_count": 0,
+            "desaprovo_count": 0,
+            "hype": 0,
+            "event_id": event_id,
+            "event_type": "pessoal",
+            "is_sponsored": False,
+            "created_at": now,
+        }
+        await db.posts.insert_one(post_doc)
+        await db.events.update_one({"event_id": event_id}, {"$inc": {"image_slots_used": 1}})
+        return {"ok": True, "post_id": post_id, "checkout_url": None}
+
+    # Tipos pagos: verificar slots pagos disponíveis
+    slots_paid = event.get("image_slots_paid", 0)
+    slots_used = event.get("image_slots_used", 0)
+    if slots_paid > slots_used:
+        # Tem slots pré-pagos disponíveis — publicar directamente
+        post_id = f"post_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc)
+        post_doc = {
+            "post_id": post_id,
+            "author_id": uid,
+            "author_name": user.get("name", ""),
+            "author_picture": user.get("picture"),
+            "word": (payload.word or "").strip().upper() or "SEM PALAVRA",
+            "image_base64": payload.image_base64,
+            "aprovo_count": 0,
+            "desaprovo_count": 0,
+            "hype": 0,
+            "event_id": event_id,
+            "is_sponsored": True,
+            "prize": payload.prize if payload.has_raffle_item else None,
+            "created_at": now,
+        }
+        await db.posts.insert_one(post_doc)
+        await db.events.update_one({"event_id": event_id}, {"$inc": {"image_slots_used": 1}})
+        return {"ok": True, "post_id": post_id, "checkout_url": None}
+
+    # Sem slots disponíveis — criar checkout Stripe
+    quantity = 10 if payload.package else 1
+    unit_amount = 4999 if payload.package else 999  # €49,99 ou €9,99
+    product_name = "Pacote 10 Publicações — Besord Evento" if payload.package else "Publicação de Imagem — Besord Evento"
+    product_desc = "10 publicações de imagem no feed do evento (poupa 50%)" if payload.package else "1 publicação de imagem no feed do evento (€9,99)"
+
+    try:
+        checkout = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": product_name, "description": product_desc},
+                    "unit_amount": unit_amount,
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            automatic_tax={"enabled": True},
+            customer_creation="always",
+            client_reference_id=uid,
+            metadata={
+                "type": "event_image_slot",
+                "event_id": event_id,
+                "quantity": str(quantity),
+                "pending_image_base64": "",  # imagem publicada após webhook
+                "pending_word": (payload.word or "").strip().upper(),
+                "pending_prize": payload.prize or "",
+                "has_raffle_item": str(payload.has_raffle_item),
+            },
+            success_url=f"{FRONTEND_URL}/evento/{event_id}?publicacao=sucesso",
+            cancel_url=f"{FRONTEND_URL}/evento/{event_id}",
+        )
+        return {"ok": True, "checkout_url": checkout.url, "slots_purchasing": quantity}
+    except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erro ao processar pagamento: {str(e)}")
 
 
@@ -3045,6 +3234,36 @@ async def _groq_session_insight(words_seen: list, approval_rate: int, dominant_t
     except Exception:
         return ""
 
+async def _groq_primeiro_olhar_diagnosis(brand_word: str, community_word: str, top_words: list, misalignment_pct: int) -> str:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return ""
+    words_list = ", ".join([f"'{w['word']}' ({w['count']} votos)" for w in top_words]) if top_words else "sem dados"
+    prompt = (
+        f"Analisa em 2 frases directas (máximo 40 palavras em português) o resultado de um teste de percepção de marca: "
+        f"a marca pretendia transmitir '{brand_word}', mas o público escolheu principalmente '{community_word}'. "
+        f"Palavras mais usadas pelo público: {words_list}. Desalinhamento: {misalignment_pct}%. "
+        f"Tom: consultor de branding analítico, directo, sem eufemismos. "
+        f"Formato: começa com 'A marca pretendia...' e termina com uma conclusão accionável. Sem aspas. Sem markdown."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as c:
+            r = await c.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 80,
+                    "temperature": 0.6,
+                },
+            )
+            data = r.json()
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return ""
+
+
 @api_router.get("/insights/session")
 async def get_session_insight(authorization: Optional[str] = Header(None)):
     """Espelho de Sessão Simplificado — usa só dados da sessão do dia, sem user_memory."""
@@ -3269,11 +3488,11 @@ async def get_primeiro_olhar_report(event_id: str, authorization: Optional[str] 
     results.sort(key=lambda x: x["approval_rate"], reverse=True)
     best_image = results[0] if results else None
 
+    # Agregar palavras comentadas pelos votantes (best_word em votes, não o word do post)
+    post_ids = [p["post_id"] for p in posts]
     all_vote_words_cursor = db.votes.aggregate([
-        {"$match": {"post_id": {"$in": [p["post_id"] for p in posts]}}},
-        {"$lookup": {"from": "posts", "localField": "post_id", "foreignField": "post_id", "as": "post"}},
-        {"$unwind": "$post"},
-        {"$group": {"_id": "$post.word", "count": {"$sum": 1}}},
+        {"$match": {"post_id": {"$in": post_ids}, "best_word": {"$ne": None, "$nin": ["", "N/A"]}}},
+        {"$group": {"_id": "$best_word", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10},
     ])
@@ -3281,15 +3500,27 @@ async def get_primeiro_olhar_report(event_id: str, authorization: Optional[str] 
 
     brand_word = event.get("brand_intended_word", "")
     community_word = top_words[0]["word"] if top_words else "N/A"
-    alignment = "alinhada" if brand_word.upper() == community_word.upper() else "desalinhada"
 
-    diagnosis = (
+    # Calcular desalinhamento (0–100)
+    total_votes_all = sum(r["total_votes"] for r in results)
+    best_word_count = top_words[0]["count"] if top_words else 0
+    alignment_pct = round(best_word_count / total_votes_all * 100) if total_votes_all > 0 else 0
+    misalignment_pct = 100 - alignment_pct
+    is_aligned = brand_word.upper() == community_word.upper()
+
+    # Diagnóstico básico (fallback se Groq falhar)
+    diagnosis_fallback = (
         f"A marca pretendia transmitir '{brand_word}'. "
         f"O público respondeu '{community_word}'. "
-        f"Percepção {alignment}."
+        f"{'Alinhamento' if is_aligned else 'Desalinhamento'}: {misalignment_pct if not is_aligned else alignment_pct}%."
     )
 
-    total_participants = sum(r["total_votes"] for r in results)
+    # Diagnóstico Groq (IA — enriquecido)
+    diagnosis = await _groq_primeiro_olhar_diagnosis(brand_word, community_word, top_words[:5], misalignment_pct)
+    if not diagnosis:
+        diagnosis = diagnosis_fallback
+
+    total_participants = total_votes_all
 
     return {
         "event_id": event_id,
@@ -3300,7 +3531,8 @@ async def get_primeiro_olhar_report(event_id: str, authorization: Optional[str] 
         "top_words": top_words,
         "diagnosis": diagnosis,
         "community_top_word": community_word,
-        "alignment": alignment,
+        "misalignment_pct": misalignment_pct,
+        "is_aligned": is_aligned,
         "images_ranked": results,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
