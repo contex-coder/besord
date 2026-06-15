@@ -96,20 +96,22 @@ export default function WorkspacesScreen() {
     }
 
     const doDelete = async () => {
-      const r = await apiFetch(`/api/workspaces/${ws.workspace_id}`, { method: "DELETE" });
-      if (r.ok) load();
+      try {
+        const r = await apiFetch(`/api/workspaces/${ws.workspace_id}`, { method: "DELETE" });
+        if (r.ok) {
+          load();
+        } else {
+          const err = await r.json().catch(() => ({}));
+          Alert.alert("Erro ao apagar", err.detail || "Não foi possível apagar a empresa.");
+        }
+      } catch {
+        Alert.alert("Erro", "Falha de rede ao apagar a empresa.");
+      }
     };
 
-    const msg = `${ws.name} será arquivado. As campanhas anteriores permanecem visíveis no histórico.`;
+    const msg = `"${ws.name}" será arquivada. As campanhas anteriores permanecem visíveis no histórico.`;
 
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      if (window.confirm(`Apagar "${ws.name}"?\n\n${msg}`)) {
-        doDelete();
-      }
-      return;
-    }
-
-    Alert.alert("Apagar workspace?", msg, [
+    Alert.alert("Apagar empresa?", msg, [
       { text: "Cancelar", style: "cancel" },
       { text: "Apagar", style: "destructive", onPress: doDelete },
     ]);

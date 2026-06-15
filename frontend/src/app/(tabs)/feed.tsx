@@ -506,25 +506,24 @@ export default function FeedScreen() {
           {/* Scope chips */}
           {[
             { key: "world" as ScopeMode, label: "🌍 MUNDO", chevron: false },
-            { key: "country" as ScopeMode, label: scopeCountry ? `🇵🇹 PAÍS` : "📍 PAÍS", chevron: true },
-            { key: "city" as ScopeMode, label: scopeCity ? `📍 ${scopeCity.toUpperCase()}` : "📍 CIDADE", chevron: true },
+            { key: "country" as ScopeMode, label: scope === "city" && scopeCity ? `📍 ${scopeCity.toUpperCase()}` : "📍 PAÍS", chevron: true },
           ].map((s) => (
             <TouchableOpacity
               key={s.key}
-              style={[styles.scopeChip, scope === s.key && styles.scopeChipActive]}
+              style={[styles.scopeChip, (scope === s.key || (s.key === "country" && scope === "city")) && styles.scopeChipActive]}
               onPress={() => {
-                if (s.key === "city" || s.key === "country") {
-                  setScope(s.key); // activa visualmente o chip imediatamente
+                if (s.key === "country") {
+                  setScope(s.key);
                   setShowScopePicker(true);
                 } else {
                   setScope(s.key);
                 }
               }}
             >
-              <Text style={[styles.scopeChipText, scope === s.key && styles.scopeChipTextActive]}>
+              <Text style={[styles.scopeChipText, (scope === s.key || (s.key === "country" && scope === "city")) && styles.scopeChipTextActive]}>
                 {s.label}
               </Text>
-              {s.chevron && <Ionicons name="chevron-down" size={10} color={scope === s.key ? "#FFF" : colors.text} />}
+              {s.chevron && <Ionicons name="chevron-down" size={10} color={(scope === s.key || (s.key === "country" && scope === "city")) ? "#FFF" : colors.text} />}
             </TouchableOpacity>
           ))}
 

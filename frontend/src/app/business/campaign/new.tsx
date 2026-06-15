@@ -57,7 +57,7 @@ export default function NewCampaignScreen() {
   const [wsLoaded, setWsLoaded] = useState(false);
 
   useEffect(() => {
-    apiFetch("/api/business/tiers").then(r => r.json()).then(setTiers);
+    apiFetch("/api/campaigns/tiers").then(r => r.ok ? r.json() : []).then((d) => setTiers(Array.isArray(d) ? d : []));
     apiFetch("/api/themes").then(r => r.ok ? r.json() : []).then((d) => setThemes(Array.isArray(d) ? d : []));
     apiFetch("/api/workspaces").then(r => r.ok ? r.json() : null).then((d) => {
       if (!d) { setWsLoaded(true); return; }
@@ -68,7 +68,7 @@ export default function NewCampaignScreen() {
         : (list[0]?.workspace_id || null);
       setSelectedWorkspace(active);
       setWsLoaded(true);
-    });
+    }).catch(() => setWsLoaded(true));
   }, []);  // eslint-disable-line
 
   const pickImage = useCallback(async () => {
@@ -134,7 +134,12 @@ export default function NewCampaignScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      {!wsLoaded && (
+        <View style={[styles.content, { alignItems: "center", justifyContent: "center", flex: 1 }]}>
+          <ActivityIndicator color={colors.text} size="large" />
+        </View>
+      )}
+      <ScrollView contentContainerStyle={styles.content} style={!wsLoaded ? { display: "none" } : undefined}>
         {wsLoaded && workspaces.length === 0 && (
           <View style={styles.gateCard}>
             <Ionicons name="business" size={32} color={colors.text} />

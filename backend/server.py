@@ -1436,6 +1436,11 @@ async def update_business_profile(payload: BusinessProfileCreate, authorization:
     return {"ok": True, "profile": profile}
 
 
+# ---------- PUBLIC TIERS ----------
+@api_router.get("/campaigns/tiers")
+async def get_campaign_tiers():
+    return tiers_public()
+
 # ---------- LIST CAMPAIGNS ----------
 @api_router.get("/campaigns")
 async def list_campaigns(authorization: Optional[str] = Header(None)):

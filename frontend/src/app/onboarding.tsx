@@ -11,7 +11,7 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { track } from "@/src/utils/analytics";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const BEETLE = require("../../assets/images/beetle.png");
+const BEETLE = require("../../assets/images/NewBesord.png");
 
 const SLIDES = [
   {

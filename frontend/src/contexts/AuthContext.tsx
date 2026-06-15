@@ -28,7 +28,7 @@ type User = {
   bw_total_earned?: number;
   has_business?: boolean;
   business_profile?: boolean;
-  age_confirmed_at?: string | null;
+  age_confirmed?: boolean;
 };
 
 export type AuthError = {

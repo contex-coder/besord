@@ -13,24 +13,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-// Video component that works on web via native <video>
 function MascotVideo({ size }: { size: number }) {
-  if (typeof window !== "undefined" && Platform.OS === "web") {
-    return (
-      <video
-        src="/assets/images/besord_v.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        style={{ width: size, height: size, objectFit: "contain" }}
-      />
-    );
-  }
-  // Mobile fallback: use static image
   return (
     <Image
-      source={require("@/assets/images/besord_i.png")}
+      source={require("@/assets/images/NewBesord.png")}
       style={{ width: size, height: size }}
       resizeMode="contain"
     />
@@ -69,7 +55,7 @@ export default function Landing() {
     if (!loading && user && !hasNavigated.current) {
       hasNavigated.current = true;
       (async () => {
-        if (!user.age_confirmed_at) {
+        if (!user.age_confirmed) {
           router.replace("/age-gate");
           return;
         }

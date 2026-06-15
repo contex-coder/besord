@@ -209,19 +209,34 @@ export default function PerfilScreen() {
 
             <Text style={styles.sectionHeader}>ESPAÇO EMPRESA</Text>
             {user.has_business ? (
-              <TouchableOpacity
-                testID="btn-advertise"
-                style={styles.advertiseBtn}
-                onPress={() => router.push("/business/campaigns")}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="rocket" size={20} color={colors.text} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.advertiseTitle}>ANUNCIAR / CAMPANHAS DA EMPRESA</Text>
-                  <Text style={styles.advertiseSub}>Cria ou gerir campanhas (pagas com Stripe)</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.text} />
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  testID="btn-business-events"
+                  style={styles.advertiseBtn}
+                  onPress={() => router.push("/business/evento/novo" as never)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="calendar" size={20} color={colors.text} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.advertiseTitle}>CRIAR EVENTO EMPRESA</Text>
+                    <Text style={styles.advertiseSub}>Singular (tua marca) ou Plural (feira/exposição) — gratuito</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.text} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="btn-advertise"
+                  style={styles.advertiseBtn}
+                  onPress={() => router.push("/business/campaigns")}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="rocket" size={20} color={colors.text} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.advertiseTitle}>ANUNCIAR / CAMPANHAS DA EMPRESA</Text>
+                    <Text style={styles.advertiseSub}>Cria ou gere campanhas (pagas com Stripe)</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.text} />
+                </TouchableOpacity>
+              </>
             ) : null}
 
             <TouchableOpacity
