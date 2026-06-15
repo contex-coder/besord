@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 function MascotVideo({ size }: { size: number }) {
   return (
     <Image
-      source={require("@/assets/images/NewBesord.png")}
+      source={require("../../assets/images/NewBesord.png")}
       style={{ width: size, height: size }}
       resizeMode="contain"
     />

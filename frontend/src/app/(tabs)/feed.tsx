@@ -465,7 +465,7 @@ export default function FeedScreen() {
       {/* ─── Header ─── */}
       <View style={styles.header}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Image source={require("@/assets/images/besord_i.png")} style={styles.headerLogo} resizeMode="contain" />
+          <Image source={require("../../../assets/images/NewBesord.png")} style={styles.headerLogo} resizeMode="contain" />
           <Text style={styles.brand}>BESORD</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

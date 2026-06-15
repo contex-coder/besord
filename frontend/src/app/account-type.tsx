@@ -51,7 +51,7 @@ export default function AccountTypeScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <Image
-          source={require("../../assets/images/beetle.png")}
+          source={require("../../assets/images/NewBesord.png")}
           style={styles.beetle}
           resizeMode="contain"
         />
