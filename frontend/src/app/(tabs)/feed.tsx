@@ -223,7 +223,20 @@ export default function FeedScreen() {
   useFocusEffect(
     useCallback(() => {
       load(sort, scope, activeTheme, hypeActive);
-    }, [load, sort, scope, activeTheme, hypeActive])
+      // Resincroniza o contador diário com o backend — garante reset correcto no dia seguinte
+      apiFetch("/api/users/me/daily-status")
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => {
+          if (d && typeof d.daily_remaining === "number") {
+            setDailyRemaining(d.daily_remaining);
+            if (d.daily_remaining > 0) {
+              setShowTimeGateWarning(false);
+              setShowVeredito(false);
+            }
+          }
+        })
+        .catch(() => {});
+    }, [load, sort, scope, activeTheme, hypeActive, apiFetch])
   );
 
   const onRefresh = useCallback(() => {
@@ -501,6 +514,7 @@ export default function FeedScreen() {
               style={[styles.scopeChip, scope === s.key && styles.scopeChipActive]}
               onPress={() => {
                 if (s.key === "city" || s.key === "country") {
+                  setScope(s.key); // activa visualmente o chip imediatamente
                   setShowScopePicker(true);
                 } else {
                   setScope(s.key);
@@ -618,7 +632,7 @@ export default function FeedScreen() {
           <Ionicons name="time-outline" size={16} color={colors.text} />
           <Text style={styles.timeGateText}>
             {dailyRemaining === 0
-              ? "O mundo já te deu o suficiente por hoje. Vá viver."
+              ? "O mundo ainda tem muito para lhe dar e podes sair para encontrar ainda hoje."
               : `Restam ${dailyRemaining} interacção${dailyRemaining !== 1 ? "ões" : ""} hoje.`}
           </Text>
           <TouchableOpacity onPress={() => setShowTimeGateWarning(false)}>

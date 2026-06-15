@@ -9,8 +9,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Platform,
-  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,7 +26,6 @@ export default function ExplorarEventosScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [cityFilter, setCityFilter] = useState("");
   const [searched, setSearched] = useState(false);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLon, setUserLon] = useState<number | null>(null);
@@ -146,7 +143,7 @@ export default function ExplorarEventosScreen() {
           onPress={() => searchByCity(searchQuery)}
           disabled={!searchQuery.trim()}
         >
-          <Text style={styles.searchBtnText}>BUSCAR</Text>
+          <Text style={styles.searchBtnText}>PESQUISAR</Text>
         </TouchableOpacity>
       </View>
 
@@ -194,7 +191,7 @@ export default function ExplorarEventosScreen() {
             <View style={[styles.infoBar, { backgroundColor: colors.neutral }]}>
               <Ionicons name="search" size={14} color={colors.text} />
               <Text style={styles.infoBarText}>
-                {events.length} EVENTO{events.length !== 1 ? "S" : ""} EM "{searchQuery.toUpperCase()}"
+                {events.length} EVENTO{events.length !== 1 ? "S" : ""} EM &quot;{searchQuery.toUpperCase()}&quot;
               </Text>
             </View>
           )}

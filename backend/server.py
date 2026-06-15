@@ -921,6 +921,17 @@ async def get_sincronia(authorization: Optional[str] = Header(None)):
     return results
 
 
+@api_router.get("/users/me/daily-status")
+async def get_daily_status(authorization: Optional[str] = Header(None)):
+    """Returns the current daily interaction count and remaining votes for today."""
+    user = await get_current_user(authorization)
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    di = user.get("daily_interactions") or {}
+    count_today = int(di.get("count", 0)) if di.get("reset_date") == today_str else 0
+    remaining = max(0, 10 - count_today)
+    return {"daily_remaining": remaining, "date": today_str}
+
+
 @api_router.get("/feed/admired")
 async def feed_admired(
     skip: int = 0,
@@ -1235,7 +1246,7 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
                 status_code=429,
                 detail={
                     "code": "time_gate_reached",
-                    "message": "O mundo já te deu o suficiente por hoje. Vá viver.",
+                    "message": "O mundo ainda tem muito para lhe dar e podes sair para encontrar ainda hoje.",
                     "remaining": 0,
                 },
             )

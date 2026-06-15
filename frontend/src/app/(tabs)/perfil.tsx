@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ActivityIndicator, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -48,15 +48,6 @@ export default function PerfilScreen() {
   }, [apiFetch, user]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  const ageChecked = useRef(false);
-  useEffect(() => {
-    if (!user || ageChecked.current) return;
-    ageChecked.current = true;
-    if (!user.age_confirmed_at) {
-      router.replace("/age-gate");
-    }
-  }, [user, router]);
 
   const handleSignOut = () => {
     const doLogout = async () => {

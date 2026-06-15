@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Modal, Share, ActivityIndicator, Platform,
+  Modal, Share, ActivityIndicator, Platform, ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, brutalShadow } from "@/src/theme";
@@ -84,61 +84,67 @@ export default function VeredictCard({ visible, onClose, sessionInsight }: Props
 
           <View style={styles.divider} />
 
-          {/* ── Content ── */}
-          {loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator color={colors.text} />
-            </View>
-          ) : (
-            <>
-              <Text style={styles.label}>A MINHA PALAVRA DE HOJE</Text>
-              <Text style={styles.word} numberOfLines={1} adjustsFontSizeToFit>
-                {data?.word
-                  ? data.word.toUpperCase()
-                  : "—"}
-              </Text>
-
-              {/* ── Approval bar ── */}
-              {data?.approval_rate != null && (
-                <View style={styles.barSection}>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { width: `${approvalWidth}%` as any }]} />
-                  </View>
-                  <Text style={styles.barLabel}>{data.approval_rate}% APROVARAM</Text>
-                </View>
-              )}
-
-              {/* ── Votes info ── */}
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statNum}>{data?.total_votes_cast ?? 10}</Text>
-                  <Text style={styles.statLbl}>VOTOS</Text>
-                </View>
-                <View style={[styles.statBox, styles.statBoxMid]}>
-                  <Text style={styles.statNum}>{data?.aprovo_votes_cast ?? 0}</Text>
-                  <Text style={styles.statLbl}>APROVEI</Text>
-                </View>
-                <View style={styles.statBox}>
-                  <Text style={styles.statNum}>
-                    {(data?.total_votes_cast ?? 0) - (data?.aprovo_votes_cast ?? 0)}
-                  </Text>
-                  <Text style={styles.statLbl}>DESAPROVEI</Text>
-                </View>
+          {/* ── Content (scrollável para ecrãs pequenos) ── */}
+          <ScrollView
+            style={styles.scrollArea}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {loading ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator color={colors.text} />
               </View>
+            ) : (
+              <>
+                <Text style={styles.label}>A MINHA PALAVRA DE HOJE</Text>
+                <Text style={styles.word} numberOfLines={1} adjustsFontSizeToFit>
+                  {data?.word
+                    ? data.word.toUpperCase()
+                    : "—"}
+                </Text>
 
-              <View style={styles.divider} />
-              <Text style={styles.tagline}>O MUNDO JÁ TE DEU O SUFICIENTE POR HOJE. VÁ VIVER.</Text>
+                {/* ── Approval bar ── */}
+                {data?.approval_rate != null && (
+                  <View style={styles.barSection}>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${approvalWidth}%` as any }]} />
+                    </View>
+                    <Text style={styles.barLabel}>{data.approval_rate}% APROVARAM</Text>
+                  </View>
+                )}
 
-              {sessionInsight && (
-                <View style={styles.insightBox}>
-                  <Text style={styles.insightLabel}>★ ESPELHO DE SESSÃO</Text>
-                  <Text style={styles.insightText}>{sessionInsight}</Text>
+                {/* ── Votes info ── */}
+                <View style={styles.statsRow}>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statNum}>{data?.total_votes_cast ?? 10}</Text>
+                    <Text style={styles.statLbl}>VOTOS</Text>
+                  </View>
+                  <View style={[styles.statBox, styles.statBoxMid]}>
+                    <Text style={styles.statNum}>{data?.aprovo_votes_cast ?? 0}</Text>
+                    <Text style={styles.statLbl}>APROVEI</Text>
+                  </View>
+                  <View style={styles.statBox}>
+                    <Text style={styles.statNum}>
+                      {(data?.total_votes_cast ?? 0) - (data?.aprovo_votes_cast ?? 0)}
+                    </Text>
+                    <Text style={styles.statLbl}>DESAPROVEI</Text>
+                  </View>
                 </View>
-              )}
-            </>
-          )}
 
-          {/* ── Actions ── */}
+                <View style={styles.divider} />
+                <Text style={styles.tagline}>O MUNDO AINDA TEM MUITO PARA LHE DAR E PODES SAIR PARA ENCONTRAR AINDA HOJE.</Text>
+
+                {sessionInsight && (
+                  <View style={styles.insightBox}>
+                    <Text style={styles.insightLabel}>★ ESPELHO DE SESSÃO</Text>
+                    <Text style={styles.insightText}>{sessionInsight}</Text>
+                  </View>
+                )}
+              </>
+            )}
+          </ScrollView>
+
+          {/* ── Actions (fora do scroll — sempre visíveis) ── */}
           <View style={styles.actions}>
             <TouchableOpacity style={styles.shareBtn} onPress={handleShare} disabled={loading}>
               <Ionicons name="share-social" size={18} color={colors.textInverse} />
@@ -171,7 +177,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...brutalShadow,
     padding: 24,
-    gap: 16,
+    gap: 12,
   },
   header: {
     flexDirection: "row",
@@ -257,6 +263,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: colors.textSecondary,
     textAlign: "center",
+  },
+  scrollArea: {
+    maxHeight: 380,
+  },
+  scrollContent: {
+    gap: 16,
+    paddingBottom: 4,
   },
   loadingBox: {
     height: 120,
