@@ -1,0 +1,305 @@
+# BESORD — VISÃO REINVENTADA
+## Documento de Produto Final (Versão 2.0 — 10 Junho 2026)
+### IMUTÁVEL — Qualquer alteração requer decisão explícita do fundador
+
+---
+
+## 1. IDENTIDADE
+
+**O Besord não é uma rede social. É uma Plataforma B2B2C de Inteligência de Percepção.**
+
+Enquanto o Instagram e o TikTok competem pelo vício e pela economia da atenção infinita, o Besord posiciona-se como a "Dieta Digital": o único lugar na internet onde o utilizador não perde tempo, **investe** tempo.
+
+| Conceito | Definição |
+|---|---|
+| **Tagline** | "Menos ruído, mais sentido." |
+| **Pitch de elevador** | "O Instagram te conhece para te vender coisas. O Besord te ajuda a te conhecer para não precisares de mais nada." |
+| **Mantra** | "Não veja mil coisas. Veja a palavra que define o seu dia." |
+| **Metáfora** | Se o Instagram é um oceano onde te afundas, o Besord é uma galeria de arte onde respiras. |
+
+---
+
+## 2. O UTILIZADOR-ALVO
+
+**Não é uma demografia — é uma psicografia.**
+
+"Os Exaustos da Superficialidade": pessoas que sentem um vazio crescente ao fechar o TikTok. Que querem consumir informação mas sentem que a informação as consome. Que buscam um filtro, não mais uma fonte.
+
+- **Criativos e designers** — amam o desafio de reduzir um conceito a imagem + uma palavra
+- **Escritores e copywriters** — o Besord é o exercício de branding pessoal definitivo
+- **Estudantes de filosofia/psicologia** — gostam de analisar comportamentos
+- **Líderes e profissionais** — exaustos do doomscrolling, querem clareza
+
+**O Nicho de Precisão**: 100 utilizadores engajados num mesmo café criam mais vida do que 100.000 utilizadores dispersos pelo país. Foco na densidade, não na escala global inicial.
+
+---
+
+## 3. PROPOSTA DE VALOR DUPLA
+
+### B2C — "Biblioteca Pessoal de Percepções"
+O Besord funciona como um diário minimalista que aprende a identidade do utilizador ao longo do tempo. Ao dedicar 5-10 minutos diários, o utilizador recebe um feedback da IA (Espelho de Empatia) que analisa as suas escolhas, apontando valores e padrões de consumo. É um ambiente seguro, sem algoritmo viciante, onde a limitação a uma única palavra elimina a polarização.
+
+**O valor**: O utilizador doa 5 minutos de atenção e o app devolve uma devolutiva personalizada. Isso é um serviço que o Instagram jamais fará — eles querem que continues a clicar, não que pares para pensar.
+
+### B2B — "Termómetro de Relevância"
+O Besord é uma consultoria de mercado em tempo real. As empresas pagam não por visualizações (métricas vazias), mas pela inteligência de dados sobre o que as pessoas realmente pensam — através da palavra que escolheram depois de 30 segundos de atenção plena.
+
+**O pitch de venda B2B**: "No Instagram, paga para pessoas que não se importam verem o teu anúncio. No Besord, pagas para pessoas que tiveram de *pensar* sobre a tua palavra verem o teu anúncio."
+
+---
+
+## 4. OS TRÊS MECANISMOS CORE (Imutáveis)
+
+### 4.1 Time-Gate — O Mecanismo Mais Importante
+**O utilizador tem 10 interacções por dia. Quando acabam, o app encerra.**
+
+Mensagem de encerramento: *"O mundo já te deu o suficiente por hoje. Vá viver."*
+
+**Porquê é imutável e defensável:**
+- Cria escassez → cada interacção vale mais → atenção plena real
+- Os dados gerados são qualitativamente superiores aos de plataformas de scroll infinito
+- Torna o Besord impossível de copiar pelo Instagram (que nunca vai limitar o próprio feed)
+- Cria status social: "conseguir completar a reflexão diária do Besord" é um símbolo intelectual
+
+### 4.2 Espelho de Empatia — A Retenção Emocional
+**Análise batch após sessão diária (opcional, activada pelo utilizador).**
+
+A IA analisa os padrões de votos da sessão + histórico de memória do utilizador e gera um insight em máximo 3 frases. Tom: "analista comportamental estoico" — directo, sem sentimentalismo, focado em contradições lógicas e padrões de valor.
+
+**Três arquétipos de insight:**
+- **Contradição Estrutural**: "Aprovaste visuais de prestígio mas rejeitaste ostentação explícita. Buscas a validação silenciosa, não o objeto."
+- **Eficiência de Percepção**: "90% das tuas escolhas foram em ambientes controlados. Estás em modo 'busca por ordem'. A qualidade da reflexão está limitada à tua zona de conforto."
+- **Provocação de Realidade**: "Filtraste todo o ruído externo. Blindagem mental eficiente — mas o que ignoras também define o teu mundo."
+
+**Regras do tom (nunca violar):**
+- Não usa adjectivos vazios ("jornada", "luz", "caminho")
+- Joga a responsabilidade para o utilizador — coloca um espelho, não dá lição de moral
+- É descritivo, não prescritivo
+
+**Análise é sempre privada e criptografada.** O utilizador partilha se quiser; a IA nunca expõe.
+
+### 4.3 Efeito Printável — O Crescimento Viral
+**Card visual gerado automaticamente: Imagem + Palavra + Insight da IA.**
+
+Optimizado para Instagram Stories e WhatsApp Status. Design Neo-Brutalist do Besord.
+
+**O mecanismo de crescimento**: o utilizador partilha o card no Instagram → pessoas clicam → landing page externa do evento/post → instalação do app para participar.
+
+**O paradoxo estratégico**: o Instagram deixa de ser concorrente e torna-se o outdoor gratuito do Besord.
+
+---
+
+## 5. ARQUITECTURA SOCIAL
+
+### 5.1 Admiradores (user → user)
+"Admirar" em vez de "Seguir" — segues um *olhar*, não uma pessoa. Não segues o João porque é famoso; segues o João porque nas 10 escolhas diárias dele demonstra um gosto que te ajuda a entender o mundo.
+
+- Botão "Admirar" em perfis e posts
+- Feed de Admirados: publicações de quem admiras
+- Métricas **desenfatizadas**: contagem de admiradores só visível ao clicar no perfil; em destaque fica sempre a Best Word
+- O número de admiradores no Besord é um **índice de relevância intelectual**, não de popularidade
+
+### 5.2 Sintonizados (nível 2 — afinidade algorítmica)
+Pessoas com padrões de votação similares ao teu (calculado via personality_snapshot).
+
+A IA sugere: *"Siga este perfil — costumam escolher palavras parecidas para contextos similares."*
+
+Cria **comunidades de pensamento**, não fã-clubes. Só implementado em Fase 4.
+
+### 5.3 Hypes (temas com ranking dinâmico)
+Posts classificados por tema com score temporal (votos recentes pesam mais).
+
+- Utilizadores seguem Hypes para calibrar o feed (já implementado parcialmente)
+- Ranking dinâmico: `score = recent_votes_48h * 2 + total_votes`
+- Distinção: Hypes "quentes" (últimas 48h) vs. "clássicos" (all-time)
+
+### 5.4 Trends (sentimento regional)
+Agregação real de votos por geo/período. "O que Lisboa está a sentir sobre isto hoje."
+
+- Já implementado no backend (discovery.py)
+- Alimenta o Word of the Day editorial
+- Futuramente: base dos Relatórios de Sincronia regionais para empresas
+
+### 5.5 Word Links
+Clicar numa palavra em qualquer publicação → feed de todos os posts que usaram essa palavra.
+
+Palavras são links navegáveis — não apenas tags, mas portais de descoberta.
+
+---
+
+## 6. MOTOR DE CONTEÚDO
+
+### 6.1 Filtro Besord para Imagens (3 regras imutáveis)
+Toda a imagem no Besord deve obedecer:
+1. **Ausência de texto** — a palavra vem sempre do utilizador, nunca da imagem
+2. **Ausência de performance** — sem poses de selfie ou venda directa
+3. **Espaço de respiro** — área de silêncio visual para o cérebro repousar antes de escolher
+
+### 6.2 Conteúdo Seed (estratégia de lançamento)
+Para resolver o Cold Start Problem: a plataforma começa com ~200 imagens curadas pela conta @besord.
+
+- Imagens de Unsplash/Pexels filtradas pelas 3 regras
+- Publicadas pela conta @besord como curador oficial
+- Garantem que o feed não está vazio nos primeiros dias
+
+### 6.3 Word of the Day
+Tema editorial diário lançado pela plataforma.
+
+- Post gerado por IA (DALL-E/Stable Diffusion) ou curado manualmente
+- Aparece no topo do feed com destaque especial
+- Utilizador com Best Word mais votada nesse dia ganha BW bónus
+- Cria razão diária para abrir o app
+
+### 6.4 Motor de Trends → Imagens
+API de notícias/Google Trends regional → IA gera imagem metafórica (nunca manchete).
+
+Exemplo: tema "Crise Habitação" → imagem: "chave solitária sobre planta de apartamento vazio"
+
+A IA não exibe a notícia. Exibe o *sentimento* por trás dela.
+
+---
+
+## 7. A CAMADA DE IA
+
+### 7.1 Arquitectura de Memória por Utilizador (user_memory)
+```
+user_memory: {
+  user_id,
+  personality_snapshot: {
+    dominant_themes: ["natureza", "tecnologia", "arte"],
+    avg_approval_rate: 0.72,
+    word_patterns: ["Silêncio", "Robusto", "Distante"],
+    behavioral_mode: "busca_por_ordem | exploração | blindagem"
+  },
+  session_history: [ últimas 30 sessões ],   // compacto, não o historial completo
+  ai_summary: "perfil evolutivo gerado por IA — actualizado semanalmente",
+  updated_at
+}
+```
+
+**O porquê estratégico**: cria switching costs reais. Após 6 meses, o utilizador perde o seu "diário de percepções" se sair. O Instagram não tem este lock-in intelectual.
+
+**Base dos Sintonizados e dos Relatórios de Sincronia B2B.**
+
+### 7.2 Providers de IA (por custo crescente)
+Abstracção via `backend/ai_provider.py` — troca de provider sem alterar o resto do código.
+
+1. **Gemini 1.5 Flash** (Google) — 1.500 req/dia gratuito — provider principal
+2. **Groq + Llama 3.1** — ultra-rápido, free tier generoso — fallback
+3. **Mistral API** — bom para análise de padrões textuais — fallback 2
+4. Custo estimado a escala: ~€0.001 por análise; €15-40/mês para 1.000 utilizadores activos
+
+### 7.3 Modo Neutro (Moderação Inteligente)
+Para conteúdo polarizado:
+- IA detecta automaticamente temas polémicos → flag `is_polarized`
+- UI diferente: sem comentários, só Aprovo/Desaprovo
+- Utilizador vê resultado estatístico mas não os ataques → **verdadeiro refúgio**
+
+Resposta a palavras ofensivas: *"Esta palavra não ajuda na reflexão. Escolhe uma que defina o conceito, não o sentimento de raiva."*
+
+---
+
+## 8. MOTOR DE EVENTOS (3 Tipos)
+
+### 8.1 Evento Pessoal — "O Clube de Sentido"
+- Criado por utilizador com ≥ 1.000 BW (meritocracia cognitiva — evita spam)
+- Patrocinado por empresas em faixas fixas (Bronze/Prata/Ouro)
+- **Sistema de Escrow**: Besord retém 20-30%; repassa 70-80% ao criador **apenas após** conclusão do evento E entrega do relatório
+- Protege contra criadores que abandonam o projecto
+
+### 8.2 Evento Empresarial Singular — "O Espaço de Imersão"
+- Criado por uma empresa
+- Paga por slots de posts/sorteios
+- Qualificação para sorteio: voto + permanência mínima de 5 segundos (tempo de reflexão real)
+- Relatório de Sincronia entregue após evento
+
+### 8.3 Evento Empresarial Plural — "O Ecossistema Avalizado"
+- Criado por promotor (feira, congresso, galeria)
+- Múltiplas empresas expositoras pagam slots individuais
+- Promotor recebe relatório macro **apenas se** o evento gerou receita (incentivo para trazer empresas)
+- Cada empresa recebe relatório individual
+
+### 8.4 O Painel de Eventos — Deve Funcionar com Magistralidade
+**Este é o produto físico do Besord — o que leva o utilizador ao mundo real.**
+
+Requisitos inegociáveis:
+- Mapa geolocalizado com eventos reais próximos
+- Filtros por **intenção**: "Quero ganhar prémios" / "Quero conhecer novidades" / "Quero networking"
+- QR Code de entrada: scan → dentro do evento em **menos de 2 segundos**
+- Barra de progresso visual do evento ("Faltam 2 dias para o fim do sorteio")
+- Notificação push quando evento abre perto de ti
+
+### 8.5 Fluxo B2B de Criação de Evento (Constraint Imutável)
+**Máximo 3 minutos, 4 passos, zero campos opcionais obrigatórios:**
+
+```
+Criar Evento → Subir Foto → Definir Prémio → Gerar QR Code
+```
+
+Se demorar mais de 3 minutos, o produto B2B in-loco não funciona em contexto de feira.
+
+---
+
+## 9. MONETIZAÇÃO B2B
+
+### 9.1 Faixas de Patrocínio para Eventos
+| Faixa | Inclui | Preço orientativo |
+|---|---|---|
+| **Bronze** | Slot básico de post num evento | A definir |
+| **Prata** | Post + destaque no mapa + notificação regional | A definir |
+| **Ouro** | Post + destaque + Relatório de Sincronia completo | A definir |
+
+### 9.2 Relatórios de Sincronia
+Dashboard entregue à empresa após evento:
+- Nuvem de palavras dos votantes
+- Índice de sentimento (% aprovação + palavras dominantes)
+- Heatmap geolocalizado de votos
+- Diagnóstico de alinhamento: "A marca queria transmitir 'Inovação', o público respondeu com 'Complexo'"
+
+**Valor de mercado**: institutos de pesquisa levam semanas para medir aceitação. O Besord faz em minutos, com público engajado forçado a tomar uma posição activa.
+
+### 9.3 Besord In-Loco (Feiras e Eventos Físicos)
+Fluxo: QR Code impresso no stand → utilizador abre Besord → vê imagem do produto → escolhe palavra → concorre ao sorteio → empresa recebe o dado.
+
+**A empresa não paga para o utilizador *ver* o anúncio. Paga para o utilizador *pensar* sobre o anúncio.** Infinitamente mais valioso.
+
+---
+
+## 10. DESIGN (IMUTÁVEL)
+
+**Neo-Brutalist**: preto/branco, sombras hard offset, bordas grossas, sem gradientes.
+
+O design é parte da identidade do produto — comunica "produto de luxo intelectual" sem dizer uma palavra. **Nunca redesenhar.**
+
+Referência em código: `frontend/src/theme.ts` — brutalShadow, cores base.
+
+---
+
+## 11. PLANO DE IMPLEMENTAÇÃO — VERSÃO FINAL (IMUTÁVEL)
+
+Ver documento completo: `docs/obsidian/🚀 Plano Final de Implementação.md`
+
+| Fase | Semanas | Objectivo |
+|---|---|---|
+| **Fase 0** | ✅ Concluída | Estabilidade, Stripe, EAS |
+| **Fase 1** | 3-5 | Identidade + Admiradores + Time-Gate + Modo Neutro |
+| **Fase 2** | 6-9 | Painel de Eventos magistral + Conteúdo Editorial + 3 tipos de evento |
+| **Fase 3** | 10-12 | IA: memória por utilizador + Espelho de Empatia + Printable Effect |
+| **Fase 4** | 13-16 | B2B: Sincronia Reports + Sintonizados + Besord como Filtro |
+
+---
+
+## 12. OS 10 RISCOS CONHECIDOS E RESPOSTAS
+
+| Risco | Resposta |
+|---|---|
+| Falta de conteúdo inicial | Conteúdo seed @besord + Word of the Day |
+| Barreira cognitiva (pensar é trabalho) | Time-gate cria escassez que valoriza o esforço |
+| Festa vazia (efeito rede) | Parcerias locais físicas — 100 num café > 100k dispersos |
+| Monetização incerta | B2B SaaS com revenue previsível (slots + relatórios) |
+| Design "pobre" vs. "elegante" | Neo-Brutalist mantido — identidade intencional |
+| Custo de troca do utilizador | Memory bank cria lock-in intelectual real |
+| Falta de viralidade | Efeito Printável usa Instagram como outdoor |
+| Instagram copia a feature | Não copia o memory bank nem o Time-gate |
+| Falta de utilidade prática | Radar de eventos + Word of the Day + Espelho de Empatia |
+| Bots/manipulação B2B | Time de reflexão obrigatório + histórico de utilizador |

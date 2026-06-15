@@ -276,12 +276,123 @@ onPress={() => { if (canEvent) router.push("/pessoal/evento/novo" as never); }}
 
 ---
 
+## 🎨 Branding — Exploração (Tarde)
+
+Sessão de tarde dedicada a avaliação de identidade visual e correcção de 8 bugs reportados ao vivo.
+
+### Decisão de Branding
+
+| Tema | Decisão |
+|---|---|
+| **Logo** | B + Asa dourada aprovado — mantém-se |
+| **Paleta** | Azul Petróleo (`#12343D`) + Dourado + Branco + Preto (4 cores máx.) |
+| **Estilo geral** | "Premium Elevated" com elementos brutalistas nos cards de conteúdo |
+| **Besourinho** | Eliminado de todos os ecrãs (era o `beetle.png`, já apagado) |
+| **Tela Tendências** | Palavras devem ir ABAIXO das imagens — não sobrepostas. Implementação adiada. |
+| **Design doc** | Actualizar de "Neo-Brutalist" para "Premium Elevated + cards brutalistas" em próxima sessão |
+
+---
+
+## 🐛 Bugs Corrigidos (Tarde — Commit `47640df`)
+
+### Bug 1 — Age Gate aparecia sempre (CRÍTICO)
+
+**Causa raiz:** Backend retorna `age_confirmed: bool` mas `AuthContext.tsx` declarava o tipo como `age_confirmed_at?: string | null` e `index.tsx` verificava `user.age_confirmed_at`. O campo nunca existia na resposta → gate sempre mostrado.
+
+**Ficheiros:** `AuthContext.tsx` · `index.tsx`
+
+```typescript
+// ❌ Antes
+age_confirmed_at?: string | null;
+if (!user.age_confirmed_at) { router.replace("/age-gate"); }
+
+// ✅ Depois
+age_confirmed?: boolean;
+if (!user.age_confirmed) { router.replace("/age-gate"); }
+```
+
+---
+
+### Bug 2 — Chip CIDADE redundante no feed
+
+**Causa:** Existiam dois chips de localização (PAÍS e CIDADE) mas o modal do PAÍS já tem campo de cidade.
+
+**Fix:** Removido chip CIDADE. Chip PAÍS agora mostra a cidade quando filtrada (`📍 LISBOA`) e continua a abrir o mesmo modal completo (país + cidade).
+
+**Ficheiro:** `(tabs)/feed.tsx`
+
+---
+
+### Bug 3 — `/business/campaign/new` tela em branco (CRÍTICO)
+
+**Causa raiz dupla:**
+1. **Endpoint inexistente:** frontend chamava `/api/business/tiers` (404). Backend só tinha `/api/admin/tiers` (protegido por admin).
+2. **Sem `.catch()`:** erro no fetch de workspaces deixava `wsLoaded = false` para sempre → nada renderizava.
+3. **Sem guard de array:** `setTiers({"detail":"Not Found"})` → `tiers.map()` → TypeError → crash.
+
+**Fix:**
+- Backend: criado endpoint público `GET /api/campaigns/tiers` (sem auth)
+- Frontend: URL corrigido para `/api/campaigns/tiers` + `Array.isArray()` guard + `.catch(() => setWsLoaded(true))` + spinner de carregamento
+
+**Ficheiros:** `backend/server.py` · `business/campaign/new.tsx`
+
+---
+
+### Bug 4 — Ícones desactualizados (beetle + logo antigo)
+
+**Causa:** `beetle.png`, `besord_i.png`, `besord_v.mp4` e outras imagens antigas foram apagadas mas os ficheiros de código ainda as referenciavam → erro de require em runtime.
+
+**Fix:** `onboarding.tsx` e `index.tsx` actualizados para `NewBesord.png`. `MascotVideo` simplificado para imagem estática (vídeo eliminado).
+
+**Ficheiros:** `onboarding.tsx` · `index.tsx` · `assets/images/NewBesord.png` (adicionado ao git)
+
+---
+
+### Bug 5 — Criar post permitia múltiplas imagens
+
+**Causa:** `MAX_IMAGES = 3`, estado `extraImages`, UI de carrossel extra — nunca deveria existir.
+
+**Fix:** `criar.tsx` reescrito — 1 imagem apenas, sem estado `extraImages`, sem carrossel.
+
+**Ficheiro:** `(tabs)/criar.tsx`
+
+---
+
+### Bug 6 — Apagar empresa não fazia nada (web)
+
+**Causa:** Frontend usava `window.confirm()` na web → em muitos contextos de browser moderno é bloqueado silenciosamente (retorna `false` sem mostrar diálogo). Além disso, `doDelete()` não tinha tratamento de erro — se API retornasse erro, nada acontecia.
+
+**Fix:** Substituído por `Alert.alert()` nativo do Expo (funciona em web + mobile) + error handling explícito com mensagem ao utilizador.
+
+**Nota:** O endpoint `DELETE /api/workspaces/{id}` já existia no backend (`workspaces.py`) — era só o frontend.
+
+**Ficheiro:** `workspaces.tsx`
+
+---
+
+### Bug 7 — Sem caminho para criar evento empresa no perfil
+
+**Causa:** Secção ESPAÇO EMPRESA no perfil só tinha "ANUNCIAR / CAMPANHAS". O wizard `business/evento/novo.tsx` existia mas não havia botão de acesso.
+
+**Fix:** Adicionado botão "CRIAR EVENTO EMPRESA" no topo da secção ESPAÇO EMPRESA, acima das campanhas. Rota: `/business/evento/novo`.
+
+**Ficheiro:** `(tabs)/perfil.tsx`
+
+---
+
+### Typo "CAMPANHÁ" (live)
+
+O código fonte em `campaigns.tsx` já tem `NENHUMA CAMPANHA` correcto. O live site (besord.vercel.app) estava a servir deployment antigo do Vercel. Resolve com `git push origin main`.
+
+---
+
 ## 🗂️ Resumo de Commits
 
 | Commit | Descrição |
 |---|---|
 | `1639f2e` | feat: Fase 3 — Eventos (Pessoal/Singular/Plural), Primeiro Olhar e Campanhas |
 | `36df94f` | fix: perfil de utilizador + checkboxes Plano Fase 3 actualizadas |
+| `47640df` | fix: 7 bugs — age gate, CIDADE chip, campaign/new blank, ícones, multi-imagem, apagar empresa, evento empresa |
 
 ---
 
@@ -305,7 +416,8 @@ onPress={() => { if (canEvent) router.push("/pessoal/evento/novo" as never); }}
 
 | Tarefa | Como fazer | Prioridade |
 |---|---|---|
-| **OTA update** (mobile) | `EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "Fase 3: eventos + campanhas + bug perfil"` | 🔴 Imediato |
+| **`git push origin main`** | Terminal no repo `besord/` | 🔴 URGENTE — deploy Vercel (typo + 7 bugs) |
+| **OTA update** (mobile) | Ver comando abaixo | 🔴 Imediato após push |
 | **Build iOS TestFlight** | `eas build --platform ios --profile preview` | 🟡 Antes dos convites |
 | **Primeira venda B2B** | Contactar 1 marca → Primeiro Olhar €79,90 | 🟡 Em paralelo |
 
@@ -324,11 +436,17 @@ onPress={() => { if (canEvent) router.push("/pessoal/evento/novo" as never); }}
 
 ## 🔑 Comandos para a Próxima Sessão
 
-**OTA Update (obrigatório após cada sessão de código):**
+**Deploy Vercel (FAZER HOJE):**
+```bash
+git push origin main
+```
+Corrige o typo "CAMPANHÁ" e publica os 7 bugs corrigidos no site live.
+
+**OTA Update (para o APK mobile, após push):**
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "Fase 3 início — eventos + campanhas + bug perfil"
+EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "fix: 7 bugs — age gate, ícones, campaign/new, multi-imagem, apagar empresa, evento"
 ```
 
 **Testar perfil de utilizador (verificar fix crash):**
@@ -365,6 +483,7 @@ curl -X POST https://besord-backend.onrender.com/api/events \
 ---
 
 > **Data:** 15 Junho 2026
-> **Commits:** `1639f2e` · `36df94f`
+> **Commits:** `1639f2e` · `36df94f` · `47640df`
 > **Estado da Fase 3:** 3.A ✅ · 3.B ✅ (parcial) · 3.C ✅ · 3.D ✅ · 3.E–3.G ⏳
-> **Próxima sessão:** evento/[id].tsx com botões de publicação → depois user_memory + Espelho de Empatia completo
+> **Pendente (Rodrigo):** `git push origin main` + OTA update
+> **Próxima sessão:** evento/[id].tsx (botões publicar imagem + expositor) → user_memory → Espelho de Empatia
