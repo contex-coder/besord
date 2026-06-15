@@ -47,7 +47,7 @@ export default function PublicProfileScreen() {
   const [admireLoading, setAdmireLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id) { setLoading(false); return; }
     try {
       const r = await apiFetch(`/api/users/${id}/profile`);
       if (r.ok) {
@@ -140,12 +140,13 @@ export default function PublicProfileScreen() {
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.userName} numberOfLines={1}>
-                  {profile.name.toUpperCase()}
+                  {(profile.name || "Utilizador").toUpperCase()}
                 </Text>
                 {!!profile.location && (
-                  <Text style={styles.location} numberOfLines={1}>
-                    <Ionicons name="location-outline" size={11} /> {profile.location}
-                  </Text>
+                  <View style={styles.locationRow}>
+                    <Ionicons name="location-outline" size={11} color={colors.textSecondary} />
+                    <Text style={styles.location} numberOfLines={1}>{profile.location}</Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -245,7 +246,8 @@ const styles = StyleSheet.create({
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   avatarFallbackText: { fontSize: 28, fontWeight: "900", color: colors.text },
   userName: { fontSize: 18, fontWeight: "900", letterSpacing: -0.5, color: colors.text },
-  location: { fontSize: 11, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
+  location: { fontSize: 11, fontWeight: "600", color: colors.textSecondary },
   bio: { fontSize: 13, fontWeight: "600", color: colors.text, lineHeight: 18 },
   statsRow: { flexDirection: "row", gap: 8 },
   statBox: {

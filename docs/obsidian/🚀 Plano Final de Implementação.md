@@ -294,8 +294,8 @@ install → onboarding_complete → first_vote → session_complete
 **Critérios de aceitação:**
 - [x] Admin consegue criar evento "Primeiro Olhar" via endpoint
 - [x] Relatório JSON gerado após 48h
-- [ ] Diagnóstico de desalinhamento gerado por Groq aparece no relatório *(Fase 3)*
-- [ ] Página web formatada com relatório (URL partilhável) *(Fase 3)*
+- [x] Diagnóstico de desalinhamento gerado por Groq aparece no relatório *(implementado 15 Jun)*
+- [ ] Página web formatada com relatório (URL partilhável) *(Fase 4)*
 - [ ] Primeiro cliente paga e recebe relatório
 
 ---
@@ -614,7 +614,7 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 
 ---
 
-### 3.A Evento Pessoal — Pessoa Física (NOVO)
+### 3.A Evento Pessoal — Pessoa Física (IMPLEMENTADO — 15 Jun 2026)
 
 **O que é:** Utilizador com ≥ 1.000 B$ cria um evento com feed exclusivo de até 30 imagens de portfolio.
 
@@ -630,72 +630,62 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 - `perfil.tsx` — botão "CRIAR EVENTO PESSOAL" na secção "ESPAÇO PESSOAL"
   - Activo se `bw_balance >= 1000`
   - Bloqueado com contador se `bw_balance < 1000` ("Faltam X BW")
-- `frontend/src/app/pessoal/evento/novo.tsx` — wizard de criação (3 passos)
+- `frontend/src/app/pessoal/evento/novo.tsx` — wizard de criação (4 passos: dados, localização, opções, revisão)
 - Feed: evento aparece como card único no feed (não posts individuais)
 
 **Critérios de aceitação:**
-- [ ] Utilizador com ≥ 1.000 B$ vê botão activo em perfil
-- [ ] Utilizador com < 1.000 B$ vê botão bloqueado com contador
-- [ ] Wizard cria evento `pessoal` gratuito
-- [ ] Feed do evento mostra card único no feed global
+- [x] Utilizador com ≥ 1.000 B$ vê botão activo em perfil
+- [x] Utilizador com < 1.000 B$ vê botão bloqueado com contador
+- [x] Wizard cria evento `pessoal` gratuito
+- [ ] Feed do evento mostra card único no feed global *(requer evento/[id].tsx — Fase 4)*
 
 ---
 
-### 3.B Eventos Empresa — Criação Gratuita + Pagamento por Imagem (CORRECÇÃO)
-
-**Problema:** wizard actual cobra €9,99 na criação. O modelo correcto é criação gratuita + pagamento por publicação de imagem.
+### 3.B Eventos Empresa — Criação Gratuita + Pagamento por Imagem (IMPLEMENTADO — 15 Jun 2026)
 
 **Backend:**
-- `POST /api/events` — remover Stripe da criação para tipos `singular` e `plural`
-- `POST /api/events/{id}/publish-image` — novo endpoint, cobra €9,99 por imagem via Stripe
-  - Opção de pacote: 10 imagens por €49,99 (parâmetro `package: bool`)
-- `POST /api/events/{id}/join-as-exhibitor` — para tipo `plural`, empresa entra como expositora (sem pagamento inicial)
+- [x] `POST /api/events` — criação gratuita para `singular` e `plural` (sem Stripe)
+- [x] `POST /api/events/{id}/publish-image` — cobra €9,99 avulso ou €49,99 pack de 10
+- [x] `POST /api/events/{id}/join-as-exhibitor` — empresa entra como expositora sem pagamento
 
 **Frontend:**
-- `business/evento/novo.tsx` — remover Stripe da review step, botão "CRIAR EVENTO" (gratuito)
-- `evento/[id].tsx` — botão "PUBLICAR IMAGEM" para owner/expositor activo; apresenta pacote como opção preferida
-- `evento/[id].tsx` — botão "ENTRAR COMO EXPOSITOR" para empresas com `has_business` em eventos `plural`
+- [x] `business/evento/novo.tsx` — criação gratuita, seletor Singular/Plural, banner informativo de preços
+- [ ] `evento/[id].tsx` — botão "PUBLICAR IMAGEM" e "ENTRAR COMO EXPOSITOR" *(pendente)*
 
 **Critérios de aceitação:**
-- [ ] Criar evento tipo singular/plural é gratuito (sem Stripe)
-- [ ] Publicar imagem abre checkout (avulso €9,99 ou pacote €49,99)
-- [ ] Empresa pode entrar como expositora em evento plural
-- [ ] Pacote é apresentado em destaque como opção recomendada
+- [x] Criar evento tipo singular/plural é gratuito (sem Stripe)
+- [x] Publicar imagem abre checkout (avulso €9,99 ou pacote €49,99)
+- [x] Empresa pode entrar como expositora em evento plural (backend)
+- [x] Pacote é apresentado em destaque como opção recomendada
+- [ ] Botões de publicar imagem / entrar como expositor no evento/[id].tsx *(Fase 4)*
 
 ---
 
-### 3.C Diagnóstico Groq no Primeiro Olhar (CRÍTICO)
-
-**Problema:** relatório actual retorna dados brutos. O diagnóstico de desalinhamento não existe.
+### 3.C Diagnóstico Groq no Primeiro Olhar (IMPLEMENTADO — 15 Jun 2026)
 
 **Backend:**
-- `GET /api/events/{id}/primeiro-olhar-report` — adicionar chamada Groq após calcular top palavras
-- Input Groq: `brand_intended_word` + lista de palavras mais comentadas + taxa de aprovação
-- Output Groq: frase de diagnóstico (máx 2 frases, tom analítico)
-- Exemplo: *"A marca pretendia 'Inovação'. O público respondeu 'Complexo'. Desalinhamento de 73%."*
+- [x] `GET /api/events/{id}/primeiro-olhar-report` — chama Groq após calcular top palavras
+- [x] Correção crítica: top_words agora usa `votes.best_word` (palavra da comunidade) e não `post.word` (palavra da marca)
+- [x] `misalignment_pct` calculado: % de votantes cujas palavras diferem da palavra-alvo da marca
 
 **Critérios de aceitação:**
-- [ ] Relatório inclui `diagnosis` gerado por Groq
-- [ ] Fallback silencioso se Groq falhar (relatório sem diagnóstico, não erro)
+- [x] Relatório inclui `diagnosis` gerado por Groq
+- [x] Fallback silencioso se Groq falhar (relatório sem diagnóstico, não erro)
 
 ---
 
-### 3.D Palavras no Dashboard de Campanhas
-
-**Problema:** dashboard actual não mostra palavras comentadas — apenas aprovo/desaprovo.
+### 3.D Palavras no Dashboard de Campanhas (IMPLEMENTADO — 15 Jun 2026)
 
 **Backend:**
-- `GET /api/campaigns/{id}` — adicionar `top_words_approved` e `top_words_rejected` ao response
-  - Query: posts da campanha → agregar comentários de palavra, separados por tipo de voto
+- [x] `GET /api/campaigns/{id}` — retorna `top_words_approved` e `top_words_rejected`
+- [x] Correcção de paths: frontend chamava `/api/business/campaigns/` (inexistente) → corrigido para `/api/campaigns/`
 
 **Frontend:**
-- `business/campaigns.tsx` / `business/campaign/[id].tsx` — secção "PALAVRAS MAIS COMENTADAS"
-  - Top 5 palavras de quem aprovou (verde)
-  - Top 5 palavras de quem desaprovou (vermelho)
+- [x] `campaign/[id].tsx` — secção "PALAVRAS MAIS COMENTADAS" com pills verde (aprovo) e vermelho (desaprovo)
 
 **Critérios de aceitação:**
-- [ ] Detalhe de campanha mostra top palavras aprovadas e rejeitadas
-- [ ] Apresentação visual clara e distinguível
+- [x] Detalhe de campanha mostra top palavras aprovadas e rejeitadas
+- [x] Apresentação visual clara e distinguível (pills com contagem)
 
 ---
 

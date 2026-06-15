@@ -117,7 +117,7 @@ export default function PerfilScreen() {
                 <Image source={{ uri: user.picture }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Text style={styles.avatarFallbackText}>{user.name.charAt(0).toUpperCase()}</Text>
+                  <Text style={styles.avatarFallbackText}>{(user.name || "?").charAt(0).toUpperCase()}</Text>
                 </View>
               )}
               <View style={{ flex: 1 }}>
@@ -173,7 +173,7 @@ export default function PerfilScreen() {
                   <TouchableOpacity
                     testID="btn-personal-event"
                     style={[styles.advertiseBtn, !canEvent && styles.advertiseBtnLocked]}
-                    onPress={() => canEvent && router.push("/pessoal/evento/novo")}
+                    onPress={() => { if (canEvent) router.push("/pessoal/evento/novo" as never); }}
                     activeOpacity={0.85}
                   >
                     <Ionicons name="calendar" size={20} color={colors.text} />
