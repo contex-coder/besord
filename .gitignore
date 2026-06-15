@@ -88,3 +88,7 @@ package-lock.json
 
 # Metro bundler cache
 frontend/.metro-cache/
+
+# Secrets and credentials (never commit)
+besord int
+.deep-copilot/logs/

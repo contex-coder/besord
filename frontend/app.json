@@ -4,7 +4,7 @@
     "slug": "besord",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/NewBesord.png",
     "scheme": "besord",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
@@ -20,7 +20,7 @@
     "android": {
       "package": "com.besord.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/NewBesord.png",
         "backgroundColor": "#000000"
       },
       "permissions": [
@@ -34,14 +34,14 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/NewBesord.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-image.png",
+          "image": "./assets/images/NewBesord.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#000000"
