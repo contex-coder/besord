@@ -13,6 +13,7 @@ from typing import List, Optional
 from xml.etree import ElementTree as ET
 
 import httpx
+from bs4 import BeautifulSoup
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +34,8 @@ class RawEvent:
     fetched_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     # hash estável para deduplicação
     content_hash: str = ""
+    # texto do artigo (preenchido async por _enrich_texts)
+    article_text: str = ""
     
     def __post_init__(self):
         if not self.content_hash:
@@ -42,7 +45,9 @@ class RawEvent:
     def full_text(self) -> str:
         """Texto completo que será enviado à Groq para extração."""
         parts = [self.title]
-        if self.description and self.description != self.title:
+        if self.article_text:
+            parts.append(self.article_text)
+        elif self.description and self.description != self.title:
             parts.append(self.description)
         return "\n\n".join(parts)
 
@@ -161,6 +166,41 @@ async def fetch_all_sources() -> List[RawEvent]:
     
     log.info(f"Total RawEvents: {len(all_events)} → {len(unique)} after dedup")
     return unique
+
+
+async def _enrich_article_texts(events: List[RawEvent], max_concurrent: int = 4) -> None:
+    """Fetches and extracts article text for events with empty/inadequate text.
+    Google News RSS only provides a title + link; this augments with real article text.
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def enrich_one(ev: RawEvent):
+        # Skip if already has substantial text
+        if len(ev.full_text()) > 500:
+            return
+        
+        # Only attempt for google_news sources with a URL
+        if ev.source_type != "google_news" or not ev.source_url:
+            return
+        
+        async with semaphore:
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    resp = await client.get(ev.source_url, follow_redirects=True)
+                    if resp.status_code != 200:
+                        return
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    # Extract text from <p> tags
+                    paragraphs = [p.get_text(strip=True) for p in soup.find_all("p")]
+                    text = " ".join(p for p in paragraphs if len(p) > 30)
+                    if len(text) > 100:
+                        ev.article_text = text[:2000]  # max 2000 chars para Groq
+            except Exception:
+                pass  # silently skip failed fetches
+    
+    await asyncio.gather(*[enrich_one(ev) for ev in events])
+    enriched = sum(1 for ev in events if ev.article_text)
+    log.info(f"Article text enriched: {enriched}/{len(events)}")
 
 
 # ── CLI test ─────────────────────────────────────────────────────────────────

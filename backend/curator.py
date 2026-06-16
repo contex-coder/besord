@@ -303,6 +303,9 @@ async def run_curator(db: AsyncIOMotorClient = None) -> Dict[str, int]:
     # Limitar a amostra para não exceder rate limits da Groq
     raw_events = raw_events[:MAX_SOURCE_EVENTS]
 
+    # Enriquecer com texto real dos artigos (Google News RSS só tem título + link)
+    await sources._enrich_article_texts(raw_events)
+
     async with httpx.AsyncClient() as http:
 
         # ═══ Stage 2: EXTRACT ═══
