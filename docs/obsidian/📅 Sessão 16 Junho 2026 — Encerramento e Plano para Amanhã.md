@@ -42,7 +42,7 @@ Testado directamente contra a API ao vivo (`besord-backend.onrender.com`), não 
 
 ---
 
-## 3. A saga do Curador — 4 bugs, um a seguir ao outro
+## 3. A saga do Curador — 5 bugs, um a seguir ao outro
 
 Vale registar esta sequência porque é um caso de estudo de "cada camada escondia a seguinte":
 
@@ -53,20 +53,25 @@ Vale registar esta sequência porque é um caso de estudo de "cada camada escond
 
 **Resultado depois dos 4 fixes:** o cron corre, chega ao backend, processa — mas devolveu `{"fetched":980,"extracted":3,"validated":0,"inserted":0,"queued":0,"rejected":80}`. Zero eventos novos inseridos.
 
+### 3.1 5º bug, já corrigido: rate limit da Groq engolido em silêncio
+
+Os logs do `besord-backend` (não os do cron job — são serviços diferentes, isto confundiu numa primeira tentativa) mostraram a causa real: **~78 dos 80 pedidos à Groq falharam com "429 Too Many Requests"**, quase ao mesmo tempo (20:17:45 UTC, todos no mesmo segundo). O código já tinha lógica de repetir-com-espera para este caso exacto (`extract_one()`, 2s depois 4s, até 3 tentativas) — mas nunca era accionada, porque `_groq_extract()` apanhava a excepção do 429 internamente e devolvia "não consegui extrair" em silêncio, sem nunca deixar o erro subir até à lógica que devia repetir. Corrigido (`e931a45`) — o 429 agora propaga e o retry desenhado no código passa a correr de verdade.
+
+**Isto ainda não foi testado em produção** (sessão fechou antes do próximo "Trigger Run"). É a primeira coisa a confirmar amanhã.
+
 ---
 
 ## 4. Onde paramos — começar amanhã por aqui
 
-### 4.1 Prioridade imediata — diagnosticar o yield 0% do Curador
+### 4.1 Prioridade imediata — confirmar se o fix do 429 resolveu o yield
 
-Dos 80 candidatos processados nesta execução: só 3 tiveram um evento extraído pela IA com confiança suficiente, e **as 3 falharam a validação estrutural** (Estágio 3 — data no passado, cidade fora de Lisboa/Porto, spam, ou título/local demasiado curto). Não sabemos qual motivo exacto sem ver os logs.
-
-**Próximo passo concreto:** o Rodrigo ia trazer os **Logs** (não os "Events") do serviço `besord-curador` no Render, à volta das 20:17 UTC, à procura das linhas `Rejeitado: ...` — essas têm o motivo exacto de cada uma das 3 tentativas. Ficou pendente quando a sessão foi interrompida.
-
-Hipóteses a testar com esse log:
-- Se for "Cidade fora de cobertura": a IA pode estar a extrair cidades vizinhas (Cascais, Almada, Matosinhos) em vez de "Lisboa"/"Porto" exactamente — pode precisar de normalização de cidade, não só comparação exacta.
-- Se for "Data no passado": as notícias do Google News tendem a ser sobre eventos que já aconteceram (cobertura editorial pós-evento), não anúncios de eventos futuros — pode ser preciso ajustar as queries de pesquisa para termos mais prospectivos ("este fim de semana", "próxima semana") em vez de "hoje"/"esta semana" que também trazem recapitulações.
-- Se for "Título/local demasiado curto": pode ser um problema de extracção da IA, não das fontes.
+1. `besord-curador` → "Trigger Run"
+2. Ver o JSON de resposta nos Events do cron — `extracted` e `inserted` deviam subir bastante em relação a `{"extracted":3,"inserted":0}`
+3. Se ainda houver muitos 429 mesmo com retry (o limite gratuito da Groq pode ser mesmo insuficiente para 80 pedidos de uma vez, mesmo com 2 tentativas de espera), próximos ajustes possíveis, por ordem de impacto:
+   - Reduzir `MAX_SOURCE_EVENTS` de 80 para algo mais baixo (ex: 30-40) — menos pedidos, menos pressão sobre o limite
+   - Aumentar os tempos de espera no retry (`2s, 4s` → `5s, 15s`)
+   - Reduzir o semáforo de concorrência de 2 para 1 (mais lento, mas mais gentil com o limite)
+4. Se `inserted > 0`: confirmar visualmente no mapa/listagem (`GET /api/events` ou `besord.vercel.app/events/explorar`) que os eventos aparecem como esperado, já com o schema corrigido da Secção 3.
 
 ### 4.2 Outras pendências já identificadas (sem urgência)
 
@@ -113,6 +118,8 @@ ce778b4 docs: verifica e corrige Briefing 16 Junho — Cloudinary + Curador
 24724c4 fix: schema dos eventos curados incompatível com GET /api/events e /nearby
 a0e3c1f feat: aumenta logo ao lado de BESORD em +50% (feed e onboarding)
 747b2b2 fix: GET /api/events/search nunca era alcançado (ordem de rotas)
+b114ec7 docs: encerramento da sessão 16 Junho — Cloudinary, Curador, B$, branding
+e931a45 fix: 429 da Groq era engolido, retry com backoff nunca corria
 ```
 
 Mais 2 alterações feitas directamente no dashboard do Render (não em código): `besord-curador` → Auto-Deploy ligado, e campo "Docker Command" sem aspas à volta do URL.
@@ -126,5 +133,5 @@ Houve várias vezes hoje em que a documentação escrita (pela outra sessão de 
 ---
 
 > **Data:** 16 Junho 2026, encerrada ~21h
-> **Estado:** Sessão fechada a meio do diagnóstico do yield do Curador — falta ver os logs do Render
-> **Próxima sessão:** começar pela Secção 4.1 deste documento
+> **Estado:** Causa raiz do yield 0% encontrada e corrigida (429 da Groq engolido em silêncio) — ainda **não testada** com um novo "Trigger Run"
+> **Próxima sessão:** começar pela Secção 4.1 deste documento — só falta confirmar que o fix resolveu

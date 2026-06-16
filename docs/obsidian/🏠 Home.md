@@ -98,5 +98,5 @@ EXPO_TOKEN="<ver frontend/.env>" eas build --platform android --profile preview
 
 ---
 
-> **Última actualização:** 16 Junho 2026, fim de sessão — Cloudinary ✅, B$ com palavra ✅, branding uniformizado ✅. Curador Automático: cron job corre de ponta a ponta sem erro (4 bugs encadeados corrigidos: dependência em falta, schema incompatível, rota `/events/search` inacessível, configuração do Render), mas **yield 0% nesta execução** (3 extraídos, 0 validados) — diagnóstico por fazer.
-> **Próxima sessão:** ver [[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]] — começar pelos logs do Render (`Rejeitado: ...`) para entender porque as 3 tentativas extraídas falharam a validação.
+> **Última actualização:** 16 Junho 2026, fim de sessão — Cloudinary ✅, B$ com palavra ✅, branding uniformizado ✅. Curador Automático: 5 bugs encadeados encontrados e corrigidos (dependência em falta, schema incompatível, rota `/events/search` inacessível, configuração do Render, rate-limit da Groq engolido em silêncio) — o último ainda **não foi testado** em produção.
+> **Próxima sessão:** ver [[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]] — começar por um novo "Trigger Run" no `besord-curador` para confirmar se o yield melhorou.
