@@ -51,7 +51,7 @@ export default function AccountTypeScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <Image
-          source={require("../../assets/images/NewBesord.png")}
+          source={require("../../assets/images/NewBesord_free.png")}
           style={styles.beetle}
           resizeMode="contain"
         />
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   beetle: { width: 80, height: 80 },
   body: { flex: 1, paddingHorizontal: 20, gap: 16 },
   greeting: { fontSize: 13, fontWeight: "900", letterSpacing: 3, color: colors.textSecondary, textAlign: "center" },
-  brand: { fontSize: 42, fontWeight: "900", letterSpacing: -1, color: colors.text, textAlign: "center", marginBottom: 16 },
+  brand: { fontSize: 42, fontWeight: "900", letterSpacing: -1, color: colors.petrol, textAlign: "center", marginBottom: 16 },
   subtitle: { fontSize: 14, fontWeight: "900", letterSpacing: 2, color: colors.text, textAlign: "center", marginBottom: 8 },
 
   optionCard: {
