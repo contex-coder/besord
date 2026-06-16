@@ -33,6 +33,7 @@ log = logging.getLogger("curator")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.1-8b-instant"  # gratuito, rápido, suficiente para extração
+MAX_SOURCE_EVENTS = 80            # processar no máximo 80 raw events por execução
 COVERED_CITIES = ["Lisboa", "Porto", "lisboa", "porto", "LISBOA", "PORTO"]
 MIN_CONFIDENCE_AUTO = 70   # ≥ entra direto
 MIN_CONFIDENCE_REVIEW = 50  # 50-69 vai para fila de revisão (< 50 descarta)
