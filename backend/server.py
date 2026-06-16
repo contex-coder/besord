@@ -3002,6 +3002,34 @@ async def list_events(
     return results
 
 
+# ---------- SEARCH EVENTS BY CITY/COUNTRY/ADDRESS ----------
+# Tem de vir ANTES de /events/{event_id} — caso contrário "search" é
+# interpretado como um event_id literal e este endpoint nunca é alcançado.
+@api_router.get("/events/search")
+async def search_events(
+    q: str = Query(..., description="Cidade, país ou endereço"),
+    authorization: Optional[str] = Header(None),
+):
+    user = await get_optional_user(authorization)
+    current_user_id = user["user_id"] if user else None
+    now = datetime.now(timezone.utc)
+
+    # Search by city, country_code, or address
+    query = {
+        "status": {"$in": ["active", "full"]},
+        "expires_at": {"$gt": now},
+        "$or": [
+            {"location.city": {"$regex": q, "$options": "i"}},
+            {"location.country_code": {"$regex": q, "$options": "i"}},
+            {"location.address": {"$regex": q, "$options": "i"}},
+            {"title": {"$regex": q, "$options": "i"}},
+        ]
+    }
+    cursor = db.events.find(query, {"_id": 0}).sort("created_at", -1)
+    docs = await cursor.to_list(length=100)
+    return [serialize_event(d, current_user_id) for d in docs]
+
+
 # ---------- GET SINGLE EVENT ----------
 @api_router.get("/events/{event_id}")
 async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
@@ -3169,34 +3197,6 @@ async def admin_create_event(payload: EventCreate, authorization: Optional[str] 
     }
     await db.events.insert_one(event_data)
     return serialize_event(event_data, user["user_id"])
-
-
-# ==============================
-# PUBLIC: SEARCH EVENTS by city/country
-# ==============================
-@api_router.get("/events/search")
-async def search_events(
-    q: str = Query(..., description="Cidade, país ou endereço"),
-    authorization: Optional[str] = Header(None),
-):
-    user = await get_optional_user(authorization)
-    current_user_id = user["user_id"] if user else None
-    now = datetime.now(timezone.utc)
-    
-    # Search by city, country_code, or address
-    query = {
-        "status": {"$in": ["active", "full"]},
-        "expires_at": {"$gt": now},
-        "$or": [
-            {"location.city": {"$regex": q, "$options": "i"}},
-            {"location.country_code": {"$regex": q, "$options": "i"}},
-            {"location.address": {"$regex": q, "$options": "i"}},
-            {"title": {"$regex": q, "$options": "i"}},
-        ]
-    }
-    cursor = db.events.find(query, {"_id": 0}).sort("created_at", -1)
-    docs = await cursor.to_list(length=100)
-    return [serialize_event(d, current_user_id) for d in docs]
 
 
 # ==============================
