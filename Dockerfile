@@ -12,8 +12,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY backend/ /app/
 
 # Create non-root user for security
-# Ensure system CA certificates exist so TLS (MongoDB Atlas) works
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+# Ensure system CA certificates + curl exist so TLS (MongoDB Atlas) and cron jobs work
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
