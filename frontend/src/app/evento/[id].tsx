@@ -170,28 +170,49 @@ export default function EventDetailScreen() {
 
   // ─── Apagar evento ───
   const onDeleteEvent = () => {
+    const doDelete = async () => {
+      try {
+        const r = await apiFetch(`/api/events/${id}`, { method: "DELETE" });
+        if (r.ok) {
+          if (Platform.OS === "web") {
+            if (typeof window !== "undefined") window.alert("Evento apagado.");
+            router.back();
+          } else {
+            Alert.alert("Evento apagado", "", [{ text: "OK", onPress: () => router.back() }]);
+          }
+        } else {
+          const err = await r.json().catch(() => ({}));
+          const msg = err.detail || "Não foi possível apagar o evento.";
+          if (Platform.OS === "web") {
+            if (typeof window !== "undefined") window.alert(msg);
+          } else {
+            Alert.alert("Erro", msg);
+          }
+        }
+      } catch {
+        const msg = "Falha ao apagar o evento.";
+        if (Platform.OS === "web") {
+          if (typeof window !== "undefined") window.alert(msg);
+        } else {
+          Alert.alert("Erro", msg);
+        }
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(
+        "Apagar evento? Esta ação não pode ser desfeita. O evento deixa de estar visível, mas o histórico de quem participou é mantido."
+      )) {
+        doDelete();
+      }
+      return;
+    }
     Alert.alert(
       "Apagar evento?",
       "Esta ação não pode ser desfeita. O evento deixa de estar visível, mas o histórico de quem participou é mantido.",
       [
         { text: "Cancelar", style: "cancel" },
-        {
-          text: "Apagar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const r = await apiFetch(`/api/events/${id}`, { method: "DELETE" });
-              if (r.ok) {
-                Alert.alert("Evento apagado", "", [{ text: "OK", onPress: () => router.back() }]);
-              } else {
-                const err = await r.json().catch(() => ({}));
-                Alert.alert("Erro", err.detail || "Não foi possível apagar o evento.");
-              }
-            } catch {
-              Alert.alert("Erro", "Falha ao apagar o evento.");
-            }
-          },
-        },
+        { text: "Apagar", style: "destructive", onPress: doDelete },
       ]
     );
   };

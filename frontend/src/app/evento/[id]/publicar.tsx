@@ -20,6 +20,17 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors, brutalShadow } from "@/src/theme";
 
+// Alert.alert é um no-op no web (react-native-web não o implementa) — sem isto,
+// nenhuma destas mensagens apareceria a quem usa besord.vercel.app no browser.
+function notify(title: string, message?: string, onOk?: () => void) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") window.alert(message ? `${title}\n\n${message}` : title);
+    onOk?.();
+    return;
+  }
+  Alert.alert(title, message, onOk ? [{ text: "OK", onPress: onOk }] : undefined);
+}
+
 export default function PublicarImagemEventoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { apiFetch } = useAuth();
@@ -63,7 +74,7 @@ export default function PublicarImagemEventoScreen() {
     }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Permissão necessária", "Precisamos de acesso à galeria.");
+      notify("Permissão necessária", "Precisamos de acesso à galeria.");
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -99,11 +110,11 @@ export default function PublicarImagemEventoScreen() {
 
   const submit = useCallback(async (usePackage: boolean) => {
     if (!imageBase64) {
-      Alert.alert("Faltou a imagem", "Seleciona uma imagem para publicar.");
+      notify("Faltou a imagem", "Seleciona uma imagem para publicar.");
       return;
     }
     if (!word) {
-      Alert.alert("Faltou a palavra", "Digita UMA palavra para a publicação.");
+      notify("Faltou a palavra", "Digita UMA palavra para a publicação.");
       return;
     }
     setSubmitting(true);
@@ -129,15 +140,13 @@ export default function PublicarImagemEventoScreen() {
           }
           return;
         }
-        Alert.alert("Imagem publicada!", "A tua publicação já está visível no feed do evento.", [
-          { text: "OK", onPress: () => router.back() },
-        ]);
+        notify("Imagem publicada!", "A tua publicação já está visível no feed do evento.", () => router.back());
       } else {
         const err = await r.json().catch(() => ({}));
-        Alert.alert("Erro", err.detail || "Falha ao publicar imagem.");
+        notify("Erro", err.detail || "Falha ao publicar imagem.");
       }
     } catch (e: any) {
-      Alert.alert("Erro", e?.message || "Falha ao publicar imagem.");
+      notify("Erro", e?.message || "Falha ao publicar imagem.");
     } finally {
       setSubmitting(false);
     }

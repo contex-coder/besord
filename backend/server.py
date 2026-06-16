@@ -29,6 +29,7 @@ from bw_pricing import BW_TIERS_DEFAULTS, BW_TIER_KEYS
 from dataclasses import replace as dataclass_replace
 import password_auth as _pwd_auth
 import storage  # Cloudinary image upload
+import curator  # Curador Automático — pipeline de 5 estágios
 import workspaces as _ws_mod
 from routes import discovery as _discovery_mod
 
@@ -130,6 +131,9 @@ async def startup():
         await db.sincronia_logs.create_index([("pair_id", 1), ("date", 1)], unique=True)
         await db.sincronia_logs.create_index("user_id_a")
         await db.sincronia_logs.create_index("user_id_b")
+        # Índices para curador (event_queue — TTL de 48h)
+        await db.event_queue.create_index("status")
+        await db.event_queue.create_index("expires_at", expireAfterSeconds=0)
     except Exception:
         pass  # Índices já existem
 
@@ -3763,4 +3767,5 @@ async def delete_my_account(authorization: Optional[str] = Header(None)):
 # Mount sub‑routers — deve ficar DEPOIS de todas as rotas do api_router
 app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
 app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
+app.include_router(curator.curator_router(db), prefix="/api")
 app.include_router(api_router)
