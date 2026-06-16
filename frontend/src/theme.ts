@@ -12,6 +12,7 @@ export const colors = {
   desaprovo: "#F43F5E",
   neutral: "#FACC15",
   shadow: "#000000",
+  petrol: "#12343D", // Azul Petróleo — cor de marca aprovada (branding 15 Jun 2026)
 };
 
 export const spacing = {

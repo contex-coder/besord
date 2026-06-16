@@ -465,7 +465,7 @@ export default function FeedScreen() {
       {/* ─── Header ─── */}
       <View style={styles.header}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Image source={require("../../../assets/images/NewBesord.png")} style={styles.headerLogo} resizeMode="contain" />
+          <Image source={require("../../../assets/images/NewBesord_free.png")} style={styles.headerLogo} resizeMode="contain" />
           <Text style={styles.brand}>BESORD</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -824,7 +824,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerLogo: { width: 36, height: 36 },
-  brand: { fontSize: 26, fontWeight: "900", letterSpacing: -1, color: colors.text },
+  brand: { fontSize: 26, fontWeight: "900", letterSpacing: -1, color: colors.petrol },
   trendsBtn: {
     flexDirection: "row",
     alignItems: "center",
