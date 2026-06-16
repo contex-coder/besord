@@ -114,21 +114,26 @@ async def _groq_extract(client: httpx.AsyncClient, text: str) -> GroqExtractedEv
         return GroqExtractedEvent(extracted=False)
 
     prompt = EXTRACT_PROMPT.format(text=text[:2500])  # limitar tokens
+    resp = await client.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+        json={
+            "model": GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": "És um extrator de eventos. Responde só JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 500,
+        },
+        timeout=20,
+    )
+    if resp.status_code == 429:
+        # Propaga para o caller (extract_one) repetir com backoff — não apanhar aqui,
+        # senão a lógica de retry nunca é accionada e o pedido fica silenciosamente perdido.
+        resp.raise_for_status()
+
     try:
-        resp = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={
-                "model": GROQ_MODEL,
-                "messages": [
-                    {"role": "system", "content": "És um extrator de eventos. Responde só JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 500,
-            },
-            timeout=20,
-        )
         resp.raise_for_status()
         raw = resp.json()["choices"][0]["message"]["content"].strip()
 
