@@ -34,6 +34,9 @@ log = logging.getLogger("curator")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.1-8b-instant"  # gratuito, rápido, suficiente para extração
 MAX_SOURCE_EVENTS = 80            # processar no máximo 80 raw events por execução
+URGENT_DAYS = 7                  # eventos nos próximos 7 dias → bónus de confiança
+URGENT_CONFIDENCE_BOOST = 10     # +10 confiança efetiva para eventos urgentes
+QUEUE_DAYS = 60                  # eventos > 60 dias no futuro → sempre para revisão
 COVERED_CITIES = ["Lisboa", "Porto", "lisboa", "porto", "LISBOA", "PORTO"]
 MIN_CONFIDENCE_AUTO = 70   # ≥ entra direto
 MIN_CONFIDENCE_REVIEW = 50  # 50-69 vai para fila de revisão (< 50 descarta)
@@ -78,11 +81,10 @@ class GroqExtractedEvent(BaseModel):
 
 # ── Stage 2: Groq Extraction ─────────────────────────────────────────────────
 
-EXTRACT_PROMPT = """És um extrator de eventos culturais. Recebes texto de um agregador de notícias.
-Extrai APENAS eventos individuais (não compilações ou agendas genéricas).
-Se o texto descreve vários eventos numa lista/agenda/roteiro, marca extracted: false.
-Precisas de identificar CLARAMENTE: nome do evento, data específica, local específico.
-Se algum campo for ambíguo ou não for um evento individual concreto, marca extracted: false.
+EXTRACT_PROMPT = """És um extrator de eventos. Recebes texto de um agregador de notícias ou agendas culturais.
+O texto pode descrever um ou vários eventos. Extrai SEMPRE o evento mais concreto que encontrares.
+Mesmo que o texto seja uma compilação/agenda/roteiro com vários eventos, extrai o primeiro evento individual
+que tenha data e local claros. Se não houver NENHUM evento com data + local, aí sim marca extracted: false.
 
 Campos:
 - title: nome do evento (max 80 chars)
@@ -90,10 +92,10 @@ Campos:
 - time: HH:MM ou null
 - location_name: nome do local (obrigatório)
 - city: cidade (Lisboa, Porto, etc.)
-- theme: categoria (Música, Teatro, Arte, Cinema, Dança, Literatura, Infantil, Desporto, Outro)
+- theme: categoria (Música, Teatro, Arte, Cinema, Dança, Literatura, Infantil, Desporto, Gastronomia, Outro)
 - confidence_title, confidence_date, confidence_location: 0-100
 - confidence_overall: 0-100
-- extracted: true se todos os obrigatórios presentes com confiança >= 70, false caso contrário
+- extracted: true se consegues extrair título + data + local com confiança razoável, false se não há dados suficientes
 
 Texto:
 {text}
@@ -354,13 +356,32 @@ async def run_curator(db: AsyncIOMotorClient = None) -> Dict[str, int]:
                 log.info(f"Duplicado: {groq_ev.title[:60]}")
                 continue
 
-            # Alta confiança → inserir direto
-            if groq_ev.confidence_overall >= MIN_CONFIDENCE_AUTO:
+            # Calcular distância temporal
+            try:
+                event_date = datetime.strptime(groq_ev.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                days_until = (event_date - today).days
+            except ValueError:
+                days_until = 999  # data inválida → revisão
+
+            # Ajustar confiança efetiva com bónus de urgência
+            effective_confidence = groq_ev.confidence_overall
+            if 0 <= days_until <= URGENT_DAYS:
+                effective_confidence += URGENT_CONFIDENCE_BOOST
+
+            # Decisão
+            if effective_confidence >= MIN_CONFIDENCE_AUTO and days_until <= QUEUE_DAYS:
                 await _insert_event(db, groq_ev, raw)
                 stats["inserted"] += 1
+                urgency = "URGENTE" if days_until <= URGENT_DAYS else ""
+                log.info(f"Inserido {urgency}: {groq_ev.title[:50]} | {groq_ev.date} (em {days_until}d) | c={effective_confidence}")
             else:
-                # Confiança média → fila de revisão
-                await _queue_for_review(db, groq_ev, raw, f"Confiança {groq_ev.confidence_overall}%")
+                reason = ""
+                if days_until > QUEUE_DAYS:
+                    reason = f"Evento distante ({days_until} dias)"
+                elif effective_confidence < MIN_CONFIDENCE_AUTO:
+                    reason = f"Confiança {effective_confidence}%"
+                await _queue_for_review(db, groq_ev, raw, reason)
                 stats["queued"] += 1
 
     log.info(f"Curador concluído: {stats}")

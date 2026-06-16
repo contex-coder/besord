@@ -50,13 +50,24 @@ class RawEvent:
 # ── Source functions ─────────────────────────────────────────────────────────
 
 GOOGLE_NEWS_QUERIES = [
-    "eventos culturais agenda lisboa",
-    "concertos musica ao vivo lisboa",
-    "exposições feiras lisboa",
-    "festivais lisboa agenda",
-    "eventos culturais agenda porto",
-    "concertos musica ao vivo porto",
-    "teatro espectáculos lisboa",
+    # Lisboa — curto prazo (hoje, esta semana)
+    "agenda lisboa hoje",
+    "eventos lisboa esta semana",
+    "o que fazer lisboa hoje",
+    "lisboa noite hoje",
+    "festas lisboa este fim de semana",
+    "concertos lisboa esta semana",
+    # Porto — curto prazo
+    "agenda porto hoje",
+    "eventos porto esta semana",
+    "o que fazer porto hoje",
+    "porto noite hoje",
+    "festas porto este fim de semana",
+    # Longo prazo (agenda mensal, planeamento)
+    "agenda lisboa junho 2026",
+    "agenda porto junho 2026",
+    "festivais lisboa 2026",
+    "festivais porto 2026",
 ]
 
 
