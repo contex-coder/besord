@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: 3,
-    color: colors.text,
+    color: colors.petrol,
   },
   date: {
     fontSize: 11,

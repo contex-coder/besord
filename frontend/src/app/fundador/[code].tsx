@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
+import { colors } from "@/src/theme";
 
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL ?? "https://besord-backend.onrender.com";
 
@@ -168,7 +169,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 6,
-    color: "#000",
+    color: colors.petrol,
     textAlign: "center",
     marginBottom: 32,
   },
