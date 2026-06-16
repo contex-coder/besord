@@ -15,11 +15,10 @@ export default function AccountTypeScreen() {
     (async () => {
       try {
         const prev = await storage.getItem("besord_account_type", null);
-        if (prev === "personal") {
+        if (prev === "personal" || prev === "business") {
+          // O feed é o laço principal mesmo para quem tem empresa —
+          // "Minhas Empresas" fica acessível a partir do perfil.
           router.replace("/(tabs)/feed");
-          return;
-        } else if (prev === "business") {
-          router.replace("/workspaces");
           return;
         }
       } catch {}
