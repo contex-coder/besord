@@ -203,6 +203,7 @@ class PostOut(BaseModel):
 
 class VoteRequest(BaseModel):
     vote: Literal["aprovo", "desaprovo"]
+    best_word: Optional[str] = None
 
 class CommentCreate(BaseModel):
     word: str
@@ -1294,28 +1295,40 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
             await db.posts.update_one({"post_id": post_id}, {"$inc": {field: -1}})
         else:
             # Switch vote — already counted when first voted, no new interaction
+            best = (payload.best_word or "").strip()
+            best = best if best.lower() not in ("", "n/a") else ""
+            update_doc = {"$set": {"vote": payload.vote, "created_at": now}}
+            if best:
+                update_doc["$set"]["best_word"] = best
+                update_doc["$set"]["best_word_at"] = now
             await db.votes.update_one(
                 {"post_id": post_id, "user_id": user["user_id"]},
-                {"$set": {"vote": payload.vote, "created_at": now}},
+                update_doc,
             )
             old_field = "aprovo_count" if existing["vote"] == "aprovo" else "desaprovo_count"
             new_field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
             await db.posts.update_one({"post_id": post_id}, {"$inc": {old_field: -1, new_field: 1}})
-            # Award BW for the new vote
-            await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
+            # Award BW: +2 if commented a word, +1 otherwise
+            bw = 2 if best else 1
+            await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": bw, "bw_total_earned": bw}})
     else:
         # New vote — increment daily interaction counter
+        best = (payload.best_word or "").strip()
+        best = best if best.lower() not in ("", "n/a") else ""
         await db.votes.insert_one({
             "post_id": post_id,
             "user_id": user["user_id"],
             "vote": payload.vote,
+            "best_word": best,
+            "best_word_at": now if best else None,
             "created_at": now,
             "geo": {"country_code": None, "city": None},
         })
         field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
         await db.posts.update_one({"post_id": post_id}, {"$inc": {field: 1}})
-        # Award BW
-        await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
+        # Award BW: +2 if commented a word, +1 otherwise
+        bw = 2 if best else 1
+        await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": bw, "bw_total_earned": bw}})
         # Increment Time-Gate counter (only for non-sponsored posts)
         if not is_sponsored_post:
             await db.users.update_one(
@@ -3718,4 +3731,3 @@ async def delete_my_account(authorization: Optional[str] = Header(None)):
 app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
 app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
 app.include_router(api_router)
-
