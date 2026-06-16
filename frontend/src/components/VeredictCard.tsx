@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity, Image,
   Modal, Share, ActivityIndicator, Platform, ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,8 @@ import { track } from "@/src/utils/analytics";
 
 type VeredictData = {
   word: string | null;
+  image_base64: string | null;
+  word_source: "own_post" | "ai_inferred" | "none";
   approval_rate: number | null;
   aprovo_votes_cast: number;
   total_votes_cast: number;
@@ -96,12 +98,18 @@ export default function VeredictCard({ visible, onClose, sessionInsight }: Props
               </View>
             ) : (
               <>
-                <Text style={styles.label}>A MINHA PALAVRA DE HOJE</Text>
+                <Text style={styles.label}>
+                  {data?.word_source === "ai_inferred" ? "A IA VIU ISTO EM TI HOJE" : "A MINHA PALAVRA DE HOJE"}
+                </Text>
                 <Text style={styles.word} numberOfLines={1} adjustsFontSizeToFit>
                   {data?.word
                     ? data.word.toUpperCase()
                     : "—"}
                 </Text>
+
+                {data?.image_base64 && (
+                  <Image source={{ uri: data.image_base64 }} style={styles.veredictoImage} resizeMode="cover" />
+                )}
 
                 {/* ── Approval bar ── */}
                 {data?.approval_rate != null && (
@@ -213,6 +221,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 54,
   },
+  veredictoImage: {
+    width: "100%",
+    aspectRatio: 4 / 5,
+    borderWidth: 3,
+    borderColor: colors.border,
+  },
   barSection: { gap: 6 },
   barTrack: {
     height: 12,
@@ -265,7 +279,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   scrollArea: {
-    maxHeight: 380,
+    maxHeight: 460,
   },
   scrollContent: {
     gap: 16,

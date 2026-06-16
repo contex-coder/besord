@@ -852,7 +852,7 @@ async def get_veredito(authorization: Optional[str] = Header(None)):
     # Post publicado hoje pelo utilizador
     user_post = await db.posts.find_one(
         {"author_id": uid, "created_at": {"$gte": today_start}},
-        {"_id": 0, "word": 1, "post_id": 1, "aprovo_count": 1, "desaprovo_count": 1},
+        {"_id": 0, "word": 1, "post_id": 1, "aprovo_count": 1, "desaprovo_count": 1, "image_base64": 1},
     )
 
     # Votos lançados hoje pelo utilizador
@@ -862,14 +862,16 @@ async def get_veredito(authorization: Optional[str] = Header(None)):
     )
     votes_today = await votes_cursor.to_list(length=10)
 
-    # Tema dominante dos posts votados
+    # Tema dominante e dados dos posts votados (usados também no fallback de IA abaixo)
     dominant_theme = None
+    voted_posts_by_id: dict = {}
     if votes_today:
         voted_ids = [v["post_id"] for v in votes_today]
         voted_posts = await db.posts.find(
             {"post_id": {"$in": voted_ids}},
-            {"_id": 0, "theme": 1},
+            {"_id": 0, "post_id": 1, "word": 1, "theme": 1, "image_base64": 1, "created_at": 1},
         ).to_list(length=10)
+        voted_posts_by_id = {p["post_id"]: p for p in voted_posts}
         themes = [p["theme"] for p in voted_posts if p.get("theme")]
         if themes:
             dominant_theme = max(set(themes), key=themes.count)
@@ -883,9 +885,41 @@ async def get_veredito(authorization: Optional[str] = Header(None)):
         if total_votes > 0:
             approval_rate = round(user_post["aprovo_count"] / total_votes * 100)
 
+    word = user_post["word"] if user_post else None
+    image_base64 = user_post.get("image_base64") if user_post else None
+    word_source = "own_post" if user_post else "none"
+
+    # Sem post próprio mas com sessão votada: pedir à IA uma palavra positiva
+    # que resuma o dia, e escolher uma imagem representativa entre os votos.
+    if not user_post and votes_today:
+        words_seen = [
+            voted_posts_by_id[v["post_id"]]["word"]
+            for v in votes_today
+            if v["post_id"] in voted_posts_by_id and voted_posts_by_id[v["post_id"]].get("word")
+        ]
+        session_rate = round(aprovo_count / len(votes_today) * 100) if votes_today else None
+        ai_word = await _groq_session_keyword(words_seen, dominant_theme, session_rate)
+        if ai_word:
+            approved_ids = [v["post_id"] for v in votes_today if v["vote"] == "aprovo"]
+            candidates = [voted_posts_by_id[pid] for pid in approved_ids if pid in voted_posts_by_id]
+            if dominant_theme:
+                themed = [p for p in candidates if p.get("theme") == dominant_theme]
+                if themed:
+                    candidates = themed
+            if not candidates:
+                candidates = list(voted_posts_by_id.values())
+            epoch = datetime.min.replace(tzinfo=timezone.utc)
+            candidates.sort(key=lambda p: p.get("created_at") or epoch, reverse=True)
+            chosen = candidates[0] if candidates else None
+            word = ai_word
+            image_base64 = chosen.get("image_base64") if chosen else None
+            word_source = "ai_inferred"
+
     return {
-        "word": user_post["word"] if user_post else None,
+        "word": word,
         "post_id": user_post["post_id"] if user_post else None,
+        "image_base64": image_base64,
+        "word_source": word_source,
         "approval_rate": approval_rate,
         "aprovo_votes_cast": aprovo_count,
         "total_votes_cast": total,
@@ -2849,7 +2883,7 @@ async def publish_image_in_event(event_id: str, payload: PublishImageRequest, au
                 "pending_prize": payload.prize or "",
                 "has_raffle_item": str(payload.has_raffle_item),
             },
-            success_url=f"{FRONTEND_URL}/evento/{event_id}?publicacao=sucesso",
+            success_url=f"{FRONTEND_URL}/evento/{event_id}?anuncio=sucesso",
             cancel_url=f"{FRONTEND_URL}/evento/{event_id}",
         )
         return {"ok": True, "checkout_url": checkout.url, "slots_purchasing": quantity}
@@ -2926,6 +2960,24 @@ async def get_event(event_id: str, authorization: Optional[str] = Header(None)):
     if not doc:
         raise HTTPException(status_code=404, detail="Evento não encontrado.")
     return serialize_event(doc, user["user_id"] if user else None)
+
+
+# ---------- DELETE EVENT (soft-delete) ----------
+@api_router.delete("/events/{event_id}")
+async def delete_event(event_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+
+    event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado.")
+    if event["company_id"] != user["user_id"] and not user_out(user).is_admin:
+        raise HTTPException(status_code=403, detail="Só o organizador pode apagar este evento.")
+
+    await db.events.update_one(
+        {"event_id": event_id},
+        {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc)}}
+    )
+    return {"ok": True}
 
 
 # ==============================
@@ -3217,10 +3269,13 @@ async def _groq_session_insight(words_seen: list, approval_rate: int, dominant_t
     words_sample = ", ".join(words_seen[:6]) if words_seen else "variadas"
     theme_note = f" O tema dominante foi {dominant_theme}." if dominant_theme else ""
     prompt = (
-        f"Analisa em 1-2 frases curtas (máximo 25 palavras em português) as escolhas de alguém "
-        f"que aprovou {approval_rate}% do que viu hoje, cujas palavras foram: {words_sample}.{theme_note} "
-        f"Tom: analista comportamental estoico. Directo. Sem sentimentalismo. "
-        f"Sem 'jornada', 'luz', 'coração', 'bem-estar'. Sem aspas. Sem explicações."
+        f"Você aprovou {approval_rate}% do que viu hoje. As palavras foram: {words_sample}.{theme_note} "
+        f"Escreve 2-3 frases curtas (máximo 45 palavras em português) analisando este padrão, tratando "
+        f"sempre directamente por 'Você'. "
+        f"Tom: analista comportamental estoico, directo, próximo mas sem sentimentalismo. "
+        f"Nunca comeces por 'Essa pessoa' ou qualquer 3ª pessoa — usa sempre 'Você'. "
+        f"Nunca uses 'jornada', 'luz', 'coração', 'bem-estar'. Sem aspas. Sem explicações. "
+        f"Termina sempre a última frase de forma completa, nunca a meio."
     )
     try:
         async with httpx.AsyncClient(timeout=5.0) as c:
@@ -3230,12 +3285,52 @@ async def _groq_session_insight(words_seen: list, approval_rate: int, dominant_t
                 json={
                     "model": "llama-3.1-8b-instant",
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 60,
+                    "max_tokens": 120,
                     "temperature": 0.75,
                 },
             )
             data = r.json()
-            return data["choices"][0]["message"]["content"].strip()
+            text = data["choices"][0]["message"]["content"].strip()
+            if text and text[-1] not in ".!?":
+                last_end = max(text.rfind("."), text.rfind("!"), text.rfind("?"))
+                if last_end > 0:
+                    text = text[:last_end + 1]
+            return text
+    except Exception:
+        return ""
+
+
+async def _groq_session_keyword(words_seen: list, dominant_theme: Optional[str], approval_rate: Optional[int]) -> str:
+    """Quando o utilizador não publicou nada no dia, infere UMA palavra positiva a partir dos votos da sessão."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return ""
+    words_sample = ", ".join(words_seen[:6]) if words_seen else "variadas"
+    theme_note = f" Tema dominante: {dominant_theme}." if dominant_theme else ""
+    rate_note = f" Aprovou {approval_rate}% do que viu." if approval_rate is not None else ""
+    prompt = (
+        f"Com base nestas escolhas de hoje: palavras vistas {words_sample}.{theme_note}{rate_note} "
+        f"Sugere UMA ÚNICA palavra POSITIVA em português (substantivo ou adjectivo curto) que resuma o padrão. "
+        f"Responde apenas com essa palavra, em maiúsculas, sem pontuação, sem espaços, sem explicações."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 8,
+                    "temperature": 0.7,
+                },
+            )
+            data = r.json()
+            raw = data["choices"][0]["message"]["content"].strip()
+            tokens = raw.split()
+            if not tokens:
+                return ""
+            return re.sub(r"[^\wÀ-ÿ]", "", tokens[0]).upper()
     except Exception:
         return ""
 

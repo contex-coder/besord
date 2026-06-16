@@ -28,7 +28,15 @@ type Suggestion = {
   display_name: string;
   lat: string;
   lon: string;
-  address: { city?: string; town?: string; country_code?: string };
+  address: {
+    city?: string;
+    town?: string;
+    village?: string;
+    municipality?: string;
+    county?: string;
+    suburb?: string;
+    country_code?: string;
+  };
 };
 
 export default function EventMapPicker({ onLocationChange, initialAddress }: Props) {
@@ -67,7 +75,8 @@ export default function EventMapPicker({ onLocationChange, initialAddress }: Pro
     setSelected(s);
     setQuery(s.display_name.split(",")[0]);
     setShowSuggestions(false);
-    const city = s.address?.city || s.address?.town || "";
+    const city = s.address?.city || s.address?.town || s.address?.village
+      || s.address?.municipality || s.address?.county || s.address?.suburb || "";
     onLocationChange({
       lat: parseFloat(s.lat),
       lon: parseFloat(s.lon),

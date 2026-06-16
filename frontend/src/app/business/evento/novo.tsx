@@ -46,6 +46,7 @@ export default function CriarEventoEmpresaScreen() {
   const [step, setStep] = useState<"basic" | "location" | "review">("basic");
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const submittingRef = useRef(false);
 
   const animateStep = (next: "basic" | "location" | "review") => {
     Animated.sequence([
@@ -110,11 +111,13 @@ export default function CriarEventoEmpresaScreen() {
   }, []);
 
   const submit = useCallback(async () => {
+    if (submittingRef.current) return;
     if (!title.trim()) { Alert.alert("Título", "Dá um nome ao evento."); return; }
     if (!hasLocation) { Alert.alert("Localização", "Indica onde será o evento."); return; }
 
     const isoDate = date ? `${date}T${time || "20:00"}:00` : undefined;
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = {
@@ -165,6 +168,7 @@ export default function CriarEventoEmpresaScreen() {
       Alert.alert("Erro", e?.message || "Falha ao criar.");
     } finally {
       setSubmitting(false);
+      submittingRef.current = false;
     }
   }, [imageBase64, title, description, eventType, date, time, lat, lon, address, city, countryCode, hasLocation, radiusKm, apiFetch, router]);
 

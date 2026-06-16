@@ -1,0 +1,14 @@
+name: Keep Render Backend Alive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Ping /api/health
+        run: curl --fail --max-time 20 https://besord-backend.onrender.com/api/health

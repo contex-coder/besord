@@ -168,6 +168,34 @@ export default function EventDetailScreen() {
     router.push(`/evento/${id}/sorteio`);
   };
 
+  // ─── Apagar evento ───
+  const onDeleteEvent = () => {
+    Alert.alert(
+      "Apagar evento?",
+      "Esta ação não pode ser desfeita. O evento deixa de estar visível, mas o histórico de quem participou é mantido.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Apagar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const r = await apiFetch(`/api/events/${id}`, { method: "DELETE" });
+              if (r.ok) {
+                Alert.alert("Evento apagado", "", [{ text: "OK", onPress: () => router.back() }]);
+              } else {
+                const err = await r.json().catch(() => ({}));
+                Alert.alert("Erro", err.detail || "Não foi possível apagar o evento.");
+              }
+            } catch {
+              Alert.alert("Erro", "Falha ao apagar o evento.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // ─── Votar num post ───
   const onVote = async (post_id: string, vote: "aprovo" | "desaprovo") => {
     setPosts((prev) =>
@@ -294,7 +322,7 @@ export default function EventDetailScreen() {
     );
   }
 
-  const isExpired = event.status === "expired" || event.status === "raffle_done";
+  const isExpired = event.status === "expired" || event.status === "raffle_done" || event.status === "cancelled";
   const hasCheckedIn = event.checkins_count > 0;
 
   return (
@@ -492,6 +520,18 @@ export default function EventDetailScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Owner: Publicar imagem (singular/plural/pessoal) */}
+          {isOwner && !isExpired && ["singular", "plural", "pessoal"].includes(event.event_type) && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: colors.aprovo }]}
+              onPress={() => router.push(`/evento/${id}/publicar`)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="image" size={20} color={colors.text} />
+              <Text style={styles.actionBtnText}>PUBLICAR IMAGEM</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Owner: Sorteio */}
           {isOwner && !isExpired && event.prize && (
             <TouchableOpacity
@@ -516,6 +556,18 @@ export default function EventDetailScreen() {
             >
               <Ionicons name="map" size={20} color={colors.text} />
               <Text style={styles.actionBtnText}>VER NO MAPA</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Owner: Apagar evento */}
+          {isOwner && !isExpired && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: colors.desaprovo }]}
+              onPress={onDeleteEvent}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash" size={20} color={colors.text} />
+              <Text style={styles.actionBtnText}>APAGAR EVENTO</Text>
             </TouchableOpacity>
           )}
         </View>

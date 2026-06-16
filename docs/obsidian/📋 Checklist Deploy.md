@@ -91,3 +91,17 @@ curl -X POST "https://api.render.com/v1/services/srv-d8fd8areo5us73bpep9g/deploy
   -H "Content-Type: application/json" \
   -d '{"clearCache": "clear"}'
 ```
+
+---
+
+## ⚠️ Tier Render — Ponto de Atenção Futuro (16 Jun 2026)
+
+**Estado actual:** `besord-backend` está no tier **free** do Render (sem `plan:` definido em `render.yaml`). O tier free faz spin-down do serviço após inatividade — quando alguém abre a app depois de um período parado, vê um ecrã de "a reiniciar serviço" por 30-50 segundos. Pouco profissional para utilizadores reais.
+
+**Mitigação actual (pré-lançamento):** `.github/workflows/keep-alive.yml` faz `curl` a `GET /api/health` a cada ~10 minutos para manter o serviço sempre activo. É um remendo gratuito, não 100% garantido (pode falhar sob carga do GitHub Actions, e não evita o spin-down durante os próprios deploys).
+
+**Acção a tomar no lançamento oficial (decisão já aprovada por Rodrigo):**
+1. Fazer upgrade do serviço `besord-backend` para o plano **Starter** (~7 USD/mês) no dashboard do Render — elimina o spin-down por completo. Pode ser feito directamente no dashboard, ou adicionando `plan: starter` ao serviço em `render.yaml`.
+2. Depois do upgrade, desligar/remover `.github/workflows/keep-alive.yml` — deixa de ser necessário e passa a gastar minutos de GitHub Actions sem propósito.
+
+**Nota lateral:** o GitHub pausa automaticamente workflows agendados (`schedule`) em repositórios sem nenhum commit nos últimos 60 dias. Se o repo ficar parado muito tempo antes do lançamento, é preciso reactivar manualmente o workflow (ou fazer um commit trivial) para o ping voltar a correr.

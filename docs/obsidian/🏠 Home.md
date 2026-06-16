@@ -33,6 +33,8 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | [[📅 Sessão 11 Junho 2026]] | Revisão estratégica Red Team + redesenho Fase 2 + decisões de produto |
 | [[📅 Sessão 14 Junho 2026]] | Análise unicórnio (lente dos visionários) + auditoria estabilidade + retificações aprovadas |
 | [[📅 Sessão 14 Junho 2026 — Fase 2 Completa + Testes]] | Fase 2 entregue + E2E testing + 9 bugs corrigidos + DB limpa |
+| [[📅 Sessão 15 Junho 2026 — Fase 3 Início + Eventos + Campanhas]] | Fase 3 iniciada — Eventos (3.A-3.D) + Primeiro Olhar + Campanhas |
+| [[📅 Sessão 16 Junho 2026 — Correções pré-Fase 3 (Render, Veredito, Eventos)]] | Render keep-alive, Veredito com IA, Espelho humanizado, gestão de eventos |
 
 ---
 
@@ -93,6 +95,6 @@ EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform andro
 
 ---
 
-> **Última actualização:** 14 Junho 2026 (tarde) — **Fase 2 tecnicamente completa** ✅ | 9 bugs corrigidos ✅ | DB limpa ✅ | E2E 31/41 passaram ✅
-> **Próximas acções Rodrigo:** publicar palavras do dia · gerar convites Fundador · build iOS TestFlight · primeira venda B2B (Primeiro Olhar)
+> **Última actualização:** 16 Junho 2026 — 7 problemas reportados por Rodrigo como utilizador real corrigidos (Render keep-alive, Veredito com fallback IA, Espelho humanizado, gestão/monetização de eventos) ✅
+> **Próximas acções Rodrigo:** testar em produção após deploy · publicar palavras do dia · gerar convites Fundador · build iOS TestFlight · primeira venda B2B (Primeiro Olhar)
 > **Próxima sessão código:** Fase 3 — user_memory + Espelho de Empatia completo
