@@ -28,6 +28,7 @@ from themes import THEMES, THEME_KEYS
 from bw_pricing import BW_TIERS_DEFAULTS, BW_TIER_KEYS
 from dataclasses import replace as dataclass_replace
 import password_auth as _pwd_auth
+import storage  # Cloudinary image upload
 import workspaces as _ws_mod
 from routes import discovery as _discovery_mod
 
@@ -457,18 +458,21 @@ async def serialize_post(doc: dict, current_user_id: Optional[str]) -> PostOut:
     cursor = db.comments.find({"post_id": doc["post_id"]}, {"_id": 0}).sort("created_at", -1).limit(3)
     top_comments_docs = await cursor.to_list(length=3)
 
-    # Suporta posts antigos/seed com campo 'media' (URLs) em vez de 'image_base64'
-    img = doc.get("image_base64") or ""
+    # Prefer Cloudinary URL, fallback to base64, then legacy 'media' field
+    img = doc.get("image_url") or doc.get("image_base64") or ""
     if not img:
         media = doc.get("media", [])
         if media and isinstance(media, list) and isinstance(media[0], dict):
             img = media[0].get("url", "")
 
+    # Carousel: prefer Cloudinary URLs, fallback to base64
+    carousel = doc.get("images_urls") or doc.get("images_base64")
+
     return PostOut(
         post_id=doc["post_id"],
         word=doc["word"],
         image_base64=img,
-        images_base64=doc.get("images_base64"),  # carrossel
+        images_base64=carousel,  # carrossel (URLs ou base64)
         video_base64=doc.get("video_base64"),    # vídeo 30s
         is_hype=bool(doc.get("is_hype")),
         author_id=doc["author_id"],
@@ -1118,14 +1122,28 @@ async def create_post(payload: PostCreate, authorization: Optional[str] = Header
     if not image or len(image) < 50:
         raise HTTPException(status_code=400, detail="Imagem inválida ou demasiado pequena.")
 
+    # Upload images to Cloudinary (falls back to base64 if not configured)
+    image_url = ""
+    images_urls: List[str] = []
+    if storage.is_configured():
+        try:
+            image_url = storage.upload_image(image)
+        except Exception as e:
+            logging.warning(f"Cloudinary upload failed for post image: {e}")
+            image_url = ""  # fallback to base64 below
+        if payload.images_base64:
+            images_urls = storage.upload_images(payload.images_base64)
+
     post_id = f"post_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
 
     doc = {
         "post_id": post_id,
         "word": word,
-        "image_base64": image,
-        "images_base64": (payload.images_base64 or [])[:3],  # até 3 imagens extra
+        "image_url": image_url,                  # Cloudinary URL (empty if fallback)
+        "image_base64": "" if image_url else image,  # base64 fallback for old clients
+        "images_urls": images_urls,              # Cloudinary carousel URLs
+        "images_base64": [] if images_urls else (payload.images_base64 or [])[:3],
         "video_base64": payload.video_base64,
         "is_hype": bool(payload.is_hype),
         "author_id": user["user_id"],
@@ -1573,10 +1591,17 @@ async def create_campaign(payload: CampaignCreate, authorization: Optional[str] 
 
     # Create the post first
     post_id = f"post_{uuid.uuid4().hex[:12]}"
+    img_url = ""
+    if storage.is_configured():
+        try:
+            img_url = storage.upload_image(image)
+        except Exception as e:
+            logging.warning(f"Cloudinary upload failed for campaign image: {e}")
     post_doc = {
         "post_id": post_id,
         "word": word,
-        "image_base64": image,
+        "image_url": img_url,
+        "image_base64": "" if img_url else image,
         "author_id": user["user_id"],
         "author_name": user.get("name", ""),
         "author_picture": user.get("picture"),
@@ -2716,13 +2741,22 @@ async def create_event(payload: EventCreate, authorization: Optional[str] = Head
     else:
         company_name = user.get("business_profile", {}).get("company_name", user.get("name", ""))
 
+    # Upload event cover image to Cloudinary
+    event_img_url = ""
+    if payload.image_base64 and len(payload.image_base64) >= 50 and storage.is_configured():
+        try:
+            event_img_url = storage.upload_image(payload.image_base64)
+        except Exception as e:
+            logging.warning(f"Cloudinary upload failed for event image: {e}")
+
     event_data = {
         "event_id": event_id,
         "company_id": user["user_id"],
         "company_name": company_name,
         "title": title,
         "description": (payload.description or "").strip(),
-        "image_base64": payload.image_base64 or "",
+        "image_url": event_img_url,
+        "image_base64": "" if event_img_url else (payload.image_base64 or ""),
         "location": location,
         "date": event_date,
         "prize": (payload.prize or "").strip() or None,
