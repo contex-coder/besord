@@ -38,6 +38,11 @@ URGENT_DAYS = 7                  # eventos nos próximos 7 dias → bónus de co
 URGENT_CONFIDENCE_BOOST = 10     # +10 confiança efetiva para eventos urgentes
 QUEUE_DAYS = 60                  # eventos > 60 dias no futuro → sempre para revisão
 COVERED_CITIES = ["Lisboa", "Porto", "lisboa", "porto", "LISBOA", "PORTO"]
+# Coordenadas do centro da cidade — fallback para o mapa, já que o Groq não geocodifica.
+COVERED_CITY_COORDS = {
+    "lisboa": (38.7223, -9.1393),
+    "porto": (41.1579, -8.6291),
+}
 MIN_CONFIDENCE_AUTO = 70   # ≥ entra direto
 MIN_CONFIDENCE_REVIEW = 50  # 50-69 vai para fila de revisão (< 50 descarta)
 MAX_DAYS_FUTURE = 180       # eventos > 180 dias no futuro → revisão
@@ -211,18 +216,25 @@ async def _event_exists_in_db(db, title: str, date: str, city: str) -> bool:
             "$gte": (date_dt - timedelta(days=2)).isoformat(),
             "$lte": (date_dt + timedelta(days=2)).isoformat(),
         },
-        "city": {"$regex": f"^{re.escape(city)}$", "$options": "i"},
+        "location.city": {"$regex": f"^{re.escape(city)}$", "$options": "i"},
         "title": {"$regex": re.escape(title[:20])},
     }, {"_id": 1})
     return existing is not None
 
 
 async def _insert_event(db, ev: GroqExtractedEvent, raw: sources.RawEvent) -> str:
-    """Insere evento curado na collection events. Retorna event_id."""
+    """Insere evento curado na collection events. Retorna event_id.
+
+    O schema de `location` (objecto aninhado) e os campos `date`/`expires_at`
+    têm de bater certo com o resto da app — GET /api/events e /events/nearby
+    filtram por `expires_at` (tem de ser datetime real, não string) e leem
+    `location.lat`/`location.lon` (não campos soltos `lat`/`lon`).
+    """
     event_id = f"evt_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
     start = datetime.strptime(ev.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     end = start.replace(hour=23, minute=59, second=59) if not ev.time else start
+    coords = COVERED_CITY_COORDS.get(ev.city.lower())
 
     doc = {
         "event_id": event_id,
@@ -237,17 +249,23 @@ async def _insert_event(db, ev: GroqExtractedEvent, raw: sources.RawEvent) -> st
         "curator_confidence": ev.confidence_overall,
         "curator_source_url": raw.source_url,
         "curator_source_type": raw.source_type,
+        "location": {
+            "address": ev.location_name,
+            "city": ev.city,
+            "country_code": "PT",
+            "lat": coords[0] if coords else None,
+            "lon": coords[1] if coords else None,
+        },
+        "date": start.isoformat(),
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
+        "expires_at": end,
         "time": ev.time or "00:00",
-        "location": ev.location_name,
-        "city": ev.city,
-        "lat": None,
-        "lon": None,
         "theme": ev.theme,
         "status": "active",
-        "created_at": now.isoformat(),
+        "created_at": now,
         "sponsorships_enabled": False,
+        "checkins": [],
         "checkins_count": 0,
         "posts_count": 0,
     }
