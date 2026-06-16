@@ -823,7 +823,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 4,
     borderBottomColor: colors.border,
   },
-  headerLogo: { width: 36, height: 36 },
+  headerLogo: { width: 56, height: 56 },
   brand: { fontSize: 26, fontWeight: "900", letterSpacing: -1, color: colors.petrol },
   trendsBtn: {
     flexDirection: "row",

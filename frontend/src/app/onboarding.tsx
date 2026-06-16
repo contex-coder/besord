@@ -120,7 +120,7 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   skipRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 4, borderBottomColor: colors.border },
-  miniBeetle: { width: 32, height: 32 },
+  miniBeetle: { width: 48, height: 48 },
   brand: { fontSize: 20, fontWeight: "900", letterSpacing: -0.5, color: colors.petrol },
   skip: { fontSize: 12, fontWeight: "900", letterSpacing: 1.5, color: colors.textSecondary },
 
