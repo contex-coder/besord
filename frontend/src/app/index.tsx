@@ -34,13 +34,25 @@ const { width: SCREEN_W } = Dimensions.get("window");
 const IS_SMALL = SCREEN_W < 380;
 const MASCOT_SIZE = Math.min(SCREEN_W * 0.7, 320);
 
+function authErrorMessage(error: AuthErrorType): string {
+  switch (error.code) {
+    case "invalid_token": return t("auth_err_invalid_token");
+    case "timeout": return t("auth_err_timeout");
+    case "network_error": return t("auth_err_network");
+    case "user_cancelled": return t("auth_err_cancelled");
+    case "oauth_error":
+      return `${t("auth_err_oauth_prefix")}: ${error.message.replace(/^Authentication failed:\s*/i, "")}`;
+    default: return t("auth_err_unknown");
+  }
+}
+
 const AuthError = ({ error, onClear }: { error: AuthErrorType, onClear: () => void }) => (
   <View style={styles.errorContainer}>
       <Ionicons name="alert-circle-outline" size={48} color={colors.desaprovo} />
-      <Text style={styles.errorTitle}>Authentication Failed</Text>
-      <Text style={styles.errorMessage}>{error.message}</Text>
+      <Text style={styles.errorTitle}>{t("auth_failed_title")}</Text>
+      <Text style={styles.errorMessage}>{authErrorMessage(error)}</Text>
       <TouchableOpacity style={styles.errorButton} onPress={onClear}>
-          <Text style={styles.errorButtonText}>Try Again</Text>
+          <Text style={styles.errorButtonText}>{t("try_again")}</Text>
       </TouchableOpacity>
   </View>
 );
