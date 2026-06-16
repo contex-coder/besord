@@ -1,5 +1,5 @@
 # 🗄️ Estrutura de Dados
-## Actualizado: 10 Junho 2026
+## Actualizado: 16 Junho 2026
 ### Legenda: ✅ Existe | 🆕 Novo (a implementar) | 🔄 Actualizar campo existente
 
 ---
@@ -54,25 +54,29 @@
   "user_id": "user_xxx",
   "word": "palavra",
   "media": [
-    { "type": "image", "data": "base64..." }
+    { "type": "image", "data": "base64...", "url": "https://res.cloudinary.com/..." }
   ],
+  "image_url": "https://res.cloudinary.com/ddr3zepsy/image/upload/...",
+  "image_base64": "",
   "vote_count": { "aprovo": 10, "desaprovo": 5 },
   "hype": 5,
-  "hype_score": 23,                         
+  "hype_score": 23,
   "theme": "tema_id | null",
   "is_hype": true,
-  "is_polarized": false,                    
+  "is_polarized": false,
   "prize": "descrição | null",
   "campaign_id": "camp_xxx | null",
-  "event_id": "event_xxx | null",           
-  "printable_card_url": "url | null",       
+  "event_id": "event_xxx | null",
+  "printable_card_url": "url | null",
   "created_at": "ISO timestamp"
 }
 ```
 
+> **Cloudinary (16 Jun 2026):** `image_url` é o campo preferencial. `image_base64` fica vazio se Cloudinary configurado. `serialize_post()` prefere `image_url`.
+
 ---
 
-### `votes` ✅
+### `votes` ✅ + 🔄 (16 Jun 2026)
 
 ```json
 {
@@ -80,6 +84,7 @@
   "post_id": "post_xxx",
   "user_id": "user_xxx",
   "vote": "aprovo | desaprovo",
+  "best_word": "palavra | null",
   "geo": {
     "country": "Portugal",
     "country_code": "PT",
@@ -91,38 +96,83 @@
 }
 ```
 
+> **B$ com palavra (16 Jun):** `best_word` guardada no documento `votes`. Voto com palavra = +2 B$, sem palavra = +1 B$.
+
 ---
 
-### `events` ✅ + 🔄 Campos novos
+### `events` ✅ + 🔄 Campos novos (16 Jun 2026)
 
 ```json
 {
   "_id": "ObjectId",
   "event_id": "event_xxx",
-  "name": "Festival X",
+  "company_id": "user_xxx | curator_ai",
+  "company_name": "Nome da Empresa | Curador Besord",
+  "title": "Festival X",
   "description": "...",
-  "type": "personal | enterprise_singular | enterprise_plural",  
-  "date_start": "ISO timestamp",
-  "date_end": "ISO timestamp",
-  "location": {
-    "address": "Rua X, Lisboa",
-    "lat": 38.7223,
-    "lon": -9.1393
-  },
-  "intent_tags": ["premios", "novidades", "networking"],         
-  "qr_code_url": "url_do_qr_code",                              
+  "image_url": "https://res.cloudinary.com/...",
+  "image_base64": "",
+  "event_type": "pessoal | singular | plural | primeiro_olhar | curated",
+  "start_date": "ISO timestamp",
+  "end_date": "ISO timestamp",
+  "time": "21:00",
+  "location": "Nome do Local",
+  "city": "Lisboa",
+  "lat": null,
+  "lon": null,
+  "theme": "Música | Teatro | Arte | ...",
+  "status": "active",
+  "intent_tags": ["premios", "novidades", "networking"],
   "checkins": ["user_id_1"],
+  "checkins_count": 0,
   "posts_count": 0,
-  "participants_count": 0,
   "prize": "descrição | null",
   "created_by": "user_xxx",
-  "sponsor_tier": "bronze | prata | ouro | null",               
-  "escrow_status": "pending | held | released | null",          
-  "escrow_amount_cents": 0,                                      
-  "sincronia_report_id": "report_xxx | null",                   
+  "sponsor_tier": "bronze | prata | ouro | null",
+  "escrow_status": "pending | held | released | null",
+  "escrow_amount_cents": 0,
+  "sponsorships_enabled": false,
+  "sincronia_report_id": "report_xxx | null",
+  "source": "curator_ai | null",
+  "curator_confidence": 85,
+  "curator_source_url": "https://news.google.com/...",
+  "curator_source_type": "google_news",
   "created_at": "ISO timestamp"
 }
 ```
+
+> **Cloudinary (16 Jun):** `image_url` preferido sobre `image_base64`.
+> **Curador (16 Jun):** `event_type: "curated"` para eventos do pipeline. Campos `source`, `curator_confidence`, `curator_source_url`, `curator_source_type` só existem em eventos curados.
+
+---
+
+### `event_queue` 🆕 (16 Jun 2026 — Curador Automático)
+
+```json
+{
+  "_id": "ObjectId",
+  "queue_id": "que_xxx",
+  "title": "Nome do Evento",
+  "date": "2026-07-15",
+  "location_name": "Coliseu dos Recreios",
+  "city": "Lisboa",
+  "theme": "Música | null",
+  "source_url": "https://news.google.com/...",
+  "source_type": "google_news",
+  "confidence_overall": 65,
+  "reason": "Confiança 65% | Evento distante (90 dias)",
+  "status": "pending_review | approved | rejected",
+  "event_id": "event_xxx | null",
+  "created_at": "ISO timestamp",
+  "expires_at": "ISO timestamp"
+}
+```
+
+**Índices:**
+- `{ status: 1 }` — filtrar pendentes
+- `{ expires_at: 1 }` — TTL index (48h, auto-delete)
+
+> Itens expiram em 48h se não revistos pelo admin. Admin aprova/rejeita via `/api/admin/event-queue/{id}/approve|reject`.
 
 ---
 
@@ -347,3 +397,10 @@
 | `user_insights` | `user_id`, `date` | compound unique |
 | `editorial_posts` | `active_date` | index |
 | `events` | `location` | 2dsphere (geo) |
+| `events` | `status` | index |
+| `event_queue` | `status` | index |
+| `event_queue` | `expires_at` | TTL (48h) |
+| `push_tokens` | `user_id` | index |
+| `sincronia_logs` | `pair_id`, `date` | compound unique |
+| `campaigns` | `event_id` | index |
+| `workspaces` | `owner_user_id` | index |

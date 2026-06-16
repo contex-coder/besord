@@ -247,7 +247,120 @@ Eventos com `confidence 50–70` ou `data > 120d` vão para `event_queue`:
 
 ---
 
+## 🌍 6. Decisão: Mercado Geográfico do Curador — Lisboa/Porto, não Brasil (16 Jun 2026, tarde)
+
+> **Contexto:** numa conversa exploratória com outra IA, surgiu a ideia de redesenhar o Curador Automático para mercado primário Brasil (60-70%), com Portugal, Angola e Cabo Verde como secundários, e fontes novas (Sympla API, RSS Angola/Cabo Verde). A ideia também propunha abandonar a filtragem temática de eventos ("tipo de evento não importa, importa se há gente com telemóvel a fotografar") usando exemplos como Rock in Rio, Carnaval e Copa do Mundo 2026.
+
+**Decisão tomada:** **não** mudar o mercado primário para o Brasil agora. Razão: Rodrigo está fisicamente em Lisboa — a estratégia dos 100 Fundadores (grupos densos: agência de publicidade, fotógrafos, copywriters, mestrado design, redacção cultural) depende de execução presencial, que só é viável onde o fundador está. Ir a 5 países antes de validar o ciclo completo (Fundador → Sincronia → Primeiro Olhar vendido) numa única cidade repete o risco já identificado na visão de produto ("Festa vazia — efeito rede"), cuja mitigação documentada é densidade local, não dispersão geográfica.
+
+**O que se mantém:**
+- Lisboa continua o mercado de lançamento e o foco da angariação de Fundadores.
+- Brasil/Angola/Cabo Verde ficam registados como **expansão de mercado futura** (Fase 4+, a revisitar só depois de validado o ciclo em Lisboa) — não descartados, só não são acção imediata.
+- Não se adicionam fontes novas (Sympla, Eventbrite API, RSS Angola/Cabo Verde) por agora.
+
+**O que se aceita do parecer (ideia, ainda sem implementação):** a crítica à filtragem temática estava certa — `GOOGLE_NEWS_QUERIES` em `sources.py` só cobre "cultura"/"concertos"/"teatro", excluindo desporto, festas e feiras mesmo dentro de Lisboa/Porto. Quando se decidir avançar para código, a acção é alargar essas queries para mais tipos de evento, mantendo as duas cidades já cobertas — a validação estrutural do curador (`curator.py`) já não filtra por tipo (só por data, cidade, spam e duplicados), por isso não precisaria de alteração nessa parte.
+
+---
+
 > **Data:** 16 Junho 2026
-> **Commits:** B$ implementado (pendente commit)
-> **Ação Rodrigo:** gerar API Key + Secret no Cloudinary dashboard
-> **Próxima sessão:** Cloudinary → Curador Pipeline → Perception Forecast
+> **Commits:** `53091fd` Cloudinary · `c467029` Curador · `f929fbe` fix router · `1ea335b` fix MAX_SOURCE_EVENTS · `6cadf62` queries agnósticas + janela temporal
+> **Ação Rodrigo:** ✅ Cloudinary API keys geradas · ✅ Render env vars configuradas · ✅ Cron job `besord-curador` criado (0 8,20 * * *)
+> **Próxima sessão:** Perception Forecast · `evento/[id].tsx` · Landing page `/landing`
+
+---
+
+## 🟢 7. Resultados da Implementação (16 Jun 2026, tarde)
+
+### 7.1 Cloudinary — Implementado ✅
+
+**3 ficheiros alterados:**
+- `backend/storage.py` — módulo novo: `upload_image()`, `upload_images()`, `delete_image()`, `is_configured()`
+- `backend/requirements.txt` — adicionado `cloudinary==1.43.0`
+- `backend/server.py` — `POST /api/posts`, campanhas e eventos usam `storage.upload_image()`
+
+**Como funciona:**
+- Imagem enviada em base64 → `storage.upload_image()` → URL Cloudinary CDN
+- Campo `image_url` guardado no MongoDB (≈200 bytes, vs 500KB do base64)
+- Campo `image_base64` vai vazio se Cloudinary ativo, mantém fallback se credenciais ausentes
+- `serialize_post()` prefere `image_url` sobre `image_base64`
+
+**Render:**
+- Env vars `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` configuradas
+- Upload testado: `https://res.cloudinary.com/ddr3zepsy/image/upload/...`
+
+---
+
+### 7.2 Curador Automático — Implementado ✅
+
+**3 ficheiros novos/alterados:**
+- `backend/sources.py` — 15 queries Google News RSS, city-focused (não temáticas)
+- `backend/curator.py` — pipeline completo de 5 estágios + endpoints admin
+- `backend/server.py` — registo do router + índices `event_queue`
+
+**Pipeline:**
+
+| Estágio | O que faz | Thresholds |
+|---|---|---|
+| **1. FETCH** | 15 queries Google News → ~500 raw events → dedup → 80 amostra | `MAX_SOURCE_EVENTS=80` |
+| **2. EXTRACT** | Groq `llama-3.1-8b-instant` → JSON {title, date, location, city, theme, confidence} | `MIN_CONFIDENCE_REVIEW=50` |
+| **3. VALIDATE** | Python: data passada, cidade fora cobertura, spam, título curto, localização vazia | Apenas estruturais — nunca por tipo |
+| **4. IMAGE** | Pillow: ≥400×400, proporção < 1:3 | Sem imagem → evento entra sem capa |
+| **5. REVIEW** | Confiança + janela temporal → insere ou queue | Ver tabela abaixo |
+
+**Stage 5 — Decisão por janela temporal:**
+
+| Janela | Confiança necessária | Destino |
+|---|---|---|
+| 0–7 dias (urgente) | ≥ 60 (com +10 bónus) | Insere direto |
+| 8–60 dias | ≥ 70 | Insere direto |
+| > 60 dias | Qualquer | Fila de revisão |
+| 50–69 (q.q. janela) | — | Fila de revisão |
+
+**Queries do Google News (15 queries, Lisboa 8 + Porto 7):**
+
+```
+"agenda lisboa hoje"           "agenda porto hoje"
+"eventos lisboa esta semana"   "eventos porto esta semana"
+"o que fazer lisboa hoje"      "o que fazer porto hoje"
+"lisboa noite hoje"            "porto noite hoje"
+"festas lisboa este fim de semana"  "festas porto este fim de semana"
+"concertos lisboa esta semana"
+"agenda lisboa junho 2026"     "agenda porto junho 2026"
+"festivais lisboa 2026"        "festivais porto 2026"
+```
+
+**Princípio:** qualquer evento com pessoas + telemóveis é matéria-prima. O Groq extrai o primeiro evento concreto mesmo de artigos de compilação/agenda. A validação nunca rejeita por tipo.
+
+**Endpoints admin:**
+
+| Método | Path | Descrição |
+|---|---|---|
+| `POST` | `/api/curator/run?api_key=...` | Executa pipeline completo |
+| `GET` | `/api/admin/event-queue` | Lista eventos pendentes de revisão |
+| `POST` | `/api/admin/event-queue/{id}/approve` | Aprova e insere |
+| `POST` | `/api/admin/event-queue/{id}/reject` | Rejeita |
+
+**Nova collection:** `event_queue` — TTL 48h, índices em `status` e `expires_at`
+
+**Cron job Render:** `besord-curador` — schedule `0 8,20 * * *` (9h e 21h Lisboa), Starter (512MB), comando `curl -X POST ".../api/curator/run?api_key=..."`
+
+**Primeira execução (16 Jun):**
+```json
+{"ok":true,"stats":{"fetched":533,"extracted":0,"validated":0,"inserted":0,"queued":0,"rejected":80}}
+```
+(80 rejeitados é esperado — a maioria dos artigos Google News são compilações sem eventos individuais. O yield melhora com o prompt ajustado em `6cadf62`.)
+
+**Novos campos em `events`:**
+- `source: "curator_ai"`
+- `curator_confidence: int`
+- `curator_source_url: str`
+- `curator_source_type: str`
+- `event_type: "curated"`
+
+---
+
+### 7.3 Decisão estratégica validada na implementação
+
+A filtragem temática foi removida das queries (eram "concertos", "exposições", "teatro" — agora são "agenda hoje", "noite hoje", "fim de semana"). A validação estrutural (`_validate_structural()`) nunca rejeitou por tipo. O Groq agora extrai de compilações, não as rejeita.
+
+**Mercado:** mantém-se Lisboa + Porto como foco. Brasil/Angola/CV continuam como expansão futura (Fase 4+).

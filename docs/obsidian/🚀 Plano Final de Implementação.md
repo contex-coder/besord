@@ -600,7 +600,7 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 
 ---
 
-> **Última actualização:** 15 Junho 2026 — **Fase 2 completa + Fase 3 iniciada.**
+> **Última actualização:** 16 Junho 2026 — **Fase 3 em curso. Cloudinary ✅ Curador ✅ (items 3.H–3.I).**
 > Fase 2 (items 2.1–2.7): entregues. 9 bugs corrigidos. DB limpa.
 > Fase 3 (items 3.A–3.G): em implementação activa — ver secção abaixo.
 > Ver [[📅 Sessão 14 Junho 2026 — Fase 2 Completa + Testes]] para relatório Fase 2.
@@ -704,5 +704,73 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
 ### 3.G Printable Effect (Fase 3 original)
 
 *(Mantém-se como planeado — ver secção 3.4 abaixo)*
+
+---
+
+### 3.H Cloudinary — Migração de Imagens para CDN (IMPLEMENTADO — 16 Jun 2026)
+
+**O que é:** Todas as imagens enviadas para posts, campanhas e eventos são automaticamente transferidas para Cloudinary CDN em vez de guardadas em base64 no MongoDB.
+
+**Backend:**
+- `backend/storage.py` — módulo novo: `upload_image()`, `upload_images()`, `delete_image()`, `is_configured()`
+- `POST /api/posts` — imagem → `storage.upload_image()` → `image_url` Cloudinary (com fallback base64)
+- `POST /api/events` — imagem de capa → Cloudinary
+- `POST /api/campaigns` — imagem da campanha → Cloudinary
+- `serialize_post()` — prefere `image_url` (CDN) sobre `image_base64` (legado)
+- Campo novo em `posts` e `events`: `image_url` (string, URL Cloudinary)
+
+**Configuração Render:**
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — env vars no serviço `besord-backend`
+
+**Impacto:** MongoDB ocupa ~200 bytes por post (URL) em vez de ~500KB (base64). CDN global com compressão automática.
+
+**Ficheiros:** `backend/storage.py` (novo), `backend/server.py` (alterado), `backend/requirements.txt` (+cloudinary)
+
+**Critérios de aceitação:**
+- [x] Imagem enviada no post → URL Cloudinary no MongoDB
+- [x] Fallback para base64 se Cloudinary não configurado
+- [x] `serialize_post()` prefere `image_url`
+- [ ] Migração de posts existentes (script `migrate_images.py` — pendente)
+
+---
+
+### 3.I Curador Automático — Pipeline de 5 Estágios (IMPLEMENTADO — 16 Jun 2026)
+
+**O que é:** Sistema automático que povoa o mapa de eventos com curadoria de fontes confiáveis. Resolve o problema do "ovo e da galinha": sem eventos não há check-ins, sem check-ins ninguém cria eventos.
+
+**Arquitetura:**
+- `backend/sources.py` — 15 queries Google News RSS para Lisboa e Porto (agnóstico a temas)
+- `backend/curator.py` — pipeline 5 estágios (fetch → extract → validate → image → review)
+- Nova collection: `event_queue` — fila de revisão com TTL 48h
+- Campos novos em `events`: `source`, `curator_confidence`, `curator_source_url`, `curator_source_type`
+- `event_type: "curated"` — identifica eventos do pipeline
+
+**Pipeline:**
+
+| Estágio | O que faz |
+|---|---|
+| 1. FETCH | 15 queries Google News → ~500 raw → dedup → 80 amostra |
+| 2. EXTRACT | Groq extrai {title, date, location, city, theme, confidence} |
+| 3. VALIDATE | Python: data, cidade, spam — NUNCA por tipo de evento |
+| 4. IMAGE | Pillow: >=400x400, proporção < 1:3 |
+| 5. REVIEW | <=7d + conf >=60 → insere; >=70 normal → insere; >60d → queue |
+
+**Endpoints admin:**
+- `POST /api/curator/run?api_key=...` — trigger manual
+- `GET /api/admin/event-queue` — lista pendentes
+- `POST /api/admin/event-queue/{id}/approve|reject` — aprova/rejeita
+
+**Cron job Render:** `besord-curador`, schedule `0 8,20 * * *`, Starter (512MB)
+
+**Ficheiros:** `backend/curator.py` (novo), `backend/sources.py` (novo), `backend/server.py` (+router +índices)
+
+**Critérios de aceitação:**
+- [x] Pipeline executa sem erros (200 OK no Render)
+- [x] Cron job configurado e a correr 2×/dia
+- [x] Fontes são agnósticas a tema (qualquer evento com pessoas + telemóveis)
+- [x] Validação estrutural nunca rejeita por tipo
+- [x] Fila de revisão funcional com approve/reject
+- [ ] Primeiro evento curado inserido na BD (yield actual é 0 — aguarda melhoria de fontes)
+- [ ] Fontes adicionais: Eventbrite API, Sympla (Brasil)
 
 ---

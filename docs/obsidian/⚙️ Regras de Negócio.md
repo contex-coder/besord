@@ -1,5 +1,5 @@
 # ⚙️ Regras de Negócio
-## Actualizado: 14 Junho 2026
+## Actualizado: 16 Junho 2026
 
 ---
 
@@ -335,6 +335,81 @@ O Perfil C é simultaneamente utilizador e futuro cliente B2B.
 - **Sorteio**: participantes elegíveis = todos que fizeram check-in (ou, quando sem check-in, todos que votaram)
 - **Fluxo de criação**: máximo 3 passos, máximo 3 minutos
 - **Feed de evento no feed global**: aparece como card único (não posts individuais) — evita saturação
+
+---
+
+## ☁️ Cloudinary — Armazenamento de Imagens (16 Jun 2026)
+
+### Regras
+- Todas as imagens enviadas via app são automaticamente transferidas para Cloudinary CDN
+- URL Cloudinary (`image_url`) é o campo preferencial sobre `image_base64`
+- Se Cloudinary não estiver configurado (variáveis de ambiente em falta), fallback automático para `image_base64` — sem quebra
+- Upload acontece no momento da criação: posts, campanhas e eventos
+- `serialize_post()` prefere `image_url` quando disponível
+- Imagens servidas via CDN global (200+ edge locations) com compressão automática
+
+### Configuração
+| Variável | Descrição |
+|---|---|
+| `CLOUDINARY_CLOUD_NAME` | Nome da cloud (`ddr3zepsy`) |
+| `CLOUDINARY_API_KEY` | API Key do dashboard |
+| `CLOUDINARY_API_SECRET` | API Secret do dashboard |
+
+### Porquê esta regra existe
+- MongoDB M0 (512MB) não comporta imagens em base64 a longo prazo
+- Cada post em base64 ocupava ~500KB; em CDN ocupa ~200 bytes (URL)
+- Cloudinary free tier: 25GB storage, 25 créditos/mês — suficiente para o Besord
+
+---
+
+## 🤖 Curador Automático — Pipeline de 5 Estágios (16 Jun 2026)
+
+### Regras
+- **Fontes whitelist**: 15 queries Google News RSS — NUNCA crawling aberto
+- **Cidades cobertas**: Lisboa e Porto
+- **Frequência**: executa 2×/dia (cron job Render, 9h e 21h Lisboa)
+- **Collection**: eventos curados vão para a MESMA collection `events` que eventos de utilizadores
+- **Identificação**: `event_type: "curated"`, `source: "curator_ai"`, campos `curator_confidence`, `curator_source_url`, `curator_source_type`
+
+### Pipeline
+
+| Estágio | O que faz | Thresholds |
+|---|---|---|
+| **1. FETCH** | Google News RSS → ~500 raw events → dedup → 80 amostra | `MAX_SOURCE_EVENTS=80` |
+| **2. EXTRACT** | Groq `llama-3.1-8b-instant` extrai {title, date, location, city, theme, confidence} | `MIN_CONFIDENCE_REVIEW=50` |
+| **3. VALIDATE** | Python: data passada, cidade fora cobertura, spam, título/location vazios | Apenas estruturais — NUNCA por tipo |
+| **4. IMAGE** | Pillow: >=400x400, proporção < 1:3 | Sem imagem -> evento entra sem capa |
+| **5. REVIEW** | Confiança + janela temporal -> insere ou queue | Ver tabela abaixo |
+
+### Stage 5 — Decisão por janela temporal
+
+| Janela | Confiança necessária | Destino |
+|---|---|---|
+| 0–7 dias (urgente) | >= 60 (com +10 bónus de urgência) | Insere direto |
+| 8–60 dias | >= 70 | Insere direto |
+| > 60 dias | Qualquer | Fila de revisão |
+| 50–69 (q.q. janela) | — | Fila de revisão |
+
+### Fila de Revisão (`event_queue`)
+- Eventos com confiança média ou data distante vão para `event_queue`
+- Admin revê via `/api/admin/event-queue` (aprova/rejeita)
+- Itens expiram em 48h se não revistos (TTL index)
+
+### Princípio
+- **NÃO se filtra por tipo de evento** (música, teatro, desporto, etc.)
+- Qualquer evento com pessoas + telemóveis é matéria-prima
+- O Groq extrai o primeiro evento concreto mesmo de artigos de compilação/agenda
+- A validação estrutural (Stage 3) é a única barreira — nunca por categoria
+
+### Fontes futuras (Fase 4+)
+- Sympla API (Brasil) — expansão geográfica
+- Eventbrite API (Portugal) — fonte estruturada adicional
+- RSS Angola e Cabo Verde — expansão PALOP
+
+### Porquê esta regra existe
+- O Besord é passivo: espera que alguém crie um evento. Se ninguém cria, o mapa está vazio
+- O curador resolve o problema do ovo e da galinha (eventos vs. utilizadores)
+- Eventos curados convivem com eventos de utilizadores — mesma collection, mesmo mapa, mesmas mecânicas
 
 ---
 

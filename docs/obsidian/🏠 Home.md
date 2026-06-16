@@ -36,6 +36,8 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | [[📅 Sessão 15 Junho 2026 — Fase 3 Início + Eventos + Campanhas]] | Fase 3 iniciada — Eventos (3.A-3.D) + Primeiro Olhar + Campanhas |
 | [[📅 Sessão 16 Junho 2026 — Correções pré-Fase 3 (Render, Veredito, Eventos)]] | Render keep-alive, Veredito com IA, Espelho humanizado, gestão de eventos |
 | [[📅 Sessão 16 Junho 2026 — Estratégia e Plano Técnico]] | B$ dobrado, Cloudinary, Curador IA, Word Economy, plano de implementação |
+| [[📋 Briefing 16 Junho 2026 — Sessão Técnica]] | Briefing detalhado da implementação (Cloudinary, Curador, bugs, commits, estado final) — verificado e corrigido contra o código real |
+| **[[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]]** | **Começar aqui** — resumo do dia, 4 bugs do Curador resolvidos em cadeia, yield 0% ainda sem diagnóstico |
 
 ---
 
@@ -49,6 +51,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | **Stripe Webhook** | 🟢 Validado | Assina e rejeita inválidos ✓ |
 | **PostHog Analytics** | 🟢 Activo | us.posthog.com — Projecto 465827 |
 | **Groq AI** | 🟢 Activo | console.groq.com — llama-3.1-8b-instant (free) |
+| **Cloudinary CDN** | 🟢 Activo | cloudinary.com — `ddr3zepsy` (free tier 25GB) |
 | **APK Android** | ✅ Build concluído | [Descarregar APK](https://expo.dev/artifacts/eas/jHhZhUnWDr8W5gWAxJfRGk8BDH92QnVEOwFIPISC8mY.apk) |
 
 ---
@@ -60,7 +63,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída (10 Jun 2026) |
 | **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Word Links, Onboarding, Modo Neutro, CDN | ✅ Concluída (11 Jun 2026) |
 | **Fase 2** — Crescimento + Primeiro €€€ | PostHog ✅ VeredictCard ✅ Sincronia ✅ WotD ✅ Espelho Sessão ✅ Sistema Fundador ✅ Primeiro Olhar (backend ✅, 1ª venda pendente Rodrigo) | ✅ Tecnicamente completa |
-| **Fase 3** — Camada de IA + Mapa | Cloudinary (storage), Curador IA (eventos sintéticos), Perception Forecast, user_memory, Espelho de Empatia completo, Printable Effect | ⏳ Em curso (B$ ✅) |
+| **Fase 3** — Camada de IA + Mapa | Cloudinary ✅ Curador IA ✅ (pipeline 5 estágios + cron Render), Perception Forecast, user_memory, Espelho de Empatia completo, Printable Effect | ⏳ Em curso (B$ ✅, Cloudinary ✅, Curador ✅) |
 | **Fase 4** — B2B Escala | Sincronia Reports dashboard, Sintonizados, Besord como Filtro do Instagram | ⏳ Pendente |
 
 ---
@@ -95,6 +98,5 @@ EXPO_TOKEN="<ver frontend/.env>" eas build --platform android --profile preview
 
 ---
 
-> **Última actualização:** 16 Junho 2026 — Sessão de estratégia: B$ dobrado para voto+palavra ✅, Cloudinary planeado, Curador IA com Pipeline de 5 Estágios desenhado, Word Economy como narrativa de diferenciação. Documento completo em [[📅 Sessão 16 Junho 2026 — Estratégia e Plano Técnico]].
-> **Próximas acções Rodrigo:** gerar API Key + Secret no Cloudinary dashboard · testar B$ em produção · OTA update
-> **Próxima sessão código:** Cloudinary (storage.py + migração posts) → Curador Automático (curator.py pipeline) → Perception Forecast
+> **Última actualização:** 16 Junho 2026, fim de sessão — Cloudinary ✅, B$ com palavra ✅, branding uniformizado ✅. Curador Automático: cron job corre de ponta a ponta sem erro (4 bugs encadeados corrigidos: dependência em falta, schema incompatível, rota `/events/search` inacessível, configuração do Render), mas **yield 0% nesta execução** (3 extraídos, 0 validados) — diagnóstico por fazer.
+> **Próxima sessão:** ver [[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]] — começar pelos logs do Render (`Rejeitado: ...`) para entender porque as 3 tentativas extraídas falharam a validação.
