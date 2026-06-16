@@ -368,7 +368,7 @@ async def run_curator(db: AsyncIOMotorClient = None) -> Dict[str, int]:
 
 # ── FastAPI endpoint helper ──────────────────────────────────────────────────
 
-async def curator_router(db):
+def curator_router(db):
     """Regista endpoints do curador no router da API."""
     from fastapi import APIRouter, HTTPException, Query
     router = APIRouter()
