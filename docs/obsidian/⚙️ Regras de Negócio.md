@@ -19,16 +19,21 @@
 
 ---
 
-## 🪙 B$ (Besord Coins) — Actualizado
+## 🪙 B$ (Besord Coins) — Actualizado (16 Jun 2026)
 
 ### Como se acumula B$
 | Acção | B$ ganho |
 |---|---|
 | Votar (Aprovo/Desaprovo) | +1 B$ |
+| Votar **e** comentar uma palavra (Best Word) no mesmo gesto | +2 B$ |
 | Best Word do dia (mais votada) | +5 B$ (bónus Word of the Day) |
 | Check-in em evento | +2 B$ |
 | Publicação recebe 10+ votos | +3 B$ |
 | Completar sessão diária (10 interacções) | +2 B$ |
+
+**Porquê o bónus de comentar palavra:** comentar uma palavra ao votar é o gesto que gera o activo de dados central do produto (Daily Active Words, palavras mais comentadas nos dashboards de campanha e no diagnóstico do Primeiro Olhar). O bónus incentiva esse gesto sem criar uma acção nova — acontece no mesmo voto.
+
+**Regra anti-exploit:** o B$ só é pago no voto **novo** num post (1ª vez que esse utilizador vota nesse post). Trocar de voto (Aprovo↔Desaprovo) no mesmo post **não** paga B$ de novo — é a mesma interacção, só mudou de sentido, e não consome Time-Gate. Sem esta regra, trocar de voto repetidamente geraria B$ ilimitado.
 
 ### Limiar para criar Evento Pessoal
 - **≥ 1.000 B$** — meritocracia cognitiva — garante que só utilizadores engajados criam eventos

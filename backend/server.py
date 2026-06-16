@@ -1294,7 +1294,9 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
             field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
             await db.posts.update_one({"post_id": post_id}, {"$inc": {field: -1}})
         else:
-            # Switch vote — already counted when first voted, no new interaction
+            # Switch vote — already counted (and already paid out) on the first vote.
+            # No BW here: switching back and forth would otherwise farm B$ for free,
+            # since it doesn't consume a Time-Gate interaction.
             best = (payload.best_word or "").strip()
             best = best if best.lower() not in ("", "n/a") else ""
             update_doc = {"$set": {"vote": payload.vote, "created_at": now}}
@@ -1308,9 +1310,6 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
             old_field = "aprovo_count" if existing["vote"] == "aprovo" else "desaprovo_count"
             new_field = "aprovo_count" if payload.vote == "aprovo" else "desaprovo_count"
             await db.posts.update_one({"post_id": post_id}, {"$inc": {old_field: -1, new_field: 1}})
-            # Award BW: +2 if commented a word, +1 otherwise
-            bw = 2 if best else 1
-            await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"bw_balance": bw, "bw_total_earned": bw}})
     else:
         # New vote — increment daily interaction counter
         best = (payload.best_word or "").strip()
