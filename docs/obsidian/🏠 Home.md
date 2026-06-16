@@ -70,11 +70,10 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 |---|---|
 | Render Service ID | `srv-d8fd8areo5us73bpep9g` |
 | Expo Project ID | `83893be0-ae4d-43a8-837d-dbd441193fef` |
-| Expo Robot Token | `wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd` |
 | Android Package | `com.besord.app` |
-| Stripe Webhook Secret (prod) | `whsec_1cThiKZTKfxIlPMlrdiLQVq5xNycMUKa` |
 
-> ⚠️ Mover para gestor de passwords — não deixar em texto simples
+> 🔒 **Segredos (Expo Robot Token, Stripe Webhook Secret, etc.) NÃO ficam neste documento.**
+> Vivem em ficheiros `.env` locais (no `.gitignore`, nunca enviados ao GitHub): `frontend/.env` (Expo Robot Token) e `backend/.env` (Stripe Webhook Secret e restantes). Produção usa os valores directamente no painel Render/Vercel. Mantém também uma cópia num gestor de passwords como backup pessoal.
 
 ---
 
@@ -84,13 +83,13 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "descrição"
+EXPO_TOKEN="<ver frontend/.env>" eas update --branch main --message "descrição"
 ```
 
 **Novo build APK:**
 ```bash
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform android --profile preview
+EXPO_TOKEN="<ver frontend/.env>" eas build --platform android --profile preview
 ```
 
 ---

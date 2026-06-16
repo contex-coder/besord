@@ -39,7 +39,7 @@ Primeira sessão com assistente a assumir papel de **CTO/dev senior**. O fundado
 ### 4. `STRIPE_WEBHOOK_SECRET` — Webhook sem segurança em produção
 - **Problema:** Variável não estava definida no Render → qualquer request era aceite sem verificação de assinatura → alguém poderia simular pagamentos falsos
 - **Confirmação:** Teste com assinatura inválida retornou `200 {"ok":true}` antes do fix
-- **Fix:** Adicionado `whsec_1cThiKZTKfxIlPMlrdiLQVq5xNycMUKa` via Render API
+- **Fix:** Adicionado `<ver backend/.env>` via Render API
 - **Verificação:** Após redeploy, mesma request retorna `400 {"detail":"Invalid signature"}` ✅
 - ✅ **Corrigido** — via Render API, redeploy `dep-d8klrfn7f7vs73e04ndg`
 
@@ -59,10 +59,10 @@ Primeira sessão com assistente a assumir papel de **CTO/dev senior**. O fundado
 |---|---|
 | Render Service ID | `srv-d8fd8areo5us73bpep9g` |
 | Render API Key | `rnd_BMJv2XXNp3QTLzkzpgUiZus10FQY` |
-| Expo Robot Token | `wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd` |
+| Expo Robot Token | `<ver frontend/.env>` |
 | Expo Project ID | `83893be0-ae4d-43a8-837d-dbd441193fef` |
 | Android Package | `com.besord.app` |
-| Stripe Webhook Secret (prod) | `whsec_1cThiKZTKfxIlPMlrdiLQVq5xNycMUKa` |
+| Stripe Webhook Secret (prod) | `<ver backend/.env>` |
 
 > ⚠️ Guardar num gestor de passwords — não deixar em texto simples
 
@@ -163,7 +163,7 @@ Comandos para o CTO após cada sessão de desenvolvimento:
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "descrição da mudança"
+EXPO_TOKEN="<ver frontend/.env>" eas update --branch main --message "descrição da mudança"
 ```
 
 ---

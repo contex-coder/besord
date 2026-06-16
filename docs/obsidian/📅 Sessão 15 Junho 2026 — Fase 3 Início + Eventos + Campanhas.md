@@ -446,7 +446,7 @@ Corrige o typo "CAMPANHÁ" e publica os 7 bugs corrigidos no site live.
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "fix: 7 bugs — age gate, ícones, campaign/new, multi-imagem, apagar empresa, evento"
+EXPO_TOKEN="<ver frontend/.env>" eas update --branch main --message "fix: 7 bugs — age gate, ícones, campaign/new, multi-imagem, apagar empresa, evento"
 ```
 
 **Testar perfil de utilizador (verificar fix crash):**

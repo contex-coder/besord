@@ -93,7 +93,7 @@ npx expo start
    ```bash
    export PATH="$HOME/.npm-global/bin:$PATH"
    cd frontend
-   EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "descrição"
+   EXPO_TOKEN="<ver frontend/.env>" eas update --branch main --message "descrição"
    ```
 4. ✅ APK actualiza automaticamente (OTA — sem reinstalar)
 

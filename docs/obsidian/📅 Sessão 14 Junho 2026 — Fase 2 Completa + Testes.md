@@ -272,14 +272,14 @@ async def get_trends(
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "descrição do update"
+EXPO_TOKEN="<ver frontend/.env>" eas update --branch main --message "descrição do update"
 ```
 
 **Build iOS TestFlight:**
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform ios --profile preview
+EXPO_TOKEN="<ver frontend/.env>" eas build --platform ios --profile preview
 ```
 
 **Publicar Word of Day (admin):**

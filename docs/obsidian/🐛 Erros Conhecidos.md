@@ -4,7 +4,7 @@
 
 ### 1. Stripe Webhook Secret
 - **Problema:** `STRIPE_WEBHOOK_SECRET` não estava definido no Render → qualquer request era aceite sem verificação → risco de pagamentos falsos
-- **Solução aplicada (10/jun/2026):** Adicionado `whsec_1cThiKZTKfxIlPMlrdiLQVq5xNycMUKa` via Render API; redeploy confirmado
+- **Solução aplicada (10/jun/2026):** Adicionado `<ver backend/.env>` via Render API; redeploy confirmado
 - **Verificação:** `curl -X POST .../api/stripe/webhook -H "stripe-signature: invalid"` → retorna `400 {"detail":"Invalid signature"}`
 - ✅ **Corrigido**
 

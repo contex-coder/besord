@@ -403,7 +403,7 @@ install → onboarding_complete → first_vote → session_complete
 ```bash
 export PATH="$HOME/.npm-global/bin:$PATH"
 cd frontend
-EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas build --platform ios --profile preview
+EXPO_TOKEN="<ver frontend/.env>" eas build --platform ios --profile preview
 ```
 
 ### Primeira Venda B2B — NÃO AGUARDAR 100 FUNDADORES (14 Jun 2026)
@@ -593,7 +593,7 @@ Permite enviar imagem de qualquer app para o Besord → utilizador dá Best Word
    ```bash
    export PATH="$HOME/.npm-global/bin:$PATH"
    cd frontend
-   EXPO_TOKEN="wuDfkdsHl1HsebQpuuTCS3eV0UuGjDhAB9_mbugd" eas update --branch main --message "descrição"
+   EXPO_TOKEN="<ver frontend/.env>" eas update --branch main --message "descrição"
    ```
 4. **Design**: nunca alterar `theme.ts` sem aprovação do fundador
 5. **IA**: sempre usar `ai_provider.py` — nunca chamar uma API de IA directamente
