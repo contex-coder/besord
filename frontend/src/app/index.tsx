@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 function MascotVideo({ size }: { size: number }) {
   return (
     <Image
-      source={require("../../assets/images/NewBesord.png")}
+      source={require("../../assets/images/NewBesord_free.png")}
       style={{ width: size, height: size }}
       resizeMode="contain"
     />
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: IS_SMALL ? 40 : 52,
     fontWeight: "900",
-    color: colors.text,
+    color: colors.petrol,
     letterSpacing: -1,
     marginTop: 2,
   },
