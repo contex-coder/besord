@@ -115,22 +115,39 @@ export default function EventDetailScreen() {
 
   // ─── Check-in ───
   const onCheckin = async () => {
-    try {
-      const r = await apiFetch(`/api/events/${id}/checkin`, { method: "POST" });
-      if (r.ok) {
-        const data = await r.json();
-        if (data.already_checked_in) {
-          Alert.alert("✅ JÁ FIZESTE CHECK-IN");
+    const doCheckin = async (lat?: number, lon?: number) => {
+      try {
+        const body = lat !== undefined && lon !== undefined ? { lat, lon } : {};
+        const r = await apiFetch(`/api/events/${id}/checkin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.already_checked_in) {
+            Alert.alert("✅ JÁ FIZESTE CHECK-IN");
+          } else {
+            Alert.alert("✅ CHECK-IN FEITO!", "Agora vais ver os posts deste evento no teu feed.");
+          }
+          loadEvent();
         } else {
-          Alert.alert("✅ CHECK-IN FEITO!", "Agora vais ver os posts deste evento no teu feed.");
+          const err = await r.json().catch(() => ({}));
+          Alert.alert("Erro", err.detail || "Não foi possível fazer check-in.");
         }
-        loadEvent(); // recarregar para atualizar contagem
-      } else {
-        const err = await r.json().catch(() => ({}));
-        Alert.alert("Erro", err.detail || "Não foi possível fazer check-in.");
+      } catch (e: any) {
+        Alert.alert("Erro", e?.message || "Falha ao fazer check-in.");
       }
-    } catch (e: any) {
-      Alert.alert("Erro", e?.message || "Falha ao fazer check-in.");
+    };
+
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => doCheckin(pos.coords.latitude, pos.coords.longitude),
+        () => doCheckin(),
+        { timeout: 8000, enableHighAccuracy: false }
+      );
+    } else {
+      doCheckin();
     }
   };
 
@@ -350,7 +367,7 @@ export default function EventDetailScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/feed")} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>DETALHE DO EVENTO</Text>

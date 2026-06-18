@@ -1,7 +1,7 @@
 import sys
 import asyncio
 
-from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Header, Query, Request, Body
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -553,10 +553,13 @@ async def auth_google_login(request: Request):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google Client ID not configured")
 
-    # Generate a random state value to prevent CSRF
     state = uuid.uuid4().hex
-    # Store the state in the user's session for later validation
-    request.session['oauth_state'] = state
+    # Guardar state no MongoDB em vez de session cookie (Render pode restartar o processo)
+    await db.oauth_states.insert_one({
+        "state": state,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15),
+    })
 
     google_auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
@@ -576,9 +579,11 @@ async def auth_google_callback(request: Request, code: str, state: str, error: O
     if error:
         raise HTTPException(status_code=400, detail=f"Google login error: {error}")
 
-    # Validate the state to prevent CSRF
-    if state != request.session.get('oauth_state'):
+    # Validar state via MongoDB (session cookie não é fiável entre restarts do Render)
+    state_doc = await db.oauth_states.find_one({"state": state})
+    if not state_doc:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
+    await db.oauth_states.delete_one({"state": state})
 
     async with httpx.AsyncClient() as http:
         try:
@@ -1797,11 +1802,44 @@ async def stripe_webhook(request: Request):
         elif event_type == "event_image_slot":
             event_id = metadata.get("event_id")
             quantity = int(metadata.get("quantity", "1"))
+            pending_id = metadata.get("pending_id")
+            user_id = metadata.get("user_id") or session.get("client_reference_id")
+
             if event_id:
                 await db.events.update_one(
                     {"event_id": event_id},
                     {"$inc": {"image_slots_paid": quantity}}
                 )
+
+            if pending_id and event_id and user_id:
+                pending = await db.pending_image_uploads.find_one({"pending_id": pending_id})
+                if pending:
+                    post_id = f"post_{uuid.uuid4().hex[:12]}"
+                    now = datetime.now(timezone.utc)
+                    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+                    post_doc = {
+                        "post_id": post_id,
+                        "author_id": user_id,
+                        "author_name": (user_doc or {}).get("name", ""),
+                        "author_picture": (user_doc or {}).get("picture"),
+                        "word": pending.get("word") or "SEM PALAVRA",
+                        "image_base64": pending.get("image_base64", ""),
+                        "aprovo_count": 0,
+                        "desaprovo_count": 0,
+                        "hype": 0,
+                        "event_id": event_id,
+                        "is_sponsored": True,
+                        "prize": pending.get("prize") if pending.get("has_raffle_item") else None,
+                        "created_at": now,
+                    }
+                    await db.posts.insert_one(post_doc)
+                    await db.events.update_one({"event_id": event_id}, {"$inc": {"image_slots_used": 1}})
+                    await db.pending_image_uploads.delete_one({"pending_id": pending_id})
+                    await notify_user(
+                        user_id,
+                        "Imagem publicada com sucesso!",
+                        "A tua imagem está agora visível no feed do evento.",
+                    )
 
         # --- Save invoice (all types) ---
         if session.get("payment_intent"):
@@ -2909,6 +2947,19 @@ async def publish_image_in_event(event_id: str, payload: PublishImageRequest, au
     product_name = "Pacote 10 Publicações — Besord Evento" if payload.package else "Publicação de Imagem — Besord Evento"
     product_desc = "10 publicações de imagem no feed do evento (poupa 50%)" if payload.package else "1 publicação de imagem no feed do evento (€9,99)"
 
+    # Guardar imagem no MongoDB antes do checkout (Stripe metadata tem limite de 500 chars)
+    pending_id = f"pend_{uuid.uuid4().hex[:16]}"
+    await db.pending_image_uploads.insert_one({
+        "pending_id": pending_id,
+        "event_id": event_id,
+        "user_id": uid,
+        "word": (payload.word or "").strip().upper(),
+        "image_base64": payload.image_base64,
+        "has_raffle_item": payload.has_raffle_item,
+        "prize": payload.prize,
+        "created_at": datetime.now(timezone.utc),
+    })
+
     try:
         checkout = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -2928,16 +2979,15 @@ async def publish_image_in_event(event_id: str, payload: PublishImageRequest, au
                 "type": "event_image_slot",
                 "event_id": event_id,
                 "quantity": str(quantity),
-                "pending_image_base64": "",  # imagem publicada após webhook
-                "pending_word": (payload.word or "").strip().upper(),
-                "pending_prize": payload.prize or "",
-                "has_raffle_item": str(payload.has_raffle_item),
+                "pending_id": pending_id,
+                "user_id": uid,
             },
             success_url=f"{FRONTEND_URL}/evento/{event_id}?anuncio=sucesso",
             cancel_url=f"{FRONTEND_URL}/evento/{event_id}",
         )
         return {"ok": True, "checkout_url": checkout.url, "slots_purchasing": quantity}
     except Exception as e:
+        await db.pending_image_uploads.delete_one({"pending_id": pending_id})
         raise HTTPException(status_code=502, detail=f"Erro ao processar pagamento: {str(e)}")
 
 
@@ -3202,19 +3252,38 @@ async def admin_create_event(payload: EventCreate, authorization: Optional[str] 
 # ==============================
 # PUBLIC: USER CHECK-IN to event
 # ==============================
+class CheckinRequest(BaseModel):
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+
+
 @api_router.post("/events/{event_id}/checkin")
-async def checkin_event(event_id: str, authorization: Optional[str] = Header(None)):
+async def checkin_event(event_id: str, payload: CheckinRequest = Body(default=CheckinRequest()), authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     event = await db.events.find_one({"event_id": event_id}, {"_id": 0})
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado.")
     if event["status"] not in ("active", "full"):
         raise HTTPException(status_code=400, detail="Evento não está ativo.")
-    
+
+    # Validar proximidade: 500m obrigatórios se evento e utilizador têm coordenadas
+    event_loc = event.get("location", {})
+    event_lat = event_loc.get("lat")
+    event_lon = event_loc.get("lon")
+    if event_lat and event_lon:
+        if payload.lat is None or payload.lon is None:
+            raise HTTPException(status_code=400, detail="Localização necessária para fazer check-in neste evento.")
+        dist_km = haversine(payload.lat, payload.lon, event_lat, event_lon)
+        if dist_km > 0.5:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tens de estar a menos de 500 metros do evento. Estás a {dist_km * 1000:.0f}m."
+            )
+
     checkins = event.get("checkins", [])
     if user["user_id"] in checkins:
         return {"ok": True, "already_checked_in": True}
-    
+
     await db.events.update_one(
         {"event_id": event_id},
         {"$push": {"checkins": user["user_id"]}}
