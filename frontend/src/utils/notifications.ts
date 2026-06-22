@@ -156,9 +156,9 @@ export async function syncPushTokenToBackend(
     const token = await localStore.secureGet(PUSH_TOKEN_KEY, "");
     if (!token) return;
 
-    await apiFetch("/api/push/register", {
+    await apiFetch("/api/notifications/register-device", {
       method: "POST",
-      body: JSON.stringify({ push_token: token, platform: Platform.OS }),
+      body: JSON.stringify({ token, platform: Platform.OS }),
     });
   } catch (e) {
     console.warn("syncPushTokenToBackend error:", e);

@@ -130,6 +130,7 @@ export default function PerfilScreen() {
               <StatBox label="POSTS" value={myPosts.length} bg={colors.bg} />
               <StatBox label="APROVO" value={totalAprovo} bg={colors.aprovo} />
               <StatBox label="DESAPROVO" value={totalDesaprovo} bg={colors.desaprovo} />
+              <StatBox label="STREAK 🔥" value={user.streak_count || 0} bg={colors.neutral} />
             </View>
 
             <View style={styles.bwCard} testID="bw-wallet-card">

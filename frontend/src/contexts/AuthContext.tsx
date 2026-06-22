@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { storage } from "@/src/utils/storage";
+import { syncPushTokenToBackend } from "@/src/utils/notifications";
 
 // --- CONSTANTS ---
 
@@ -29,6 +30,11 @@ type User = {
   has_business?: boolean;
   business_profile?: boolean;
   age_confirmed?: boolean;
+  streak_count?: number;
+  best_streak?: number;
+  last_session_date?: string;
+  archetype_id?: string;
+  founder_number?: number;
 };
 
 export type AuthError = {
@@ -167,8 +173,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         controller.abort();
       }, AUTH_TIMEOUT_MS);
 
-      await fetchUser(tok, controller.signal);
-      
+      const success = await fetchUser(tok, controller.signal);
+
+      if (success) {
+        const authFetch = (path: string, init?: RequestInit) =>
+          fetch(`${BACKEND_URL}${path}`, {
+            ...init,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${tok}`,
+              ...((init?.headers as Record<string, string>) || {}),
+            },
+          });
+        syncPushTokenToBackend(authFetch).catch(() => {});
+      }
+
       clearTimeout(timeoutId);
       setLoading(false);
     },

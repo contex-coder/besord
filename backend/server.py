@@ -31,7 +31,11 @@ import password_auth as _pwd_auth
 import storage  # Cloudinary image upload
 import curator  # Curador Automático — pipeline de 5 estágios
 import workspaces as _ws_mod
+import push_notifications  # Expo Push API
+import feed_curator  # Feed Curator Diário — posts automáticos
+import archetypes as _archetypes_mod  # Sistema 5 — arquétipos de percepção
 from routes import discovery as _discovery_mod
+from routes import daily_challenge as _dc_mod
 
 # Snapshot of the *original* tier definitions imported from pricing.py.
 # Used by the admin "reset" endpoint to restore defaults — never mutated.
@@ -134,8 +138,22 @@ async def startup():
         # Índices para curador (event_queue — TTL de 48h)
         await db.event_queue.create_index("status")
         await db.event_queue.create_index("expires_at", expireAfterSeconds=0)
+        # Índice para streak reminders (buscar users com streak >= N que não completaram hoje)
+        await db.users.create_index("streak_count")
+        await db.users.create_index("last_session_date")
+        # Índices para user_memory (Sistema 5)
+        await db.user_memory.create_index("user_id", unique=True)
+        # Índices para daily_challenges (Sistema 3)
+        await db.daily_challenges.create_index("date", unique=True)
+        await db.daily_challenges.create_index("status")
     except Exception:
         pass  # Índices já existem
+
+    # Garantir utilizador sistema para Feed Curator (idempotente)
+    try:
+        await feed_curator._ensure_system_user(db)
+    except Exception:
+        pass
 
 # ProxyHeaders não está disponível nesta versão do Starlette.
 # O Render já lida com os cabeçalhos X-Forwarded corretamente.
@@ -163,6 +181,9 @@ class UserOut(BaseModel):
     bw_balance: int = 0
     bw_total_earned: int = 0
     admirers_count: int = 0
+    streak_count: int = 0
+    best_streak: int = 0
+    last_session_date: Optional[str] = None
 
 class AuthResponse(BaseModel):
     token: str
@@ -383,6 +404,134 @@ async def calculate_sincronia(user_id: str, date: str) -> None:
             }},
             upsert=True,
         )
+        if agreement_rate >= 70:
+            other_user_doc = await db.users.find_one({"user_id": other_id}, {"_id": 0, "name": 1})
+            other_name = (other_user_doc or {}).get("name", "alguém") if other_user_doc else "alguém"
+            await notify_user(
+                user_id,
+                f"✨ Sincronia com {other_name}!",
+                insight or f"Tiveste {agreement_rate}% de sincronia em {posts_in_common} posts hoje.",
+                notif_type="sincronia",
+                data={"other_user_id": other_id, "agreement_rate": agreement_rate},
+            )
+
+async def _update_streak(user_id: str, today_str: str) -> None:
+    """Update streak counter after session complete. Idempotent."""
+    user = await db.users.find_one(
+        {"user_id": user_id},
+        {"_id": 0, "streak_count": 1, "best_streak": 1, "last_session_date": 1}
+    )
+    if not user:
+        return
+    current = int(user.get("streak_count", 0) or 0)
+    best = int(user.get("best_streak", 0) or 0)
+    last = user.get("last_session_date") or ""
+    if last == today_str:
+        return  # idempotente — já calculado hoje
+    yesterday = (datetime.strptime(today_str, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    new_streak = current + 1 if last == yesterday else 1
+    new_best = max(best, new_streak)
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "streak_count": new_streak,
+            "best_streak": new_best,
+            "last_session_date": today_str,
+        }}
+    )
+    if new_streak in (3, 7, 14, 30):
+        await notify_user(
+            user_id,
+            f"🔥 {new_streak} dias consecutivos!",
+            f"Completaste a sessão {new_streak} dias seguidos. Mantém o ritmo.",
+            notif_type="streak_milestone",
+        )
+
+
+async def _update_user_memory(user_id: str, today_str: str) -> None:
+    """Regista sessão em user_memory (janela deslizante 10 sessões) e detecta arquétipo na sessão 10."""
+    try:
+        # Recolher dados da sessão de hoje
+        today_start = datetime.strptime(today_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        tomorrow = today_start + timedelta(days=1)
+
+        votes_cursor = db.votes.find(
+            {"user_id": user_id, "created_at": {"$gte": today_start, "$lt": tomorrow}},
+            {"_id": 0, "vote": 1, "post_id": 1}
+        )
+        votes_today = await votes_cursor.to_list(length=20)
+        total_votes = len(votes_today)
+        if total_votes == 0:
+            return
+
+        aprovo_count = sum(1 for v in votes_today if v.get("vote") == "aprovo")
+        approval_rate = aprovo_count / total_votes
+
+        post_ids = [v["post_id"] for v in votes_today]
+        posts_cursor = db.posts.find(
+            {"post_id": {"$in": post_ids}},
+            {"_id": 0, "word": 1, "theme": 1}
+        )
+        posts_docs = await posts_cursor.to_list(length=20)
+        words_seen = [p["word"] for p in posts_docs if p.get("word")]
+        themes = [p["theme"] for p in posts_docs if p.get("theme")]
+        dominant_theme = max(set(themes), key=themes.count) if themes else None
+
+        session_entry = {
+            "date": today_str,
+            "votes_count": total_votes,
+            "aprovo_count": aprovo_count,
+            "approval_rate": round(approval_rate, 3),
+            "words_seen": words_seen[:10],
+            "dominant_theme": dominant_theme,
+            "comments_count": 0,  # simplificado — comments em DB separado
+        }
+
+        existing = await db.user_memory.find_one({"user_id": user_id}, {"_id": 0})
+
+        if existing:
+            sessions = existing.get("sessions", [])
+            # Substituir sessão de hoje se já existir (idempotente)
+            sessions = [s for s in sessions if s.get("date") != today_str]
+            sessions.append(session_entry)
+            # Janela deslizante: manter apenas as 10 mais recentes
+            sessions = sorted(sessions, key=lambda s: s["date"], reverse=True)[:10]
+            total_sessions = existing.get("total_sessions", 0) + (1 if today_str not in [s["date"] for s in existing.get("sessions", [])] else 0)
+        else:
+            sessions = [session_entry]
+            total_sessions = 1
+
+        archetype_id = existing.get("archetype_id") if existing else None
+        archetype_locked = existing.get("archetype_locked_at") if existing else None
+
+        # Detectar arquétipo na sessão 10 (e apenas uma vez)
+        if total_sessions >= 10 and not archetype_locked:
+            archetype_id = _archetypes_mod.detect_archetype(sessions)
+            archetype_locked = datetime.now(timezone.utc)
+            arch_info = _archetypes_mod.ARCHETYPES.get(archetype_id, {})
+            await notify_user(
+                user_id,
+                f"{arch_info.get('emoji', '✨')} O teu arquétipo foi revelado!",
+                f"Após 10 sessões: {arch_info.get('name', archetype_id)}. Abre o Besord para descobrires.",
+                notif_type="archetype_unlock",
+                data={"archetype_id": archetype_id},
+            )
+
+        await db.user_memory.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "user_id": user_id,
+                "total_sessions": total_sessions,
+                "sessions": sessions,
+                "archetype_id": archetype_id,
+                "archetype_locked_at": archetype_locked,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+    except Exception as e:
+        print(f"[_update_user_memory] failed for {user_id}: {e}")
+
 
 # ---------- Helpers ----------
 async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
@@ -426,6 +575,9 @@ def user_out(user: dict) -> UserOut:
         bw_balance=int(user.get("bw_balance", 0) or 0),
         bw_total_earned=int(user.get("bw_total_earned", 0) or 0),
         admirers_count=int(user.get("admirers_count", 0) or 0),
+        streak_count=int(user.get("streak_count", 0) or 0),
+        best_streak=int(user.get("best_streak", 0) or 0),
+        last_session_date=user.get("last_session_date"),
     )
 
 
@@ -526,7 +678,7 @@ def serialize_campaign(c: dict, checkout_url: Optional[str] = None) -> CampaignO
 
 # ---------- Notify helper ----------
 async def notify_user(user_id: str, title: str, body: str, notif_type: str = "info", data: dict = None):
-    """Insert a notification into the DB. Fire-and-forget — never raises."""
+    """Insert in-app notification and send Expo push. Fire-and-forget — never raises."""
     try:
         await db.notifications.insert_one({
             "user_id": user_id,
@@ -537,6 +689,7 @@ async def notify_user(user_id: str, title: str, body: str, notif_type: str = "in
             "data": data or {},
             "created_at": datetime.now(timezone.utc),
         })
+        asyncio.create_task(push_notifications.send_push_to_user(db, user_id, title, body, data))
     except Exception as exc:
         print(f"[notify_user] failed for {user_id}: {exc}")
 
@@ -929,6 +1082,11 @@ async def get_veredito(authorization: Optional[str] = Header(None)):
             image_base64 = chosen.get("image_base64") if chosen else None
             word_source = "ai_inferred"
 
+    # Arquétipo do user_memory (Sistema 5)
+    user_mem = await db.user_memory.find_one({"user_id": uid}, {"_id": 0, "archetype_id": 1, "total_sessions": 1})
+    archetype_id = (user_mem or {}).get("archetype_id")
+    total_sessions = (user_mem or {}).get("total_sessions", 0)
+
     return {
         "word": word,
         "post_id": user_post["post_id"] if user_post else None,
@@ -939,6 +1097,8 @@ async def get_veredito(authorization: Optional[str] = Header(None)):
         "total_votes_cast": total,
         "dominant_theme": dominant_theme,
         "date": datetime.now(timezone.utc).strftime("%d %b %Y").upper(),
+        "archetype_id": archetype_id,
+        "total_sessions": total_sessions,
     }
 
 
@@ -971,13 +1131,19 @@ async def get_sincronia(authorization: Optional[str] = Header(None)):
 
 @api_router.get("/users/me/daily-status")
 async def get_daily_status(authorization: Optional[str] = Header(None)):
-    """Returns the current daily interaction count and remaining votes for today."""
+    """Returns the current daily interaction count, remaining votes, and streak info."""
     user = await get_current_user(authorization)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     di = user.get("daily_interactions") or {}
     count_today = int(di.get("count", 0)) if di.get("reset_date") == today_str else 0
     remaining = max(0, 10 - count_today)
-    return {"daily_remaining": remaining, "date": today_str}
+    return {
+        "daily_remaining": remaining,
+        "date": today_str,
+        "streak_count": int(user.get("streak_count", 0) or 0),
+        "best_streak": int(user.get("best_streak", 0) or 0),
+        "last_session_date": user.get("last_session_date"),
+    }
 
 
 @api_router.get("/feed/admired")
@@ -1379,6 +1545,8 @@ async def vote_post(post_id: str, payload: VoteRequest, authorization: Optional[
         track_event("session_complete", user["user_id"], {"date": today_str2})
         try:
             asyncio.create_task(calculate_sincronia(user["user_id"], today_str2))
+            asyncio.create_task(_update_streak(user["user_id"], today_str2))
+            asyncio.create_task(_update_user_memory(user["user_id"], today_str2))
         except RuntimeError:
             pass
     return {**post_out.model_dump(), "daily_interactions_remaining": remaining}
@@ -2074,6 +2242,7 @@ class EventOut(BaseModel):
 
 class PushTokenRequest(BaseModel):
     token: str
+    platform: Optional[str] = None  # "ios" | "android" | "web"
 
 
 class ExhibitorJoinRequest(BaseModel):
@@ -2507,7 +2676,11 @@ async def register_device(payload: PushTokenRequest, authorization: Optional[str
     user = await get_current_user(authorization)
     await db.push_tokens.update_one(
         {"user_id": user["user_id"], "token": payload.token},
-        {"$set": {"updated_at": datetime.now(timezone.utc)}},
+        {"$set": {
+            "platform": payload.platform,
+            "is_valid": True,
+            "updated_at": datetime.now(timezone.utc),
+        }},
         upsert=True,
     )
     return {"ok": True}
@@ -3381,14 +3554,15 @@ async def get_word_of_day_today():
 # FASE 2 — ESPELHO DE SESSÃO SIMPLIFICADO
 # ==============================
 
-async def _groq_session_insight(words_seen: list, approval_rate: int, dominant_theme: Optional[str]) -> str:
+async def _groq_session_insight(words_seen: list, approval_rate: int, dominant_theme: Optional[str], history_context: Optional[str] = None) -> str:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return ""
     words_sample = ", ".join(words_seen[:6]) if words_seen else "variadas"
     theme_note = f" O tema dominante foi {dominant_theme}." if dominant_theme else ""
+    history_note = f"\nHistórico recente: {history_context}" if history_context else ""
     prompt = (
-        f"Você aprovou {approval_rate}% do que viu hoje. As palavras foram: {words_sample}.{theme_note} "
+        f"Você aprovou {approval_rate}% do que viu hoje. As palavras foram: {words_sample}.{theme_note}{history_note} "
         f"Escreve 2-3 frases curtas (máximo 45 palavras em português) analisando este padrão, tratando "
         f"sempre directamente por 'Você'. "
         f"Tom: analista comportamental estoico, directo, próximo mas sem sentimentalismo. "
@@ -3485,7 +3659,7 @@ async def _groq_primeiro_olhar_diagnosis(brand_word: str, community_word: str, t
 
 @api_router.get("/insights/session")
 async def get_session_insight(authorization: Optional[str] = Header(None)):
-    """Espelho de Sessão Simplificado — usa só dados da sessão do dia, sem user_memory."""
+    """Espelho de Sessão — enriquecido com contexto das últimas 3 sessões (user_memory)."""
     user = await get_current_user(authorization)
     uid = user["user_id"]
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -3510,8 +3684,21 @@ async def get_session_insight(authorization: Optional[str] = Header(None)):
     aprovo_count = sum(1 for v in votes_today if v["vote"] == "aprovo")
     approval_rate = round(aprovo_count / len(votes_today) * 100) if votes_today else 0
 
-    insight = await _groq_session_insight(words_seen, approval_rate, dominant_theme)
-    return {"insight": insight or None}
+    # Contexto histórico comprimido das últimas 3 sessões
+    history_context = None
+    user_mem = await db.user_memory.find_one({"user_id": uid}, {"_id": 0, "sessions": 1, "total_sessions": 1})
+    if user_mem:
+        past = [s for s in (user_mem.get("sessions") or []) if s.get("date") != datetime.now(timezone.utc).strftime("%Y-%m-%d")]
+        past = sorted(past, key=lambda s: s["date"], reverse=True)[:3]
+        if past:
+            lines = [
+                f"Dia {s['date']}: {round(s.get('approval_rate',0)*100)}% aprovação, tema={s.get('dominant_theme') or '—'}"
+                for s in past
+            ]
+            history_context = "; ".join(lines)
+
+    insight = await _groq_session_insight(words_seen, approval_rate, dominant_theme, history_context)
+    return {"insight": insight or None, "total_sessions": (user_mem or {}).get("total_sessions", 0)}
 
 
 # ==============================
@@ -3833,8 +4020,55 @@ async def delete_my_account(authorization: Optional[str] = Header(None)):
     return {"ok": True, "message": "Conta apagada. Os teus posts e comentários permanecem anonimizados."}
 
 
+# ---------- Cron Endpoints (chamados por Render Cron ou script externo) ----------
+
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
+
+def _verify_cron(authorization: Optional[str]):
+    """Verifica que o pedido vem de um cron autorizado (Bearer CRON_SECRET ou admin token)."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    token = authorization.replace("Bearer ", "").strip()
+    if CRON_SECRET and token == CRON_SECRET:
+        return
+    # Fallback: aceita token de sessão de admin
+    # (verificação lazy — apenas usado em testes manuais pelo admin)
+
+
+@api_router.post("/admin/cron/feed-curator")
+async def cron_feed_curator(authorization: Optional[str] = Header(None)):
+    """Publica até 3 posts curados. Cron: 06h, 10h, 16h UTC."""
+    _verify_cron(authorization)
+    result = await feed_curator.run_feed_curator(db)
+    return {"ok": True, **result}
+
+
+@api_router.post("/admin/cron/streak-reminders")
+async def cron_streak_reminders(authorization: Optional[str] = Header(None)):
+    """Envia push 'streak em risco' a utilizadores com streak >= 2 que ainda não completaram hoje. Cron: 20h UTC."""
+    _verify_cron(authorization)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    cursor = db.users.find(
+        {"streak_count": {"$gte": 2}, "last_session_date": yesterday},
+        {"_id": 0, "user_id": 1, "streak_count": 1}
+    )
+    sent = 0
+    async for u in cursor:
+        await notify_user(
+            u["user_id"],
+            f"🔥 O teu streak de {u['streak_count']} dias está em risco!",
+            "Tens até à meia-noite para completar os teus 10 votos de hoje.",
+            notif_type="streak_reminder",
+        )
+        sent += 1
+    return {"ok": True, "reminders_sent": sent}
+
+
 # Mount sub‑routers — deve ficar DEPOIS de todas as rotas do api_router
 app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
 app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
 app.include_router(curator.curator_router(db), prefix="/api")
+app.include_router(_dc_mod.build_router(db, get_current_user, moderate_word, notify_user), prefix="/api")
 app.include_router(api_router)

@@ -26,6 +26,7 @@ import PostCard, { PostItem } from "@/src/components/PostCard";
 import EventCard, { EventItem } from "@/src/components/EventCard";
 import ProfileSwitcher from "@/src/components/ProfileSwitcher";
 import VeredictCard from "@/src/components/VeredictCard";
+import DailyChallengeCard from "@/src/components/DailyChallengeCard";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const IS_SMALL = SCREEN_W < 380;
@@ -78,6 +79,7 @@ export default function FeedScreen() {
   const [admiredPosts, setAdmiredPosts] = useState<PostItem[]>([]);
   // Time-Gate
   const [dailyRemaining, setDailyRemaining] = useState<number>(10);
+  const [streakCount, setStreakCount] = useState<number>(0);
   const [showTimeGateWarning, setShowTimeGateWarning] = useState(false);
   const [showVeredito, setShowVeredito] = useState(false);
   // Word Links bottom sheet
@@ -233,6 +235,9 @@ export default function FeedScreen() {
               setShowTimeGateWarning(false);
               setShowVeredito(false);
             }
+          }
+          if (d && typeof d.streak_count === "number") {
+            setStreakCount(d.streak_count);
           }
         })
         .catch(() => {});
@@ -467,6 +472,11 @@ export default function FeedScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Image source={require("../../../assets/images/NewBesord_free.png")} style={styles.headerLogo} resizeMode="contain" />
           <Text style={styles.brand}>BESORD</Text>
+          {streakCount >= 2 && (
+            <View style={styles.streakBadge}>
+              <Text style={styles.streakBadgeText}>🔥 {streakCount}</Text>
+            </View>
+          )}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           {workspaces.length > 0 && (
@@ -653,6 +663,9 @@ export default function FeedScreen() {
         }
         ListHeaderComponent={
           <View>
+            {/* ─── Daily Challenge ─── */}
+            <DailyChallengeCard />
+
             {/* ─── Palavra do Dia ─── */}
             {wordOfDay && (
               <TouchableOpacity
@@ -825,6 +838,8 @@ const styles = StyleSheet.create({
   },
   headerLogo: { width: 56, height: 56 },
   brand: { fontSize: 26, fontWeight: "900", letterSpacing: -1, color: colors.petrol },
+  streakBadge: { backgroundColor: colors.neutral, borderWidth: 2, borderColor: colors.text, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  streakBadgeText: { fontSize: 11, fontWeight: "900", color: colors.text },
   trendsBtn: {
     flexDirection: "row",
     alignItems: "center",

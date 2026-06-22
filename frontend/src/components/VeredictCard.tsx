@@ -8,6 +8,19 @@ import { colors, brutalShadow } from "@/src/theme";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { track } from "@/src/utils/analytics";
 
+const ARCHETYPES: Record<string, { name: string; emoji: string; description: string }> = {
+  curador:     { name: "O Curador",     emoji: "🎨", description: "Selecciona com rigor. Aprova pouco, mas o que aprova é significativo." },
+  generoso:    { name: "O Generoso",    emoji: "🤝", description: "Aprova amplamente. Vê o melhor nas pessoas e nas coisas." },
+  explorador:  { name: "O Explorador",  emoji: "🧭", description: "Curiosidade é o teu motor." },
+  esteticista: { name: "O Esteticista", emoji: "✨", description: "Forma antes de conteúdo." },
+  analista:    { name: "O Analista",    emoji: "📊", description: "Consistência acima de tudo. Os teus padrões são previsíveis — e isso é poder." },
+  rebelde:     { name: "O Rebelde",     emoji: "⚡", description: "O teu filtro é apertado." },
+  naturalista: { name: "O Naturalista", emoji: "🌿", description: "Gravitação constante para o orgânico e sustentável." },
+  urbanista:   { name: "O Urbanista",   emoji: "🏙️", description: "A cidade é o teu habitat visual." },
+  intuitivo:   { name: "O Intuitivo",   emoji: "🌀", description: "Os teus padrões são difíceis de prever — e essa é a tua assinatura." },
+  critico:     { name: "O Crítico",     emoji: "🔍", description: "Alto nível de exigência." },
+};
+
 type VeredictData = {
   word: string | null;
   image_base64: string | null;
@@ -17,6 +30,8 @@ type VeredictData = {
   total_votes_cast: number;
   dominant_theme: string | null;
   date: string;
+  archetype_id?: string | null;
+  total_sessions?: number;
 };
 
 type Props = {
@@ -141,6 +156,22 @@ export default function VeredictCard({ visible, onClose, sessionInsight }: Props
 
                 <View style={styles.divider} />
                 <Text style={styles.tagline}>O MUNDO AINDA TEM MUITO PARA LHE DAR E PODES SAIR PARA ENCONTRAR AINDA HOJE.</Text>
+
+                {(user?.streak_count ?? 0) >= 2 && (
+                  <View style={styles.streakRow}>
+                    <Text style={styles.streakText}>🔥 DIA {user!.streak_count} DE STREAK</Text>
+                  </View>
+                )}
+
+                {data?.archetype_id && ARCHETYPES[data.archetype_id] && (
+                  <View style={styles.archetypeBox}>
+                    <Text style={styles.archetypeLabel}>O TEU PERFIL DE PERCEPÇÃO</Text>
+                    <Text style={styles.archetypeName}>
+                      {ARCHETYPES[data.archetype_id].emoji} {ARCHETYPES[data.archetype_id].name.toUpperCase()}
+                    </Text>
+                    <Text style={styles.archetypeDesc}>{ARCHETYPES[data.archetype_id].description}</Text>
+                  </View>
+                )}
 
                 {sessionInsight && (
                   <View style={styles.insightBox}>
@@ -289,6 +320,41 @@ const styles = StyleSheet.create({
     height: 120,
     justifyContent: "center",
     alignItems: "center",
+  },
+  streakRow: {
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  streakText: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1,
+    color: colors.text,
+  },
+  archetypeBox: {
+    borderWidth: 3,
+    borderColor: colors.petrol,
+    backgroundColor: "#F0F7F9",
+    padding: 12,
+    gap: 4,
+  },
+  archetypeLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+    color: colors.petrol,
+  },
+  archetypeName: {
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 1,
+    color: colors.petrol,
+  },
+  archetypeDesc: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    lineHeight: 17,
   },
   insightBox: {
     borderWidth: 3,

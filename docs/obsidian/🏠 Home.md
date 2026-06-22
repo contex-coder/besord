@@ -20,6 +20,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 |---|---|
 | [[visao_reinventada]] | Visão de produto final — IMUTÁVEL |
 | [[🚀 Plano Final de Implementação]] | Plano de 4 fases com tarefas e critérios |
+| **[[📊 Plano Estratégico de Crescimento — Junho 2026]]** | **Estratégia de negócio, retenção, aquisição e novas features — OODA completo** |
 | [[🎨 Design & UX — Ecrãs e Fluxos]] | Wireframes, fluxos, guia de imagens |
 | [[📐 Arquitetura]] | Stack, fluxo de dados, diagramas |
 | [[👤 User Flow]] | Jornada do utilizador por tipo |
