@@ -37,6 +37,24 @@ services:
       - key: LOG_LEVEL
         value: info
         scope: service
+      # ── IA & Media ──────────────────────────────────────────────
+      - key: GROQ_API_KEY
+        scope: service
+      - key: CLOUDINARY_CLOUD_NAME
+        scope: service
+      - key: CLOUDINARY_API_KEY
+        scope: service
+      - key: CLOUDINARY_API_SECRET
+        scope: service
+      - key: POSTHOG_API_KEY
+        scope: service
+      # ── Automações / Crons ───────────────────────────────────────
+      - key: CURATOR_API_KEY
+        scope: service
+      - key: CRON_SECRET
+        scope: service
+      - key: UNSPLASH_ACCESS_KEY
+        scope: service
     disk:
       name: appdata
       mountPath: /data

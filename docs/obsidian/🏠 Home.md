@@ -38,7 +38,8 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | [[📅 Sessão 16 Junho 2026 — Correções pré-Fase 3 (Render, Veredito, Eventos)]] | Render keep-alive, Veredito com IA, Espelho humanizado, gestão de eventos |
 | [[📅 Sessão 16 Junho 2026 — Estratégia e Plano Técnico]] | B$ dobrado, Cloudinary, Curador IA, Word Economy, plano de implementação |
 | [[📋 Briefing 16 Junho 2026 — Sessão Técnica]] | Briefing detalhado da implementação (Cloudinary, Curador, bugs, commits, estado final) — verificado e corrigido contra o código real |
-| **[[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]]** | **Começar aqui** — resumo do dia, 4 bugs do Curador resolvidos em cadeia, yield 0% ainda sem diagnóstico |
+| [[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]] | Resumo do dia, 4 bugs do Curador resolvidos em cadeia |
+| **[[📅 Sessão 22 Junho 2026 — 5 Sistemas de Retenção D7]]** | **Começar aqui** — Streak, Push, Daily Challenge, Feed Curator 4 camadas, Arquétipos |
 
 ---
 
@@ -64,7 +65,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | **Fase 0** — Saúde & Triage | Bugs críticos, Stripe, EAS APK | ✅ Concluída (10 Jun 2026) |
 | **Fase 1** — Identidade + Social | Admiradores, Time-Gate, Word Links, Onboarding, Modo Neutro, CDN | ✅ Concluída (11 Jun 2026) |
 | **Fase 2** — Crescimento + Primeiro €€€ | PostHog ✅ VeredictCard ✅ Sincronia ✅ WotD ✅ Espelho Sessão ✅ Sistema Fundador ✅ Primeiro Olhar (backend ✅, 1ª venda pendente Rodrigo) | ✅ Tecnicamente completa |
-| **Fase 3** — Camada de IA + Mapa | Cloudinary ✅ Curador IA ✅ (pipeline 5 estágios + cron Render), Perception Forecast, user_memory, Espelho de Empatia completo, Printable Effect | ⏳ Em curso (B$ ✅, Cloudinary ✅, Curador ✅) |
+| **Fase 3** — Camada de IA + Mapa | Cloudinary ✅ Curador IA ✅ Feed Curator 4 camadas ✅ user_memory ✅ Arquétipos ✅ Streak ✅ Push ✅ Daily Challenge ✅ | ✅ Tecnicamente completa |
 | **Fase 4** — B2B Escala | Sincronia Reports dashboard, Sintonizados, Besord como Filtro do Instagram | ⏳ Pendente |
 
 ---
@@ -77,8 +78,23 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | Expo Project ID | `83893be0-ae4d-43a8-837d-dbd441193fef` |
 | Android Package | `com.besord.app` |
 
-> 🔒 **Segredos (Expo Robot Token, Stripe Webhook Secret, etc.) NÃO ficam neste documento.**
-> Vivem em ficheiros `.env` locais (no `.gitignore`, nunca enviados ao GitHub): `frontend/.env` (Expo Robot Token) e `backend/.env` (Stripe Webhook Secret e restantes). Produção usa os valores directamente no painel Render/Vercel. Mantém também uma cópia num gestor de passwords como backup pessoal.
+> 🔒 **Segredos NÃO ficam neste documento.**
+> Vivem em `backend/.env` (no `.gitignore`). Produção usa o painel Render/Vercel. Mantém cópia num gestor de passwords.
+
+### Variáveis críticas — estado Render Dashboard
+
+| Variável | Render | Notas |
+|----------|--------|-------|
+| MONGO_URL, DB_NAME | ✅ | |
+| GROQ_API_KEY | ✅ | |
+| CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET | ✅ | |
+| POSTHOG_API_KEY | ✅ | |
+| STRIPE_API_KEY / STRIPE_WEBHOOK_SECRET | ✅ | |
+| GOOGLE_CLIENT_ID / SECRET | ✅ | |
+| JWT_SECRET_KEY, ADMIN_EMAIL | ✅ | |
+| CURATOR_API_KEY | ✅ | |
+| **CRON_SECRET** | ⚠️ A adicionar | Ver `backend/.env` |
+| **UNSPLASH_ACCESS_KEY** | ⚠️ A adicionar | Registar em unsplash.com/developers |
 
 ---
 
@@ -99,5 +115,5 @@ EXPO_TOKEN="<ver frontend/.env>" eas build --platform android --profile preview
 
 ---
 
-> **Última actualização:** 16 Junho 2026, fim de sessão — Cloudinary ✅, B$ com palavra ✅, branding uniformizado ✅. Curador Automático: 5 bugs encadeados encontrados e corrigidos (dependência em falta, schema incompatível, rota `/events/search` inacessível, configuração do Render, rate-limit da Groq engolido em silêncio) — o último ainda **não foi testado** em produção.
-> **Próxima sessão:** ver [[📅 Sessão 16 Junho 2026 — Encerramento e Plano para Amanhã]] — começar por um novo "Trigger Run" no `besord-curador` para confirmar se o yield melhorou.
+> **Última actualização:** 22 Junho 2026 — 5 sistemas de retenção D7 entregues (Streak, Push, Daily Challenge, Feed Curator 4 camadas, Arquétipos + user_memory). OTA update publicado.
+> **Próxima sessão:** ver [[📅 Sessão 22 Junho 2026 — 5 Sistemas de Retenção D7]] — começar por adicionar `CRON_SECRET` e `UNSPLASH_ACCESS_KEY` no painel Render, depois configurar 3 cron jobs em cron-job.org.
