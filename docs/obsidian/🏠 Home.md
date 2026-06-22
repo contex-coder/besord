@@ -115,5 +115,5 @@ EXPO_TOKEN="<ver frontend/.env>" eas build --platform android --profile preview
 
 ---
 
-> **Última actualização:** 22 Junho 2026, 20h42 — 5 sistemas de retenção D7 entregues e em produção. Render live, OTA publicado, 3 cron jobs activos em cron-job.org. Primeira execução automática amanhã às 06h00 UTC.
-> **Próxima sessão:** criar primeiro Daily Challenge (`POST /api/admin/daily-challenge`), adicionar `UNSPLASH_ACCESS_KEY` no Render, testar push notifications no APK.
+> **Última actualização:** 22 Junho 2026, 23h — 5 sistemas de retenção D7 + Daily Challenge automático. 4 cron jobs activos. Tudo testado em produção. Zero tarefas de configuração pendentes.
+> **Próxima sessão:** testar push notifications com APK Android (instalar APK, completar 10 votos, verificar push no dispositivo).

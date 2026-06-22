@@ -111,8 +111,9 @@ Authorization: Bearer <CRON_SECRET do backend/.env>
    - **Feed Curator (3x/dia)** — amanhã às 06h00 UTC
    - **Revelação do Desafio Diário (1x/dia)** — amanhã às 20h00 UTC
    - **Lembretes de Sequência (1x/dia)** — amanhã às 20h00 UTC
-7. ⚠️ Criar primeiro Daily Challenge via `POST /api/admin/daily-challenge`
-8. ⚠️ Testar push notifications no APK Android
+7. ✅ Daily Challenge — geração automática implementada (`POST /api/admin/cron/daily-challenge-create`)
+8. ✅ 4 cron jobs activos em cron-job.org (Feed Curator 3x/dia, Challenge Create 08h, Reveal 20h, Streak 20h)
+9. ⚠️ Testar push notifications no APK Android (instalar APK, completar 10 votos, verificar push)
 
 ### Teste de produção — Feed Curator (22 Jun 2026, após sessão)
 ```json
@@ -126,6 +127,51 @@ Authorization: Bearer <CRON_SECRET do backend/.env>
 }
 ```
 **Camada 1 (community)** já encontrou posts com APROVO ≥ 65% dos últimos 7 dias — pipeline activo.
+
+---
+
+## Adições pós-sessão — Continuação (22 Jun 2026, noite)
+
+### Daily Challenge — Geração Automática
+
+**Problema identificado:** o Daily Challenge requeria criação manual pelo admin todos os dias (via `POST /api/admin/daily-challenge`). Não escalável.
+
+**Solução implementada:** novo endpoint `POST /api/admin/cron/daily-challenge-create`
+
+**Pipeline de geração automática:**
+1. Busca 30 fotos editoriais do Unsplash (`order_by=editorial`, curadas à mão pela equipa Unsplash, alta qualidade garantida)
+2. Escolhe uma aleatoriamente das primeiras 20
+3. Passa `alt_description` + `tags` à Groq → gera pergunta provocadora em PT (máx 8 palavras)
+4. Fallback: banco de 10 perguntas pré-escritas se Groq falhar
+5. Idempotente — se challenge do dia já existir, devolve `already_exists: true` sem sobrescrever
+
+**Bug corrigido:** endpoints `reveal` e `create` do router `daily_challenge.py` tinham auth inline que divergia do `_verify_cron()` central de `server.py`. Corrigido injectando `_verify_cron` via `build_router(verify_cron=_verify_cron)`.
+
+**Commits desta continuação:**
+- `99eef07` — feat: daily-challenge-create (Unsplash editorial + Groq)
+- `1e91d83` — fix: injectar `_verify_cron` via build_router
+- `b46f46d` — docs: UNSPLASH_ACCESS_KEY confirmado
+
+### Verificação completa de produção (pós-deploy)
+
+| Componente | Teste | Resultado |
+|-----------|-------|-----------|
+| Backend Render | `/health` + OpenAPI | ✅ Todos os endpoints registados |
+| Vercel frontend | Bundle JS | ✅ `DailyChallengeCard`, `archetypeBox`, `streak_count`, `syncPushToken` no bundle |
+| Feed Curator | Trigger manual | ✅ 3 posts publicados (community:move, community:luce, reddit:capa de livro) |
+| Daily Challenge create | Trigger manual | ✅ `already_exists: true` (idempotente) |
+| Daily Challenge reveal | Trigger manual | ✅ `revealed: true`, `votes: 0` |
+
+### Calendário de crons final (cron-job.org) — 4 jobs activos
+
+| # | Título | URL | Schedule | Próxima execução |
+|---|--------|-----|----------|-----------------|
+| 1 | Feed Curator (3x/dia) | `/api/admin/cron/feed-curator` | 06h, 10h, 16h UTC | Amanhã 06h |
+| 2 | Desafio Diário — geração automática | `/api/admin/cron/daily-challenge-create` | 08h UTC | Amanhã 08h |
+| 3 | Revelação do Desafio Diário (1x/dia) | `/api/admin/cron/daily-challenge-reveal` | 20h UTC | Amanhã 20h |
+| 4 | Lembretes de sequência (1x/dia) | `/api/admin/cron/streak-reminders` | 20h UTC | Amanhã 20h |
+
+Todos com header: `Authorization: Bearer <CRON_SECRET>`
 
 ---
 
