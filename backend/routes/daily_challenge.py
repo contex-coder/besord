@@ -5,11 +5,13 @@ Toda a comunidade vê a mesma imagem, escolhe uma palavra, e o resultado revela-
 Endpoints:
   GET  /api/daily-challenge                         — challenge de hoje (público)
   POST /api/daily-challenge/vote                    — votar (auth, 1x por dia)
-  POST /api/admin/daily-challenge                   — criar/substituir challenge (admin)
-  POST /api/admin/cron/daily-challenge-reveal       — calcular top_words + Groq analysis (cron/admin)
+  POST /api/admin/daily-challenge                   — criar/substituir challenge (admin/manual)
+  POST /api/admin/cron/daily-challenge-create       — gera challenge automaticamente (cron 08h UTC)
+  POST /api/admin/cron/daily-challenge-reveal       — calcular top_words + Groq analysis (cron 20h UTC)
 """
 import os
 import uuid
+import random
 import httpx
 import logging
 from collections import Counter
@@ -51,7 +53,83 @@ class ChallengeVote(BaseModel):
     word: str
 
 
-# ── Helper Groq ──────────────────────────────────────────────────────────────
+# ── Prompts de fallback (usados quando Groq falha) ───────────────────────────
+
+PROMPT_POOL = [
+    "O que sentes ao ver isto?",
+    "Uma palavra que define este momento.",
+    "O que este lugar guarda em silêncio?",
+    "Que emoção esta imagem desperta em ti?",
+    "Se pudesses entrar nesta imagem, o que farias?",
+    "O que está ausente nesta fotografia?",
+    "Esta imagem fala de quê?",
+    "O que esta cena ainda não disse?",
+    "Que palavra escolherias para este instante?",
+    "O que te atrai nesta imagem?",
+]
+
+
+# ── Helpers de geração automática ────────────────────────────────────────────
+
+async def _unsplash_editorial_photo(client: httpx.AsyncClient) -> Optional[dict]:
+    """Busca uma foto editorial aleatória do Unsplash. Retorna {url, description, tags}."""
+    access_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+    if not access_key:
+        return None
+    try:
+        r = await client.get(
+            "https://api.unsplash.com/photos",
+            params={"order_by": "editorial", "per_page": 30, "content_filter": "high"},
+            headers={"Authorization": f"Client-ID {access_key}"},
+            timeout=8.0,
+        )
+        photos = r.json()
+        if not photos or not isinstance(photos, list):
+            return None
+        photo = random.choice(photos[:20])
+        description = photo.get("alt_description") or photo.get("description") or ""
+        tags = [t["title"] for t in photo.get("tags", [])[:5] if isinstance(t, dict)]
+        return {
+            "url": photo["urls"].get("regular") or photo["urls"].get("small"),
+            "description": description,
+            "tags": tags,
+        }
+    except Exception as e:
+        log.warning(f"[daily_challenge] unsplash editorial: {e}")
+        return None
+
+
+async def _groq_generate_prompt(client: httpx.AsyncClient, description: str, tags: list) -> str:
+    """Gera uma pergunta provocadora baseada na imagem. Fallback para PROMPT_POOL."""
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        return random.choice(PROMPT_POOL)
+    context = description or ", ".join(tags) or "imagem abstracta"
+    try:
+        r = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content":
+                    f"Imagem: \"{context}\".\n"
+                    "Escreve UMA pergunta curta e provocadora (máx 8 palavras, em português) "
+                    "para pedir a alguém que escolha uma palavra ao ver esta imagem. "
+                    "Tom: directo, intrigante, sem ser óbvio. Sem aspas. Só a pergunta."}],
+                "max_tokens": 25,
+                "temperature": 0.85,
+            },
+        )
+        result = r.json()["choices"][0]["message"]["content"].strip().rstrip(".")
+        if result and len(result) > 5:
+            return result if result.endswith("?") else result + "?"
+        return random.choice(PROMPT_POOL)
+    except Exception as e:
+        log.warning(f"[daily_challenge] groq prompt: {e}")
+        return random.choice(PROMPT_POOL)
+
+
+# ── Helper Groq — análise do reveal ──────────────────────────────────────────
 
 async def _groq_challenge_analysis(top_words: list, vote_count: int) -> str:
     api_key = os.getenv("GROQ_API_KEY")
@@ -159,6 +237,57 @@ async def vote_daily_challenge(
     await _db.users.update_one({"user_id": uid}, {"$inc": {"bw_balance": 1, "bw_total_earned": 1}})
 
     return {"ok": True, "word": word, "bw_earned": 1}
+
+
+@router.post("/admin/cron/daily-challenge-create")
+async def cron_create_challenge(authorization: Optional[str] = Header(None)):
+    """Gera automaticamente o Daily Challenge de hoje. Idempotente. Cron: 08h UTC."""
+    cron_secret = os.getenv("CRON_SECRET", "")
+    token = (authorization or "").replace("Bearer ", "").strip()
+    if cron_secret and token != cron_secret:
+        try:
+            user = await _get_current_user(authorization)
+            if not user.get("is_admin"):
+                raise HTTPException(status_code=403, detail="Não autorizado.")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=401, detail="Não autorizado.")
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Idempotente — não sobrescreve se já existe
+    existing = await _db.daily_challenges.find_one({"date": today}, {"_id": 0, "challenge_id": 1})
+    if existing:
+        return {"ok": True, "already_exists": True, "challenge_id": existing["challenge_id"]}
+
+    async with httpx.AsyncClient() as client:
+        photo = await _unsplash_editorial_photo(client)
+        if not photo:
+            return {"ok": False, "reason": "Unsplash indisponível. Cria o challenge manualmente."}
+        prompt = await _groq_generate_prompt(client, photo["description"], photo["tags"])
+
+    challenge_id = f"dc_{today}"
+    await _db.daily_challenges.update_one(
+        {"date": today},
+        {"$set": {
+            "challenge_id": challenge_id,
+            "date": today,
+            "image_url": photo["url"],
+            "prompt_theme": prompt,
+            "status": "active",
+            "votes": [],
+            "vote_count": 0,
+            "top_words": [],
+            "analysis": None,
+            "created_at": datetime.now(timezone.utc),
+            "auto_generated": True,
+        }},
+        upsert=True,
+    )
+
+    log.info(f"[daily_challenge] auto-gerado: {challenge_id} | '{prompt}' | {photo['url'][:60]}...")
+    return {"ok": True, "challenge_id": challenge_id, "prompt": prompt, "image_url": photo["url"]}
 
 
 @router.post("/admin/daily-challenge")
