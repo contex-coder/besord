@@ -106,13 +106,26 @@ Authorization: Bearer <CRON_SECRET do backend/.env>
 2. ✅ OTA update Expo publicado (update group `50038d4f`)
 3. ✅ Render deploy confirmado — `3c05077` live às 20h42 de 22 Jun
 4. ✅ `CRON_SECRET` adicionado no painel Render
-5. ⚠️ `UNSPLASH_ACCESS_KEY` — a adicionar (Feed Curator sem imagem até lá)
+5. ✅ `UNSPLASH_ACCESS_KEY` adicionado — Feed Curator testado e funcional
 6. ✅ 3 cron jobs criados em cron-job.org:
    - **Feed Curator (3x/dia)** — amanhã às 06h00 UTC
    - **Revelação do Desafio Diário (1x/dia)** — amanhã às 20h00 UTC
    - **Lembretes de Sequência (1x/dia)** — amanhã às 20h00 UTC
 7. ⚠️ Criar primeiro Daily Challenge via `POST /api/admin/daily-challenge`
 8. ⚠️ Testar push notifications no APK Android
+
+### Teste de produção — Feed Curator (22 Jun 2026, após sessão)
+```json
+{
+  "ok": true,
+  "published": 3,
+  "errors": [],
+  "sources": ["community:move", "community:luce", "reddit:página de capa de livro"],
+  "natural_posts_today": 0,
+  "autoscaled": false
+}
+```
+**Camada 1 (community)** já encontrou posts com APROVO ≥ 65% dos últimos 7 dias — pipeline activo.
 
 ---
 

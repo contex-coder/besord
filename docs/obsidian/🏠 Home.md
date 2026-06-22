@@ -94,7 +94,7 @@ Utilizadores publicam imagem+palavra, votam APROVO/DESAPROVO, e acumulam B$. O m
 | JWT_SECRET_KEY, ADMIN_EMAIL | ✅ | |
 | CURATOR_API_KEY | ✅ | |
 | **CRON_SECRET** | ✅ Adicionado | |
-| **UNSPLASH_ACCESS_KEY** | ⚠️ A adicionar | Registar em unsplash.com/developers |
+| **UNSPLASH_ACCESS_KEY** | ✅ Adicionado | |
 
 ---
 
