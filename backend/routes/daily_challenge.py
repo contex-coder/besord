@@ -30,14 +30,16 @@ _db = None
 _get_current_user = None
 _moderate_word = None
 _notify_user = None
+_verify_cron = None
 
 
-def build_router(db, get_current_user, moderate_word, notify_user):
-    global _db, _get_current_user, _moderate_word, _notify_user
+def build_router(db, get_current_user, moderate_word, notify_user, verify_cron=None):
+    global _db, _get_current_user, _moderate_word, _notify_user, _verify_cron
     _db = db
     _get_current_user = get_current_user
     _moderate_word = moderate_word
     _notify_user = notify_user
+    _verify_cron = verify_cron
     return router
 
 
@@ -242,17 +244,7 @@ async def vote_daily_challenge(
 @router.post("/admin/cron/daily-challenge-create")
 async def cron_create_challenge(authorization: Optional[str] = Header(None)):
     """Gera automaticamente o Daily Challenge de hoje. Idempotente. Cron: 08h UTC."""
-    cron_secret = os.getenv("CRON_SECRET", "")
-    token = (authorization or "").replace("Bearer ", "").strip()
-    if cron_secret and token != cron_secret:
-        try:
-            user = await _get_current_user(authorization)
-            if not user.get("is_admin"):
-                raise HTTPException(status_code=403, detail="Não autorizado.")
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=401, detail="Não autorizado.")
+    _verify_cron(authorization)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -323,17 +315,7 @@ async def admin_create_challenge(
 
 @router.post("/admin/cron/daily-challenge-reveal")
 async def cron_reveal_challenge(authorization: Optional[str] = Header(None)):
-    cron_secret = os.getenv("CRON_SECRET", "")
-    token = (authorization or "").replace("Bearer ", "").strip()
-    if cron_secret and token != cron_secret:
-        try:
-            user = await _get_current_user(authorization)
-            if not user.get("is_admin"):
-                raise HTTPException(status_code=403, detail="Não autorizado.")
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=401, detail="Não autorizado.")
+    _verify_cron(authorization)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     doc = await _db.daily_challenges.find_one({"date": today}, {"_id": 0})

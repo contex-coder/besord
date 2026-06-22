@@ -4070,5 +4070,5 @@ async def cron_streak_reminders(authorization: Optional[str] = Header(None)):
 app.include_router(_pwd_auth.build_router(db, user_out), prefix="/api")
 app.include_router(_ws_mod.build_router(db, get_current_user), prefix="/api")
 app.include_router(curator.curator_router(db), prefix="/api")
-app.include_router(_dc_mod.build_router(db, get_current_user, moderate_word, notify_user), prefix="/api")
+app.include_router(_dc_mod.build_router(db, get_current_user, moderate_word, notify_user, verify_cron=_verify_cron), prefix="/api")
 app.include_router(api_router)
