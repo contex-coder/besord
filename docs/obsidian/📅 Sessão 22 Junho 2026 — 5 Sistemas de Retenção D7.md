@@ -102,12 +102,15 @@ Authorization: Bearer <CRON_SECRET do backend/.env>
 
 ## Próximos passos operacionais
 
-1. ✅ Push GitHub feito (commits `136cbf0` e `e0bf513`)
+1. ✅ Push GitHub feito (commits `136cbf0`, `e0bf513`, `3c05077`)
 2. ✅ OTA update Expo publicado (update group `50038d4f`)
-3. ⚠️ Confirmar redeploy Render com `render.yaml` actualizado
-4. ⚠️ Adicionar `CRON_SECRET` no painel Render → Environment
-5. ⚠️ Registar em unsplash.com/developers e adicionar `UNSPLASH_ACCESS_KEY`
-6. ⚠️ Criar 3 cron jobs em cron-job.org
+3. ✅ Render deploy confirmado — `3c05077` live às 20h42 de 22 Jun
+4. ✅ `CRON_SECRET` adicionado no painel Render
+5. ⚠️ `UNSPLASH_ACCESS_KEY` — a adicionar (Feed Curator sem imagem até lá)
+6. ✅ 3 cron jobs criados em cron-job.org:
+   - **Feed Curator (3x/dia)** — amanhã às 06h00 UTC
+   - **Revelação do Desafio Diário (1x/dia)** — amanhã às 20h00 UTC
+   - **Lembretes de Sequência (1x/dia)** — amanhã às 20h00 UTC
 7. ⚠️ Criar primeiro Daily Challenge via `POST /api/admin/daily-challenge`
 8. ⚠️ Testar push notifications no APK Android
 
